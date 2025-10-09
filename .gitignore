@@ -256,6 +256,7 @@ hotel/
 *copy.sh
 agent_gpt4 copy.py
 agent_gpt4_full_gtw.py
+test.sh
 
 # Tests (si no son necesarios para el agente principal)
 tests/
