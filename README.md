@@ -84,11 +84,9 @@ Edita el archivo `.env` con tus credenciales reales. Ver sección [Configuració
 
 ## 🎯 Inicio Rápido
 
-### Probar la configuración
+### Verificar la configuración
 
-```bash
-./test.sh
-```
+Asegúrate de que tu archivo `.env` esté configurado correctamente con todas las credenciales necesarias.
 
 ### Iniciar el agente
 
@@ -333,9 +331,6 @@ SampleAIAgent/
 ### 🛠️ Comandos de Diagnóstico
 
 ```bash
-# Probar todas las conexiones
-./test.sh
-
 # Verificar credenciales de WSO2
 ./check_credential.sh
 
