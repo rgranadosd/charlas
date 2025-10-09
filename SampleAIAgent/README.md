@@ -1,4 +1,4 @@
-# 🤖 Sample AI Agent for WSO2 API Manager
+# Sample AI Agent for WSO2 API Manager
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
@@ -10,37 +10,37 @@
 
 ---
 
-## 📋 Tabla de Contenidos
+## Tabla de Contenidos
 
-- [Características](#-características)
-- [Arquitectura](#-arquitectura)
-- [Requisitos Previos](#-requisitos-previos)
-- [Instalación](#-instalación)
-- [Configuración](#-configuración)
-- [Uso](#-uso)
-- [Semantic Kernel](#-microsoft-semantic-kernel-integration)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Seguridad](#-seguridad)
-- [Solución de Problemas](#-solución-de-problemas)
-- [Contribuir](#-contribuir)
-- [Licencia](#-licencia)
+- [Características](#características)
+- [Arquitectura](#arquitectura)
+- [Requisitos Previos](#requisitos-previos)
+- [Instalación](#instalación)
+- [Configuración](#configuración)
+- [Uso](#uso)
+- [Semantic Kernel](#microsoft-semantic-kernel-integration)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Seguridad](#seguridad)
+- [Solución de Problemas](#solución-de-problemas)
+- [Contribuir](#contribuir)
+- [Licencia](#licencia)
 
 ---
 
-## ✨ Características
+## Características
 
-- 🧠 **Integración con Microsoft Semantic Kernel** - Orquestación avanzada de IA con arquitectura de plugins
-- 💬 **Interfaz de Lenguaje Natural** - Interactúa con tu tienda Shopify usando lenguaje natural en español o inglés
-- 🔒 **Integración con WSO2 API Manager** - Gateway de APIs de nivel empresarial con autenticación OAuth2
-- 📦 **Gestión Completa de Shopify** - Lista, busca, cuenta y actualiza productos con datos en tiempo real
-- 💰 **Gestión Inteligente de Precios** - Actualiza precios por ID, nombre u operaciones matemáticas
-- 🔐 **Gestión Segura de Credenciales** - Configuración basada en variables de entorno con protección .gitignore
-- ⏱️ **Indicadores de Progreso en Tiempo Real** - Retroalimentación visual para todas las operaciones
-- ✅ **Sistema Anti-alucinación** - Solo retorna datos reales de Shopify, nunca inventa información
-- 🌐 **Soporte Bilingüe** - Acepta comandos en inglés y español
-- 📜 **Historial de Precios y Rollback** - Recuerda precios anteriores y permite restaurarlos
+- **Integración con Microsoft Semantic Kernel** - Orquestación avanzada de IA con arquitectura de plugins
+- **Interfaz de Lenguaje Natural** - Interactúa con tu tienda Shopify usando lenguaje natural en español o inglés
+- **Integración con WSO2 API Manager** - Gateway de APIs de nivel empresarial con autenticación OAuth2
+- **Gestión Completa de Shopify** - Lista, busca, cuenta y actualiza productos con datos en tiempo real
+- **Gestión Inteligente de Precios** - Actualiza precios por ID, nombre u operaciones matemáticas
+- **Gestión Segura de Credenciales** - Configuración basada en variables de entorno con protección .gitignore
+- **Indicadores de Progreso en Tiempo Real** - Retroalimentación visual para todas las operaciones
+- **Sistema Anti-alucinación** - Solo retorna datos reales de Shopify, nunca inventa información
+- **Soporte Bilingüe** - Acepta comandos en inglés y español
+- **Historial de Precios y Rollback** - Recuerda precios anteriores y permite restaurarlos
 
-## 📋 Requisitos Previos
+## Requisitos Previos
 
 - **Python 3.8 o superior**
 - **Microsoft Semantic Kernel** (se instala vía pip)
@@ -49,16 +49,16 @@
 - **Clave de API de OpenAI** para funcionalidad de IA
 - **Sistema operativo**: Linux, macOS o Windows con WSL
 
-## 🚀 Instalación
+## Instalación
 
-### 1️⃣ Clonar el repositorio
+### Clonar el repositorio
 
 ```bash
 git clone https://github.com/rgranadosd/charlas.git
 cd charlas
 ```
 
-### 2️⃣ Crear y activar entorno virtual
+### Crear y activar entorno virtual
 
 ```bash
 python3 -m venv venv
@@ -67,22 +67,22 @@ source venv/bin/activate  # En Linux/macOS
 .\venv\Scripts\activate  # En Windows
 ```
 
-### 3️⃣ Instalar dependencias
+### Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4️⃣ Configurar variables de entorno
+### Configurar variables de entorno
 
 ```bash
 cp env.example .env
 nano .env  # o usa tu editor favorito
 ```
 
-Edita el archivo `.env` con tus credenciales reales. Ver sección [Configuración](#-configuración) para más detalles.
+Edita el archivo `.env` con tus credenciales reales. Ver sección [Configuración](#configuración) para más detalles.
 
-## 🎯 Inicio Rápido
+## Inicio Rápido
 
 ### Verificar la configuración
 
@@ -114,10 +114,10 @@ You: actualiza el precio del producto 12345 a 29.99
 Assistant: ✓ Precio actualizado correctamente
 
 You: aumenta el precio del producto "Camiseta Azul" un 10%
-Assistant: ✓ Precio actualizado de $20.00 a $22.00
+Assistant: Precio actualizado de $20.00 a $22.00
 ```
 
-## 🏗️ Arquitectura
+## Arquitectura
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -162,23 +162,21 @@ Assistant: ✓ Precio actualizado de $20.00 a $22.00
 7. **Shopify API** → Procesa y retorna datos
 8. **Agente IA** → Formatea respuesta en lenguaje natural
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 SampleAIAgent/
-├── 📄 agent_gpt4.py              # Script principal del agente IA
-├── 🔧 start_agent.sh             # Script de inicio (ejecutable)
-├── 🧪 test.sh                    # Suite completa de pruebas
-├── 🔐 check_credential.sh        # Verificación de credenciales WSO2
-├── 📋 env.example                # Plantilla de variables de entorno
-├── 📦 requirements.txt           # Dependencias de Python
-├── 🔒 .env                       # Variables de entorno (crear desde template)
-├── 📜 LICENSE                    # Licencia Apache 2.0
-├── 📖 README.md                  # Este archivo
-└── 🙈 .gitignore                 # Archivos ignorados por Git
+├── agent_gpt4.py              # Script principal del agente IA
+├── start_agent.sh             # Script de inicio (ejecutable)
+├── env.example                # Plantilla de variables de entorno
+├── requirements.txt           # Dependencias de Python
+├── .env                       # Variables de entorno (crear desde template)
+├── LICENSE                    # Licencia Apache 2.0
+├── README.md                  # Este archivo
+└── .gitignore                 # Archivos ignorados por Git
 ```
 
-## ⚙️ Configuración
+## Configuración
 
 ### 1. Configuración de WSO2 API Manager
 
@@ -227,10 +225,10 @@ SampleAIAgent/
 4. Click en **Create an app** → Dale un nombre (ej. "WSO2 Integration")
 5. Ve a **Configuration** → **Admin API integration**
 6. Configura los **Access scopes** necesarios:
-   - ✅ `read_products`
-   - ✅ `write_products`
-   - ✅ `read_product_listings`
-   - ✅ `write_product_listings`
+   - `read_products`
+   - `write_products`
+   - `read_product_listings`
+   - `write_product_listings`
 7. Click en **Save**
 8. Ve a **API credentials**
 9. Click en **Install app** (confirma la instalación)
@@ -253,17 +251,17 @@ SampleAIAgent/
    OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
    ```
 
-## 🔒 Seguridad
+## Seguridad
 
 ### Mejores Prácticas Implementadas
 
-- 🔐 **Variables de Entorno**: Todas las credenciales se almacenan en archivo `.env`
-- 🙈 **Protección Git**: `.gitignore` previene exposición de credenciales
-- 🔑 **Flujo OAuth2**: Autenticación segura basada en tokens con WSO2
-- 🔒 **HTTPS**: Todas las comunicaciones API usan conexiones encriptadas
-- 🔄 **Rotación de Tokens**: WSO2 maneja la renovación automática de tokens
-- ✅ **Validación de Entrada**: Sanitización de todos los inputs del usuario
-- 📝 **Logs Seguros**: No se registran credenciales en los logs
+- **Variables de Entorno**: Todas las credenciales se almacenan en archivo `.env`
+- **Protección Git**: `.gitignore` previene exposición de credenciales
+- **Flujo OAuth2**: Autenticación segura basada en tokens con WSO2
+- **HTTPS**: Todas las comunicaciones API usan conexiones encriptadas
+- **Rotación de Tokens**: WSO2 maneja la renovación automática de tokens
+- **Validación de Entrada**: Sanitización de todos los inputs del usuario
+- **Logs Seguros**: No se registran credenciales en los logs
 
 ### Recomendaciones de Seguridad
 
@@ -274,11 +272,11 @@ SampleAIAgent/
 5. **Monitorea el uso de API** en WSO2 Analytics
 6. **Usa secretos de Kubernetes/Docker** en entornos containerizados
 
-## 🔧 Solución de Problemas
+## Solución de Problemas
 
 ### Problemas Comunes
 
-#### ❌ Error 401 en WSO2 Gateway
+#### Error 401 en WSO2 Gateway
 
 **Síntoma**: `Error al obtener token WSO2: 401`
 
@@ -288,7 +286,7 @@ SampleAIAgent/
 3. Regenera las Production Keys en WSO2 Developer Portal
 4. Verifica que el endpoint de token sea correcto: `https://localhost:9443/oauth2/token`
 
-#### ❌ Error 404 en WSO2 Gateway
+#### Error 404 en WSO2 Gateway
 
 **Síntoma**: `404 Not Found` al llamar a la API
 
@@ -298,7 +296,7 @@ SampleAIAgent/
 3. Verifica que `WSO2_GW_URL` sea correcto: `https://localhost:8243`
 4. Revisa que la API esté desplegada en el Gateway
 
-#### ❌ Autenticación de Shopify Fallida
+#### Autenticación de Shopify Fallida
 
 **Síntoma**: Error al acceder a productos de Shopify
 
@@ -308,7 +306,7 @@ SampleAIAgent/
 3. Verifica que el token no haya expirado
 4. Confirma que `SHOPIFY_STORE_NAME` sea correcto
 
-#### ❌ Clave de OpenAI Inválida
+#### Clave de OpenAI Inválida
 
 **Síntoma**: `Invalid OpenAI API Key`
 
@@ -318,7 +316,7 @@ SampleAIAgent/
 3. Confirma que no haya espacios en `OPENAI_API_KEY` en el `.env`
 4. Verifica que la clave empiece con `sk-`
 
-#### ❌ Variables de Entorno No Cargan
+#### Variables de Entorno No Cargan
 
 **Síntoma**: `Error: Faltan variables en .env`
 
@@ -328,7 +326,7 @@ SampleAIAgent/
 3. Comprueba que no haya espacios alrededor del `=` en las variables
 4. Ejecuta `source .env` manualmente para verificar
 
-### 🛠️ Comandos de Diagnóstico
+### Comandos de Diagnóstico
 
 ```bash
 # Ejecutar con logging detallado
@@ -338,7 +336,7 @@ python3 agent_gpt4.py --debug
 python3 -c "from dotenv import load_dotenv; import os; load_dotenv(); print('WSO2_TOKEN_ENDPOINT:', os.getenv('WSO2_TOKEN_ENDPOINT'))"
 ```
 
-### 📊 Logs y Debugging
+### Logs y Debugging
 
 Los logs se muestran en tiempo real. En modo debug (`--debug`), verás:
 - Tokens de autenticación (parcialmente ocultos)
@@ -347,7 +345,7 @@ Los logs se muestran en tiempo real. En modo debug (`--debug`), verás:
 - Respuestas de las APIs
 - Tiempo de ejecución de cada operación
 
-## 🤝 Contribuir
+## Contribuir
 
 ¡Las contribuciones son bienvenidas! Si quieres mejorar este proyecto:
 
@@ -368,7 +366,7 @@ Los logs se muestran en tiempo real. En modo debug (`--debug`), verás:
 - [ ] Containerización con Docker
 - [ ] CI/CD con GitHub Actions
 
-## 📝 Licencia
+## Licencia
 
 Este proyecto está licenciado bajo **Apache License 2.0** - ver el archivo [LICENSE](LICENSE) para más detalles.
 
@@ -388,18 +386,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## 📚 Referencias
+## Referencias
 
 - [Microsoft Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Framework de orquestación de IA
 - [WSO2 API Manager](https://wso2.com/api-manager/) - Gateway de APIs empresarial
 - [Shopify Admin API](https://shopify.dev/docs/api/admin) - Documentación de la API de Shopify
 - [OpenAI Platform](https://platform.openai.com/) - Plataforma de modelos de lenguaje
 
-## 👥 Autores
+## Autores
 
 - **Rafa Granados** - *Desarrollo inicial* - [@rgranadosd](https://github.com/rgranadosd)
 
-## 🙏 Agradecimientos
+## Agradecimientos
 
 - Equipo de Microsoft Semantic Kernel por el excelente framework
 - Comunidad de WSO2 por la documentación y soporte
@@ -410,7 +408,7 @@ limitations under the License.
 
 <div align="center">
 
-**🚀 Hecho con ❤️ para la gestión inteligente de ecommerce**
+**Hecho con amor para la gestión inteligente de ecommerce**
 
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/rgranadosd/charlas)
 [![WSO2](https://img.shields.io/badge/WSO2-API%20Manager-orange?style=for-the-badge&logo=wso2)](https://wso2.com)
