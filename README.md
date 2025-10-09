@@ -331,9 +331,6 @@ SampleAIAgent/
 ### 🛠️ Comandos de Diagnóstico
 
 ```bash
-# Verificar credenciales de WSO2
-./check_credential.sh
-
 # Ejecutar con logging detallado
 python3 agent_gpt4.py --debug
 
