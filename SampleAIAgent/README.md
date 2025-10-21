@@ -1,4 +1,4 @@
-# Sample AI Agent for WSO2 API Manager
+# Sample AI Agent v1.3 (Semantic Kernel + Shopify + WSO2)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
@@ -6,412 +6,310 @@
 [![WSO2](https://img.shields.io/badge/WSO2-API%20Manager-orange.svg)](https://wso2.com)
 [![Shopify](https://img.shields.io/badge/Shopify-API-brightgreen.svg)](https://shopify.dev)
 
-> **Agente inteligente de ecommerce** potenciado por **Microsoft Semantic Kernel** que integra WSO2 API Manager como gateway para acceder a las APIs de Shopify. Proporciona interacciones en lenguaje natural para gestionar tiendas Shopify con seguridad de nivel empresarial y capacidades avanzadas de orquestación de IA.
+A sample intelligent AI agent powered by **Microsoft Semantic Kernel** that integrates WSO2 API Manager as a gateway to access Shopify APIs. This agent provides natural language interactions for managing Shopify stores with enterprise-grade security and AI orchestration capabilities.
 
----
+## Features
 
-## Tabla de Contenidos
+- **Microsoft Semantic Kernel Integration** - Advanced AI orchestration with plugin architecture
+- **AI-Powered Natural Language Interface** - Interact with your Shopify store using plain English
+- **WSO2 API Manager Integration** - Enterprise-grade API gateway with OAuth2 authentication
+- **Complete Shopify Management** - List, search, count, and update products with real-time data
+- **Smart Price Management** - Update prices by ID, name, or mathematical operations
+- **Secure Credential Management** - Environment-based configuration with .gitignore protection
+- **Real-time Progress Indicators** - Visual feedback for all operations
+- **Anti-hallucination System** - Only returns real data from Shopify, never invents information
+- **Bilingual Support** - Accepts commands in English and Spanish, responds in English
+- **Price History & Rollback** - Remember previous prices and restore them when needed
 
-- [Características](#características)
-- [Arquitectura](#arquitectura)
-- [Requisitos Previos](#requisitos-previos)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Uso](#uso)
-- [Semantic Kernel](#microsoft-semantic-kernel-integration)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Seguridad](#seguridad)
-- [Solución de Problemas](#solución-de-problemas)
-- [Contribuir](#contribuir)
-- [Licencia](#licencia)
+## Prerequisites
 
----
+- Python 3.8 or higher
+- Microsoft Semantic Kernel (installed via pip)
+- WSO2 API Manager instance
+- Shopify store with API access
+- OpenAI API key for AI functionality
 
-## Características
+## Installation
 
-- **Integración con Microsoft Semantic Kernel** - Orquestación avanzada de IA con arquitectura de plugins
-- **Interfaz de Lenguaje Natural** - Interactúa con tu tienda Shopify usando lenguaje natural en español o inglés
-- **Integración con WSO2 API Manager** - Gateway de APIs de nivel empresarial con autenticación OAuth2
-- **Gestión Completa de Shopify** - Lista, busca, cuenta y actualiza productos con datos en tiempo real
-- **Gestión Inteligente de Precios** - Actualiza precios por ID, nombre u operaciones matemáticas
-- **Gestión Segura de Credenciales** - Configuración basada en variables de entorno con protección .gitignore
-- **Indicadores de Progreso en Tiempo Real** - Retroalimentación visual para todas las operaciones
-- **Sistema Anti-alucinación** - Solo retorna datos reales de Shopify, nunca inventa información
-- **Soporte Bilingüe** - Acepta comandos en inglés y español
-- **Historial de Precios y Rollback** - Recuerda precios anteriores y permite restaurarlos
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/rgranadosd/WSO2.git
+   cd "WSO2/Python IA Agent x Wso2"
+   ```
 
-## Requisitos Previos
+2. **Create and activate virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
 
-- **Python 3.8 o superior**
-- **Microsoft Semantic Kernel** (se instala vía pip)
-- **Instancia de WSO2 API Manager** (versión 4.x recomendada)
-- **Tienda Shopify** con acceso a API Admin
-- **Clave de API de OpenAI** para funcionalidad de IA
-- **Sistema operativo**: Linux, macOS o Windows con WSL
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Instalación
+4. **Configure environment variables**
+   ```bash
+   cp env.example .env
+   # Edit .env with your credentials
+   ```
 
-### Clonar el repositorio
-
-```bash
-git clone https://github.com/rgranadosd/charlas.git
-cd charlas
-```
-
-### Crear y activar entorno virtual
+## Quick Start
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # En Linux/macOS
-# o
-.\venv\Scripts\activate  # En Windows
-```
-
-### Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-### Configurar variables de entorno
-
-```bash
-cp env.example .env
-nano .env  # o usa tu editor favorito
-```
-
-Edita el archivo `.env` con tus credenciales reales. Ver sección [Configuración](#configuración) para más detalles.
-
-## Inicio Rápido
-
-### Verificar la configuración
-
-Asegúrate de que tu archivo `.env` esté configurado correctamente con todas las credenciales necesarias.
-
-### Iniciar el agente
-
-```bash
-# Usando el script de inicio
+# Start the agent
 ./start_agent.sh
 
-# O ejecutar directamente
-python3 agent_gpt4.py
+# Or run directly
+python agent_gpt4.py
 
-# Modo debug (muestra información detallada)
-python3 agent_gpt4.py --debug
+# Debug mode
+python agent_gpt4.py --debug
 ```
 
-### Ejemplos de uso
+## Architecture
 
 ```
-You: lista todos los productos
-Assistant: [Lista de productos con IDs y precios]
-
-You: cuántos productos tengo?
-Assistant: Tienes 22 productos en tu tienda
-
-You: actualiza el precio del producto 12345 a 29.99
-Assistant: ✓ Precio actualizado correctamente
-
-You: aumenta el precio del producto "Camiseta Azul" un 10%
-Assistant: Precio actualizado de $20.00 a $22.00
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   AI Agent      │────│  WSO2 Gateway   │────│  Shopify API    │
+│  (Semantic      │    │  (OAuth2 +      │    │  (Products,     │
+│   Kernel)       │    │   Routing)      │    │   Pricing)      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+    ┌────▼────┐             ┌────▼────┐             ┌────▼────┐
+    │ OpenAI  │             │ WSO2 AM │             │ Shopify │
+    │   API   │             │ Gateway │             │  Store  │
+    └─────────┘             └─────────┘             └─────────┘
 ```
 
-## Arquitectura
+## Microsoft Semantic Kernel Integration
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      USUARIO / CLI                          │
-│                  (Lenguaje Natural)                         │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    AGENTE IA                                │
-│         Microsoft Semantic Kernel + OpenAI                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │   Plugins   │  │ Chat History │  │ AI Functions │       │
-│  │  (Shopify)  │  │  Management  │  │   Calling    │       │
-│  └─────────────┘  └──────────────┘  └──────────────┘       │
-└────────────────────────────┬────────────────────────────────┘
-                             │ OAuth2 Token
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│              WSO2 API MANAGER (Gateway)                     │
-│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐         │
-│  │   OAuth2   │  │   Routing   │  │   Security   │         │
-│  │   Server   │  │   Policies  │  │   Policies   │         │
-│  └────────────┘  └─────────────┘  └──────────────┘         │
-└────────────────────────────┬────────────────────────────────┘
-                             │ API Calls
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    SHOPIFY API                              │
-│         (Products, Pricing, Inventory)                      │
-└─────────────────────────────────────────────────────────────┘
+### What is Semantic Kernel?
+
+**Microsoft Semantic Kernel** is an open-source SDK that lets you easily combine AI services like OpenAI, Azure OpenAI, and Hugging Face with conventional programming languages like C#, Python, and Java. It serves as an AI orchestration layer that enables developers to create AI agents that can reason over data and execute code.
+
+### Key Semantic Kernel Concepts Used in This Project
+
+#### Plugin Architecture
+```python
+@kernel_function(name="get_products_list", description="Gets product list with IDs")
+def get_products_list(self) -> str:
+    # Function automatically available to AI
 ```
 
-### Flujo de Datos
+Our project leverages Semantic Kernel's plugin system to expose Shopify operations as AI-callable functions:
 
-1. **Usuario** → Entrada en lenguaje natural
-2. **Semantic Kernel** → Procesa la intención y selecciona funciones
-3. **Plugin Shopify** → Solicita token OAuth2 a WSO2
-4. **WSO2 Gateway** → Valida credenciales y retorna token
-5. **Plugin Shopify** → Llama API de Shopify a través de WSO2
-6. **WSO2 Gateway** → Aplica políticas y enruta la petición
-7. **Shopify API** → Procesa y retorna datos
-8. **Agente IA** → Formatea respuesta en lenguaje natural
+- **`get_products_list()`** - Retrieve all products from Shopify
+- **`count_products()`** - Get total product count
+- **`update_product_price()`** - Modify product pricing
+- **`find_product_by_name()`** - Search products by name with fuzzy matching
+- **`update_product_price_with_math()`** - Perform mathematical price operations
+- **`revert_price()`** - Restore previous pricing
 
-## Estructura del Proyecto
-
-```
-SampleAIAgent/
-├── agent_gpt4.py              # Script principal del agente IA
-├── start_agent.sh             # Script de inicio (ejecutable)
-├── env.example                # Plantilla de variables de entorno
-├── requirements.txt           # Dependencias de Python
-├── .env                       # Variables de entorno (crear desde template)
-├── LICENSE                    # Licencia Apache 2.0
-├── README.md                  # Este archivo
-└── .gitignore                 # Archivos ignorados por Git
+#### AI Orchestration
+```python
+kernel = sk.Kernel()
+kernel.add_service(OpenAIChatCompletion(service_id="openai", api_key=api_key))
+kernel.add_plugin(shopify_plugin, plugin_name="Shopify")
 ```
 
-## Configuración
+Semantic Kernel orchestrates the interaction between:
+- **Natural Language Processing** (OpenAI GPT models)
+- **Function Calling** (Shopify API operations)
+- **Context Management** (Chat history and state)
 
-### 1. Configuración de WSO2 API Manager
+#### Chat History Management
+```python
+chat_history = ChatHistory()
+chat_history.add_system_message(system_message)
+chat_history.add_user_message(user_input)
+chat_history.add_assistant_message(response_text)
+```
 
-#### Paso 1: Crear Aplicación en WSO2
+Maintains conversation context for coherent multi-turn interactions.
 
-1. Accede al **Developer Portal** de WSO2: `https://localhost:9443/devportal`
-2. Inicia sesión (usuario por defecto: `admin` / contraseña: `admin`)
-3. Navega a **Applications** → **Add New Application**
-4. Crea una aplicación (ej. "ShopifyApp")
-5. Ve a **Production Keys** → **Generate Keys**
-6. Copia el **Consumer Key** y **Consumer Secret**
-7. Guarda estos valores en tu archivo `.env`:
-   ```bash
-   WSO2_CONSUMER_KEY=tu_consumer_key
-   WSO2_CONSUMER_SECRET=tu_consumer_secret
-   ```
+### Why We Chose Semantic Kernel
 
-#### Paso 2: Importar API de Shopify
+#### Advantages for Our Ecommerce Agent
 
-1. Accede al **Publisher** de WSO2: `https://localhost:9443/publisher`
-2. Click en **Create API** → **Import Open API**
-3. Importa la especificación de la API `admin-ShopifyAdminAPIProxy-1.0.0`
-4. Configura el **Endpoint Backend** apuntando a Shopify:
-   ```
-   https://{tu-tienda}.myshopify.com/admin/api/2024-01
-   ```
-5. Establece el **Context** como: `/shopify/1.0.0`
-6. Configura **Security** como OAuth2
-7. **Save** y **Publish** la API
+1. **Function Binding**: Automatically exposes Python functions to AI with decorators
+2. **AI Orchestration**: Handles the complex flow between user intent and function execution
+3. **Context Management**: Maintains conversation state and history
+4. **Type Safety**: Strong typing and parameter validation for AI function calls
+5. **Extensibility**: Easy to add new Shopify operations as plugins
+6. **Prompt Engineering**: Built-in prompt templating and enhancement
+7. **Multi-LLM Support**: Can switch between OpenAI, Azure OpenAI, or other providers
 
-#### Paso 3: Suscribir la Aplicación a la API
+#### Our Implementation Pattern
 
-1. Vuelve al **Developer Portal**
-2. Ve a **APIs** → Selecciona la API de Shopify
-3. Click en **Subscribe**
-4. Selecciona tu aplicación creada anteriormente
-5. Confirma la suscripción
+```python
+class ShopifyPlugin:
+    @kernel_function(name="get_products_list", description="Gets product list")
+    def get_products_list(self) -> str:
+        # Real Shopify API call through WSO2
+        data = self._make_api_call("GET", "/products.json")
+        return formatted_product_list
 
-### 2. Configuración de Shopify
+# Register plugin with kernel
+kernel.add_plugin(shopify_plugin, plugin_name="Shopify")
 
-#### Crear Custom App y Generar Token
+# AI automatically decides when to call functions
+response = await kernel.invoke_prompt(user_input)
+```
 
-1. Accede a tu **Shopify Admin Panel**
-2. Ve a **Settings** → **Apps and sales channels**
-3. Click en **Develop apps** (o "Desarrollar aplicaciones")
-4. Click en **Create an app** → Dale un nombre (ej. "WSO2 Integration")
-5. Ve a **Configuration** → **Admin API integration**
-6. Configura los **Access scopes** necesarios:
-   - `read_products`
-   - `write_products`
-   - `read_product_listings`
-   - `write_product_listings`
-7. Click en **Save**
-8. Ve a **API credentials**
-9. Click en **Install app** (confirma la instalación)
-10. Copia el **Admin API access token** (solo se muestra una vez)
-11. Guarda el token en tu archivo `.env`:
-    ```bash
-    SHOPIFY_API_TOKEN=shpat_xxxxxxxxxxxxxxxxxxxxx
-    ```
+#### Benefits in Our Use Case
 
-### 3. Configuración de OpenAI
+- **Natural Language to API Calls**: User says "list products" and Semantic Kernel calls `get_products_list()`
+- **Context Awareness**: Remembers previous operations and price changes
+- **Error Handling**: Gracefully manages API failures and provides meaningful feedback
+- **Function Composition**: Can chain multiple operations (search, update, verify)
+- **Intent Recognition**: Understands various ways to express the same request
 
-1. Ve a [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Inicia sesión o crea una cuenta
-3. Navega a **API Keys**
-4. Click en **Create new secret key**
-5. Dale un nombre descriptivo (ej. "WSO2 Shopify Agent")
-6. Copia la clave (solo se muestra una vez)
-7. Guarda la clave en tu archivo `.env`:
-   ```bash
-   OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
-   ```
+### Semantic Kernel vs Traditional Approaches
 
-## Seguridad
+| Traditional Chatbot | **Our Semantic Kernel Agent** |
+|-------------------|----------------------------|
+| Hardcoded responses | Dynamic function calling |
+| Limited context | Full conversation history |
+| Manual intent parsing | AI-driven intent recognition |
+| Static workflows | Flexible AI orchestration |
+| Single-turn interactions | Multi-turn conversations |
+| Generic responses | Real-time data integration |
 
-### Mejores Prácticas Implementadas
+### Learn More About Semantic Kernel
 
-- **Variables de Entorno**: Todas las credenciales se almacenan en archivo `.env`
-- **Protección Git**: `.gitignore` previene exposición de credenciales
-- **Flujo OAuth2**: Autenticación segura basada en tokens con WSO2
-- **HTTPS**: Todas las comunicaciones API usan conexiones encriptadas
-- **Rotación de Tokens**: WSO2 maneja la renovación automática de tokens
-- **Validación de Entrada**: Sanitización de todos los inputs del usuario
-- **Logs Seguros**: No se registran credenciales en los logs
+- **Official Repository**: [Microsoft Semantic Kernel](https://github.com/microsoft/semantic-kernel)
+- **Documentation**: [Semantic Kernel Docs](https://learn.microsoft.com/en-us/semantic-kernel/)
+- **Python Samples**: [SK Python Examples](https://github.com/microsoft/semantic-kernel/tree/main/python)
 
-### Recomendaciones de Seguridad
+## Project Structure
 
-1. **Nunca subas el archivo `.env` al repositorio**
-2. **Usa HTTPS en producción** (no HTTP)
-3. **Regenera tokens periódicamente**
-4. **Limita los permisos de API** solo a los necesarios
-5. **Monitorea el uso de API** en WSO2 Analytics
-6. **Usa secretos de Kubernetes/Docker** en entornos containerizados
+```
+├── agent_gpt4.py              # Main AI agent script
+├── start_agent.sh             # Startup script (executable)
+├── test.sh                    # Comprehensive test suite
+├── check_credential.sh        # WSO2 credential verification
+├── env.example                # Environment variables template
+├── requirements.txt           # Python dependencies
+├── .env                       # Environment variables (create from template)
+├── LICENSE                    # Apache 2.0 License
+└── README.md                  # This file
+```
 
-## Solución de Problemas
+## Configuration
 
-### Problemas Comunes
+### WSO2 API Manager Setup
 
-#### Error 401 en WSO2 Gateway
+1. **Create Application in WSO2**
+   - Access WSO2 API Manager Developer Portal
+   - Create a new application
+   - Generate Consumer Key and Consumer Secret
+   - Subscribe to the Shopify API
 
-**Síntoma**: `Error al obtener token WSO2: 401`
+2. **API Configuration**
+   - Create API with context: `/shopify/1.0.0`
+   - Configure backend endpoint to point to Shopify
+   - Set up proper authentication headers
+   - Deploy and publish the API
 
-**Soluciones**:
-1. Verifica que `WSO2_CONSUMER_KEY` y `WSO2_CONSUMER_SECRET` sean correctos
-2. Confirma que la aplicación esté suscrita a la API
-3. Regenera las Production Keys en WSO2 Developer Portal
-4. Verifica que el endpoint de token sea correcto: `https://localhost:9443/oauth2/token`
+### Shopify Configuration
 
-#### Error 404 en WSO2 Gateway
+1. **Generate Private App Token**
+   - Go to Shopify Admin → Apps → App and sales channel settings
+   - Create a private app or custom app
+   - Generate Admin API access token
+   - Configure required permissions:
+     - `read_products`
+     - `write_products`
+     - `read_product_listings`
 
-**Síntoma**: `404 Not Found` al llamar a la API
+## Advanced Features
 
-**Soluciones**:
-1. Verifica que el contexto de la API sea `/shopify/1.0.0`
-2. Confirma que la API esté **Published** en WSO2 Publisher
-3. Verifica que `WSO2_GW_URL` sea correcto: `https://localhost:8243`
-4. Revisa que la API esté desplegada en el Gateway
+### Debug Mode
+Enable detailed logging and diagnostic information:
+```bash
+python agent_gpt4.py --debug
+```
 
-#### Autenticación de Shopify Fallida
+### Price Memory System
+The agent automatically remembers price changes for rollback functionality:
+- Tracks previous prices for all updated products
+- Allows reverting to original prices
+- Maintains session-based price history
 
-**Síntoma**: Error al acceder a productos de Shopify
+### Anti-Hallucination System
+- **Real Data Only**: Never invents product information
+- **Error Transparency**: Clearly reports WSO2 Gateway issues
+- **Exact Matching**: Uses actual Shopify product IDs and names
+- **Verification**: Confirms all price updates with response validation
 
-**Soluciones**:
-1. Verifica que `SHOPIFY_API_TOKEN` sea válido
-2. Confirma los permisos de la Custom App en Shopify
-3. Verifica que el token no haya expirado
-4. Confirma que `SHOPIFY_STORE_NAME` sea correcto
+## Security
 
-#### Clave de OpenAI Inválida
+- **Environment Variables**: All credentials stored in `.env` file
+- **Git Protection**: `.gitignore` prevents credential exposure
+- **OAuth2 Flow**: Secure token-based authentication with WSO2
+- **HTTPS**: All API communications use encrypted connections
+- **Token Rotation**: WSO2 handles automatic token refresh
 
-**Síntoma**: `Invalid OpenAI API Key`
+## Troubleshooting
 
-**Soluciones**:
-1. Genera una nueva clave en [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Verifica que la clave tenga créditos disponibles
-3. Confirma que no haya espacios en `OPENAI_API_KEY` en el `.env`
-4. Verifica que la clave empiece con `sk-`
+### Common Issues
 
-#### Variables de Entorno No Cargan
+**WSO2 Gateway 404 Error**
+```
+Solution: Verify API context is configured as /shopify/1.0.0 in WSO2
+```
 
-**Síntoma**: `Error: Faltan variables en .env`
+**Shopify Authentication Failed**
+```
+Solution: Check SHOPIFY_API_TOKEN and store URL in .env file
+```
 
-**Soluciones**:
-1. Confirma que el archivo se llame `.env` (no `env` ni `.env.example`)
-2. Verifica que `.env` esté en el directorio raíz del proyecto
-3. Comprueba que no haya espacios alrededor del `=` en las variables
-4. Ejecuta `source .env` manualmente para verificar
+**OpenAI API Key Invalid**
+```
+Solution: Generate new API key from https://platform.openai.com/account/api-keys
+```
 
-### Comandos de Diagnóstico
+**Environment Variables Not Loading**
+```
+Solution: Ensure .env file exists and contains all required variables
+```
+
+### Debug Commands
 
 ```bash
-# Ejecutar con logging detallado
-python3 agent_gpt4.py --debug
+# Test all connections
+./test.sh
 
-# Verificar variables de entorno cargadas
-python3 -c "from dotenv import load_dotenv; import os; load_dotenv(); print('WSO2_TOKEN_ENDPOINT:', os.getenv('WSO2_TOKEN_ENDPOINT'))"
+# Check WSO2 specifically
+./check_credential.sh
+
+# Run with debug logging
+python agent_gpt4.py --debug
 ```
 
-### Logs y Debugging
+### Our Implementation
 
-Los logs se muestran en tiempo real. En modo debug (`--debug`), verás:
-- Tokens de autenticación (parcialmente ocultos)
-- URLs completas de las peticiones
-- Headers enviados
-- Respuestas de las APIs
-- Tiempo de ejecución de cada operación
-
-## Contribuir
-
-¡Las contribuciones son bienvenidas! Si quieres mejorar este proyecto:
-
-1. **Fork** el repositorio
-2. Crea una **rama** para tu feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un **Pull Request**
-
-### Áreas de Mejora
-
-- [ ] Soporte para más operaciones de Shopify (inventario, pedidos, clientes)
-- [ ] Integración con otros LLMs (Azure OpenAI, Anthropic Claude)
-- [ ] Dashboard web para visualización
-- [ ] Soporte para múltiples tiendas Shopify
-- [ ] Tests automatizados con pytest
-- [ ] Documentación de API en español
-- [ ] Containerización con Docker
-- [ ] CI/CD con GitHub Actions
-
-## Licencia
-
-Este proyecto está licenciado bajo **Apache License 2.0** - ver el archivo [LICENSE](LICENSE) para más detalles.
-
-```
-Copyright 2025 Sample AI Agent Project
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+```python
+@kernel_function(name="get_products_list", description="Gets product list")
+def get_products_list(self) -> str:
+    # Function automatically available to AI
+    data = self._make_api_call("GET", "/products.json")
+    return formatted_product_list
 ```
 
-## Referencias
+### Benefits
+- **Function Binding**: Automatic Python function exposure to AI
+- **AI Orchestration**: Complex user intent to function execution flow
+- **Context Management**: Conversation state and history
+- **Type Safety**: Parameter validation for AI function calls
+- **Multi-LLM Support**: OpenAI, Azure OpenAI, or other providers
 
-- [Microsoft Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Framework de orquestación de IA
-- [WSO2 API Manager](https://wso2.com/api-manager/) - Gateway de APIs empresarial
-- [Shopify Admin API](https://shopify.dev/docs/api/admin) - Documentación de la API de Shopify
-- [OpenAI Platform](https://platform.openai.com/) - Plataforma de modelos de lenguaje
+## License
 
-## Autores
-
-- **Rafa Granados** - *Desarrollo inicial* - [@rgranadosd](https://github.com/rgranadosd)
-
-## Agradecimientos
-
-- Equipo de Microsoft Semantic Kernel por el excelente framework
-- Comunidad de WSO2 por la documentación y soporte
-- OpenAI por los modelos de lenguaje GPT
-- Shopify por la API bien documentada
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-<div align="center">
-
-**Hecho con amor para la gestión inteligente de ecommerce**
-
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/rgranadosd/charlas)
-[![WSO2](https://img.shields.io/badge/WSO2-API%20Manager-orange?style=for-the-badge&logo=wso2)](https://wso2.com)
-[![Shopify](https://img.shields.io/badge/Shopify-Partner-brightgreen?style=for-the-badge&logo=shopify)](https://shopify.dev)
-
-</div>
+**Made with care for intelligent ecommerce management**

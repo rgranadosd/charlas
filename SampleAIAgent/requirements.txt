@@ -1,42 +1,34 @@
-# Sample AI Agent for WSO2 API Manager - Dependencies
-# Core dependencies for AI agent functionality
+# ============================================
+# DEPENDENCIAS DEL PROYECTO PYTHON IA AGENT x WSO2
+# ============================================
+# Instalar con: pip install -r requirements.txt
 
-# AI and Machine Learning
-semantic-kernel>=1.0.0
-openai>=1.0.0
-
-# HTTP and API requests
-requests>=2.31.0
-httpx>=0.24.0
-
-# Environment and configuration
+# Gestión de variables de entorno
 python-dotenv>=1.0.0
 
-# Data processing
-json5>=0.9.0
+# Requests HTTP para llamadas a APIs
+requests>=2.31.0
 
-# Async support
-asyncio
+# Semantic Kernel de Microsoft para IA
+semantic-kernel>=1.0.0
 
-# System and utilities
-argparse
-threading
-time
-sys
-os
-base64
-hashlib
-secrets
-webbrowser
+# OpenAI SDK (requerido por Semantic Kernel)
+openai>=1.0.0
 
-# Optional: Enhanced logging (uncomment if needed)
+# ============================================
+# DEPENDENCIAS OPCIONALES
+# ============================================
+# Descomenta si las necesitas:
+
+# Para operaciones asíncronas avanzadas
+# aiohttp>=3.8.0
+
+# Para validación de datos
+# pydantic>=2.0.0
+
+# Para logging avanzado
 # loguru>=0.7.0
 
-# Optional: Testing (uncomment if needed)
+# Para testing
 # pytest>=7.0.0
 # pytest-asyncio>=0.21.0
-
-# Optional: Development tools (uncomment if needed)
-# black>=23.0.0
-# flake8>=6.0.0
-# mypy>=1.0.0
