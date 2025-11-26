@@ -97,8 +97,8 @@ echo -e "${GREEN}Starting agent...${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop the agent${NC}"
 echo ""
 
-# Ejecutar el script Python
-python3 agent_gpt4.py
+# Ejecutar el script Python y pasar todos los argumentos
+python3 agent_gpt4.py "$@"
 
 # Si llegamos aquí, el script terminó
 echo -e "${BLUE}============================================${NC}"
