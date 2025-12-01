@@ -52,7 +52,7 @@ Las demos en este repositorio están licenciadas bajo **Apache License 2.0**. Ve
 
 **Rafa Granados** - [@rgranadosd](https://github.com/rgranadosd)
 
-*Consultor especializado en integración empresarial, APIs, y tecnologías de IA.*
+*Profesional especializado en integración empresarial, APIs, y tecnologías de IA.*
 
 ---
 
