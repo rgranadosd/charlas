@@ -38,7 +38,7 @@ class Colors:
     def cyan(text): return f"{Colors.CYAN}{text}{Colors.RESET}"
 
 class ThinkingIndicator:
-    """Animación de carga robusta que no bloquea."""
+    """Robust non-blocking loading animation."""
     def __init__(self, message="Thinking"):
         self.message = message
         self.running = False
@@ -119,8 +119,8 @@ class ShopifyPlugin:
         if "product" in curr:
             title = curr["product"]["title"]
             price = curr["product"]["variants"][0]["price"]
-            return f"El precio de '{title}' es ${price}"
-        return Colors.red("Producto no encontrado")
+            return f"The price of '{title}' is ${price}"
+        return Colors.red("Product not found")
 
     @kernel_function(name="get_products_list")
     def get_products_list(self, show_price=True):
@@ -131,32 +131,32 @@ class ShopifyPlugin:
                 price_txt = f" - ${p['variants'][0]['price']}" if show_price else ""
                 lines.append(f"- ID: {p['id']} - {p['title']}{price_txt}")
             return "\n".join(lines)
-        return "Error al listar"
+        return "Error listing products"
 
     @kernel_function(name="update_product_price")
     def update_product_price(self, product_id, price):
         curr = self._api("GET", f"/products/{product_id}.json")
-        if "product" not in curr: return Colors.red("Producto no encontrado")
+        if "product" not in curr: return Colors.red("Product not found")
         vid = curr["product"]["variants"][0]["id"]
         old = curr["product"]["variants"][0]["price"]
         payload = {"product": {"id": int(product_id), "variants": [{"id": vid, "price": str(price)}]}}
         res = self._api("PUT", f"/products/{product_id}.json", payload)
         if "product" in res:
             self.memory.remember(product_id, old, price)
-            return Colors.green(f"Precio actualizado: ${old} -> ${price}")
-        return Colors.red("Error al actualizar")
+            return Colors.green(f"Price updated: ${old} -> ${price}")
+        return Colors.red("Error updating price")
 
     @kernel_function(name="update_description")
     def update_description(self, product_id, text):
         payload = {"product": {"id": int(product_id), "body_html": text}}
         res = self._api("PUT", f"/products/{product_id}.json", payload)
-        return Colors.green("Descripción actualizada") if "product" in res else Colors.red("Error")
+        return Colors.green("Description updated") if "product" in res else Colors.red("Error")
 
     @kernel_function(name="revert_price")
     def revert_price(self, product_id):
         old = self.memory.get_old(product_id)
         if old: return self.update_product_price(product_id, old)
-        return Colors.red("No hay historial")
+        return Colors.red("No previous history")
 
     @kernel_function(name="count_products")
     def count_products(self):
@@ -169,7 +169,7 @@ class ShopifyPlugin:
         if "products" in data:
             prods = sorted(data["products"], key=lambda x: float(x['variants'][0]['price']), reverse=True)
             lines = [f"- ${p['variants'][0]['price']} - {p['title']}" for p in prods]
-            return "Productos ordenados (Mayor a menor):\n" + "\n".join(lines)
+            return "Products sorted (Highest to lowest):\n" + "\n".join(lines)
         return "Error"
 
 # ============================================
@@ -188,21 +188,21 @@ class Agent:
         except: return None
 
     async def run(self, user_input):
-        # Instanciamos el indicador nuevo CADA VEZ para evitar errores de hilo
+        # Instantiate the indicator each time to avoid thread errors
         indicator = ThinkingIndicator("Thinking")
         if not DEBUG_MODE: indicator.start()
         
         result = ""
         try:
-            # 1. CLASIFICAR INTENCIÓN (Prompt Mejorado)
+            # 1. CLASSIFY INTENT (Improved prompt)
             intent_prompt = (
-                "Clasifica la intención en: ['listar', 'consultar_precio', 'actualizar_precio', 'descripcion', 'revertir', 'contar', 'ordenar', 'general']\n"
-                "EJEMPLOS:\n"
-                "User: 'Cuanto vale la gift card?' -> {\"category\": \"consultar_precio\"}\n"
-                "User: 'Pon la Gift Card a 50' -> {\"category\": \"actualizar_precio\"}\n"
-                "User: 'Cuantos productos hay?' -> {\"category\": \"contar\"}\n"
-                "User: 'Dame la lista sin precios' -> {\"category\": \"listar\"}\n"
-                "User: 'Quiero ver el catálogo con precios' -> {\"category\": \"listar\"}\n"
+                "Classify the intent into one of: ['listar', 'consultar_precio', 'actualizar_precio', 'descripcion', 'revertir', 'contar', 'ordenar', 'general']\n"
+                "EXAMPLES:\n"
+                "User: 'How much is the gift card?' -> {\"category\": \"consultar_precio\"}\n"
+                "User: 'Set the gift card price to 50' -> {\"category\": \"actualizar_precio\"}\n"
+                "User: 'How many products are there?' -> {\"category\": \"contar\"}\n"
+                "User: 'Show me the list without prices' -> {\"category\": \"listar\"}\n"
+                "User: 'I want to see the catalog with prices' -> {\"category\": \"listar\"}\n"
                 f"User: '{user_input}'\n"
                 "Output JSON:"
             )
@@ -219,7 +219,7 @@ class Agent:
             # 2. EJECUTAR ACCIÓN
             if intent == "listar": 
                 u_lower = user_input.lower()
-                # Palabras clave para ocultar precios
+                # Keywords to hide prices
                 no_price_keywords = ["sin precio", "no precio", "sin el precio", "oculta el precio", "ocultar precio", "no quiero ver los precios", "sin coste"]
                 
                 if any(k in u_lower for k in no_price_keywords):
@@ -235,7 +235,7 @@ class Agent:
             elif intent == "ordenar": result = self.plugin.sort_products()
             
             elif intent == "consultar_precio":
-                ext_prompt = f"Extrae solo el nombre del producto de: '{user_input}'. Responde solo con el nombre."
+                ext_prompt = f"Extract only the product name from: '{user_input}'. Respond only with the name."
                 pname = str(await self.kernel.invoke_prompt(ext_prompt)).strip()
                 pid = pname
                 if not pid.isdigit():
@@ -245,7 +245,7 @@ class Agent:
                 else: result = Colors.red(f"No encontré el producto '{pname}'")
 
             elif intent == "actualizar_precio":
-                ext_prompt = ("Extrae JSON: {\"product\": \"nombre o id\", \"price\": \"numero\"}. " f"Input: {user_input}")
+                ext_prompt = ("Extract JSON: {\"product\": \"name or id\", \"price\": \"number\"}. " f"Input: {user_input}")
                 data = self._clean_json(str(await self.kernel.invoke_prompt(ext_prompt)))
                 if data and data.get("product") and data.get("price"):
                     pid = str(data.get("product"))
@@ -253,11 +253,11 @@ class Agent:
                         found = self.plugin.find_id_by_name(pid)
                         pid = found if found else pid
                     if pid.isdigit(): result = self.plugin.update_product_price(pid, data.get("price"))
-                    else: result = Colors.red("Producto no encontrado.")
-                else: result = Colors.red("Datos incompletos.")
+                    else: result = Colors.red("Product not found.")
+                else: result = Colors.red("Incomplete data.")
 
             elif intent == "descripcion":
-                ext_prompt = ("Extrae JSON: {\"product\": \"nombre o id\", \"text\": \"nueva descripcion\"}. " f"Input: {user_input}")
+                ext_prompt = ("Extract JSON: {\"product\": \"name or id\", \"text\": \"new description\"}. " f"Input: {user_input}")
                 data = self._clean_json(str(await self.kernel.invoke_prompt(ext_prompt)))
                 if data and data.get("product") and data.get("text"):
                     pid = str(data.get("product"))
@@ -265,17 +265,17 @@ class Agent:
                         found = self.plugin.find_id_by_name(pid)
                         pid = found if found else pid
                     if pid.isdigit(): result = self.plugin.update_description(pid, data.get("text"))
-                    else: result = Colors.red("Producto no encontrado.")
-                else: result = Colors.red("Datos incompletos.")
+                    else: result = Colors.red("Product not found.")
+                else: result = Colors.red("Incomplete data.")
 
             elif intent == "revertir":
-                prompt = f"Extrae ID o nombre de: {user_input}. Solo texto."
+                prompt = f"Extract ID or name from: {user_input}. Return only text."
                 pid = str(await self.kernel.invoke_prompt(prompt)).strip()
                 if not pid.isdigit():
                     found = self.plugin.find_id_by_name(pid)
                     pid = found if found else pid
                 if pid.isdigit(): result = self.plugin.revert_price(pid)
-                else: result = Colors.red("Producto no encontrado.")
+                else: result = Colors.red("Product not found.")
 
             else: result = str(await self.kernel.invoke_prompt(user_input))
 
@@ -303,21 +303,21 @@ if __name__ == "__main__":
         args = parser.parse_args()
         DEBUG_MODE = args.debug
 
-        print(Colors.blue("=== AGENTE SHOPIFY IA (v2.5 FINAL) ==="))
-        if not os.getenv("OPENAI_API_KEY"): return print(Colors.red("Falta API KEY"))
+        print(Colors.blue("=== SHOPIFY AI AGENT (v2.5 FINAL) ==="))
+        if not os.getenv("OPENAI_API_KEY"): return print(Colors.red("Missing API key"))
 
         kernel = sk.Kernel()
         try:
             kernel.add_service(OpenAIChatCompletion(service_id="openai", api_key=os.getenv("OPENAI_API_KEY"), ai_model_id="gpt-4o-mini"))
-        except: return print(Colors.red("Error OpenAI"))
+        except: return print(Colors.red("OpenAI error"))
 
         plugin = ShopifyPlugin()
         agent = Agent(kernel, plugin)
-        print(Colors.green("Listo. Escribe 'salir' para terminar."))
+        print(Colors.green("Ready. Type 'exit' (or 'salir') to quit."))
 
         while True:
             try:
-                u = input(f"{Colors.blue('Tú >')} ")
+                u = input(f"{Colors.blue('You >')} ")
                 if u.lower() in ['exit', 'quit', 'salir']: break
                 if u.strip(): await agent.run(u)
             except KeyboardInterrupt: break
