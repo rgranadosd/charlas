@@ -57,6 +57,8 @@ jspm_packages/
 .env
 .env.test
 .env.production
+# Exception: allow .env.example as it's a template without sensitive data
+!.env.example
 
 # Python virtual environments
 venv/
