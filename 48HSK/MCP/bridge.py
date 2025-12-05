@@ -44,6 +44,32 @@ async def handle_call(request):
         cl.set_input_settings(data['inputName'], data['inputSettings'], True)
         return web.json_response({'status': 'ok'})
 
+    if cmd == 'SetSceneItemEnabled':
+        try:
+            # Obtener la escena actual si no se especifica
+            scene_name = data.get('sceneName')
+            if not scene_name:
+                current_scene = cl.get_current_program_scene()
+                scene_name = current_scene.datain['currentProgramSceneName']
+            
+            # Buscar el elemento por nombre
+            scene_items = cl.get_scene_item_list(scene_name)
+            item_id = None
+            for item in scene_items.datain['sceneItems']:
+                if item['sourceName'] == data['itemName']:
+                    item_id = item['sceneItemId']
+                    break
+            
+            if item_id is None:
+                return web.json_response({'error': f"Item '{data['itemName']}' not found in scene '{scene_name}'"}, status=404)
+            
+            # Activar o desactivar el elemento
+            cl.set_scene_item_enabled(scene_name, item_id, data['enabled'])
+            return web.json_response({'status': 'ok'})
+        except Exception as e:
+            print(f"❌ Error en SetSceneItemEnabled: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+
     return web.json_response({'error': 'Command not implemented in bridge'}, status=400)
 
 # --------- AÑADIR ESTO ---------
@@ -69,6 +95,33 @@ OPENAPI_SPEC = {
                                     "inputSettings": {"type": "object"}
                                 },
                                 "required": ["inputName", "inputSettings"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/call/SetSceneItemEnabled": {
+            "post": {
+                "operationId": "setSceneItemEnabled",
+                "summary": "Activar o desactivar un elemento de escena en OBS",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "itemName": {"type": "string", "description": "Nombre del elemento (por ejemplo, Logo)"},
+                                    "enabled": {"type": "boolean", "description": "true para mostrar, false para ocultar"},
+                                    "sceneName": {"type": "string", "description": "Nombre de la escena (opcional, usa la escena actual si no se especifica)"}
+                                },
+                                "required": ["itemName", "enabled"]
                             }
                         }
                     }

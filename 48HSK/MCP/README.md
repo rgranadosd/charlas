@@ -94,12 +94,22 @@ The MCP server communicates via STDIO, so it's typically run as part of an MCP c
     - `inputName`: Name of the text source in OBS
     - `text`: Text to display
 
+- **`set_obs_item_visibility`** - Shows or hides a scene item in OBS (e.g., Logo)
+  - Parameters:
+    - `itemName`: Name of the scene item in OBS (e.g., "Logo")
+    - `enabled`: `true` to show, `false` to hide
+    - `sceneName`: (Optional) Scene name, uses current scene if not specified
+
 ### HTTP Bridge API
 
 The bridge exposes a simple REST API:
 
 - **POST** `/call/SetInputSettings` - Change properties of a source
   - Body: `{ "inputName": "source_name", "inputSettings": {...} }`
+
+- **POST** `/call/SetSceneItemEnabled` - Show or hide a scene item
+  - Body: `{ "itemName": "Logo", "enabled": true, "sceneName": "Scene Name" }`
+  - `sceneName` is optional (uses current scene if not specified)
 
 - **GET** `/openapi.json` - OpenAPI specification of the bridge
 
@@ -114,6 +124,15 @@ The bridge exposes a simple REST API:
   "arguments": {
     "inputName": "RotuloDemo",
     "text": "Hello from MCP!"
+  }
+}
+
+// Example call to set_obs_item_visibility tool (show/hide Logo)
+{
+  "name": "set_obs_item_visibility",
+  "arguments": {
+    "itemName": "Logo",
+    "enabled": true
   }
 }
 ```
@@ -148,6 +167,7 @@ MCP/
 ├── obs-mcp.js         # MCP server that exposes tools
 ├── package.json       # Node.js dependencies
 ├── package-lock.json  # Dependency lock file
+├── run-demo.sh        # Script to verify system status
 └── README.md          # This file
 ```
 
