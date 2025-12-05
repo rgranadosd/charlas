@@ -50,14 +50,56 @@ async def handle_call(request):
             scene_name = data.get('sceneName')
             if not scene_name:
                 current_scene = cl.get_current_program_scene()
-                scene_name = current_scene.datain['currentProgramSceneName']
+                # obsws-python devuelve dataclasses, intentar diferentes formas de acceso
+                if hasattr(current_scene, 'current_program_scene_name'):
+                    scene_name = current_scene.current_program_scene_name
+                elif hasattr(current_scene, 'datain'):
+                    scene_name = current_scene.datain.get('currentProgramSceneName')
+                else:
+                    # Intentar acceder como diccionario o ver todos los atributos
+                    scene_name = getattr(current_scene, 'currentProgramSceneName', None)
+                    if not scene_name:
+                        # Último recurso: convertir a dict si es posible
+                        scene_name = dict(current_scene).get('currentProgramSceneName')
+            
+            if not scene_name:
+                return web.json_response({'error': 'Could not determine current scene'}, status=500)
             
             # Buscar el elemento por nombre
             scene_items = cl.get_scene_item_list(scene_name)
             item_id = None
-            for item in scene_items.datain['sceneItems']:
-                if item['sourceName'] == data['itemName']:
-                    item_id = item['sceneItemId']
+            
+            # Intentar diferentes formas de acceder a los items
+            items_list = None
+            if hasattr(scene_items, 'scene_items'):
+                items_list = scene_items.scene_items
+            elif hasattr(scene_items, 'datain'):
+                items_list = scene_items.datain.get('sceneItems', [])
+            else:
+                items_list = getattr(scene_items, 'sceneItems', [])
+            
+            for item in items_list:
+                # Intentar diferentes formas de acceder a los atributos del item
+                item_name = None
+                if hasattr(item, 'source_name'):
+                    item_name = item.source_name
+                elif hasattr(item, 'sourceName'):
+                    item_name = item.sourceName
+                elif isinstance(item, dict):
+                    item_name = item.get('sourceName') or item.get('source_name')
+                else:
+                    item_name = getattr(item, 'sourceName', None)
+                
+                if item_name == data['itemName']:
+                    # Obtener el ID del item
+                    if hasattr(item, 'scene_item_id'):
+                        item_id = item.scene_item_id
+                    elif hasattr(item, 'sceneItemId'):
+                        item_id = item.sceneItemId
+                    elif isinstance(item, dict):
+                        item_id = item.get('sceneItemId') or item.get('scene_item_id')
+                    else:
+                        item_id = getattr(item, 'sceneItemId', None)
                     break
             
             if item_id is None:
@@ -68,6 +110,8 @@ async def handle_call(request):
             return web.json_response({'status': 'ok'})
         except Exception as e:
             print(f"❌ Error en SetSceneItemEnabled: {e}")
+            import traceback
+            traceback.print_exc()
             return web.json_response({'error': str(e)}, status=500)
 
     return web.json_response({'error': 'Command not implemented in bridge'}, status=400)
