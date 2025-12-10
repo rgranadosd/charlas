@@ -545,8 +545,24 @@ if __name__ == "__main__":
                     super().__init__(*args, **kwargs)
                     self.wso2_base_url = openai_gateway_base
                     self.wso2_token = wso2_token
+                    self.plugin = plugin  # Guardar referencia al plugin para refrescar token
+                    self.token_lock = asyncio.Lock()  # Lock para refrescar token de forma thread-safe
+                
+                async def _refresh_token_if_needed(self):
+                    """Refrescar token si es necesario"""
+                    # Por ahora, siempre usar el token actual
+                    # En el futuro se puede agregar lógica para refrescar si expira
+                    current_token = self.plugin._get_token()
+                    if current_token:
+                        self.wso2_token = current_token
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[WSO2 Interceptor] Token refrescado"))
                 
                 async def send(self, request, **kwargs):
+                    # Refrescar token antes de cada request para asegurar que esté vigente
+                    async with self.token_lock:
+                        await self._refresh_token_if_needed()
+                    
                     # Interceptar en send() - aquí es donde AsyncOpenAI envía las requests
                     url_str = str(request.url)
                     
@@ -564,11 +580,26 @@ if __name__ == "__main__":
                     # Reemplazar siempre el token con el de WSO2 (AsyncOpenAI puede agregar uno con api_key)
                     request.headers["Authorization"] = f"Bearer {self.wso2_token}"
                     if DEBUG_MODE:
-                        print(Colors.cyan(f"[WSO2 Interceptor] Token WSO2 agregado a headers"))
+                        print(Colors.cyan(f"[WSO2 Interceptor] Token WSO2: {self.wso2_token[:30]}..."))
                         print(Colors.cyan(f"[WSO2 Interceptor] Enviando a: {request.url}"))
                     
                     # verify=False ya está configurado en __init__, no se pasa en send()
-                    return await super().send(request, **kwargs)
+                    try:
+                        response = await super().send(request, **kwargs)
+                        # Si recibimos 401, intentar refrescar token y reintentar
+                        if response.status_code == 401:
+                            if DEBUG_MODE:
+                                print(Colors.yellow(f"[WSO2 Interceptor] 401 recibido, refrescando token..."))
+                            async with self.token_lock:
+                                await self._refresh_token_if_needed()
+                            # Reintentar con nuevo token
+                            request.headers["Authorization"] = f"Bearer {self.wso2_token}"
+                            response = await super().send(request, **kwargs)
+                        return response
+                    except Exception as e:
+                        if DEBUG_MODE:
+                            print(Colors.red(f"[WSO2 Interceptor] Error: {e}"))
+                        raise
             
             # Crear cliente HTTP personalizado con interceptación
             # IMPORTANTE: verify=False para certificados autofirmados de localhost
