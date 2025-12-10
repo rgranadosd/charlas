@@ -25,62 +25,62 @@ if [ ! -f "agent_gpt4.py" ]; then
     exit 1
 fi
 
-# Verificar que Python está disponible
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}ERROR: python3 no está instalado o no está en el PATH${NC}"
-    exit 1
+# ============================================
+# CONFIGURAR PYTHON Y CREAR ENTORNO VIRTUAL
+# ============================================
+
+# Buscar Python 3.13, 3.12, 3.11 o 3.10 (en orden de preferencia)
+# Python 3.14 no es compatible con pydantic-core
+PYTHON_CMD=""
+if command -v python3.13 &> /dev/null; then
+    PYTHON_CMD="python3.13"
+elif command -v python3.12 &> /dev/null; then
+    PYTHON_CMD="python3.12"
+elif command -v python3.11 &> /dev/null; then
+    PYTHON_CMD="python3.11"
+elif command -v python3.10 &> /dev/null; then
+    PYTHON_CMD="python3.10"
+else
+    # Verificar la versión de python3 por defecto
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}ERROR: python3 no está instalado o no está en el PATH${NC}"
+        exit 1
+    fi
+    
+    SYSTEM_PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+    SYSTEM_PYTHON_MINOR=$(echo $SYSTEM_PYTHON_VERSION | cut -d'.' -f2)
+    
+    if [ "$SYSTEM_PYTHON_MINOR" -ge 14 ]; then
+        echo -e "${RED}ERROR: Python 3.14 no es compatible con pydantic-core${NC}"
+        echo -e "${YELLOW}Por favor, instala Python 3.13 o anterior:${NC}"
+        echo -e "${BLUE}  macOS: brew install python@3.13${NC}"
+        echo -e "${BLUE}  O descarga desde: https://www.python.org/downloads/${NC}"
+        exit 1
+    else
+        PYTHON_CMD="python3"
+    fi
 fi
 
-# Verificar versión de Python en el venv existente o en el sistema
+PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | cut -d' ' -f2)
+echo -e "${BLUE}Usando Python $PYTHON_VERSION para crear el entorno virtual${NC}"
+
+# Verificar si el venv existe y usa la versión correcta
 if [ -d "venv" ] && [ -f "venv/bin/python" ]; then
-    VENV_PYTHON_VERSION=$(venv/bin/python --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+    VENV_PYTHON_VERSION=$(venv/bin/python --version 2>&1 | cut -d' ' -f2)
     VENV_PYTHON_MINOR=$(echo $VENV_PYTHON_VERSION | cut -d'.' -f2)
+    EXPECTED_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
     
-    # Si el venv usa Python 3.14, eliminarlo y crear uno nuevo
-    if [ "$VENV_PYTHON_MINOR" -ge 14 ]; then
-        echo -e "${YELLOW}El entorno virtual existente usa Python 3.14 (incompatible)${NC}"
-        echo -e "${BLUE}Eliminando y recreando con Python 3.13 o anterior...${NC}"
+    # Si el venv usa una versión diferente o Python 3.14, eliminarlo
+    if [ "$VENV_PYTHON_MINOR" -ge 14 ] || [ "$VENV_PYTHON_MINOR" != "$EXPECTED_MINOR" ]; then
+        echo -e "${YELLOW}El entorno virtual usa Python $VENV_PYTHON_VERSION (incompatible)${NC}"
+        echo -e "${BLUE}Eliminando y recreando con Python $PYTHON_VERSION...${NC}"
         rm -rf venv
     fi
 fi
 
-# Verificar o crear el entorno virtual
+# Crear el entorno virtual si no existe
 if [ ! -d "venv" ]; then
-    echo -e "${YELLOW}No se encontró el entorno virtual 'venv'${NC}"
-    echo -e "${BLUE}Creando entorno virtual...${NC}"
-    
-    # Buscar Python 3.13, 3.12, 3.11 o 3.10 (en orden de preferencia)
-    PYTHON_CMD=""
-    if command -v python3.13 &> /dev/null; then
-        PYTHON_CMD="python3.13"
-        echo -e "${BLUE}Usando Python 3.13${NC}"
-    elif command -v python3.12 &> /dev/null; then
-        PYTHON_CMD="python3.12"
-        echo -e "${BLUE}Usando Python 3.12${NC}"
-    elif command -v python3.11 &> /dev/null; then
-        PYTHON_CMD="python3.11"
-        echo -e "${BLUE}Usando Python 3.11${NC}"
-    elif command -v python3.10 &> /dev/null; then
-        PYTHON_CMD="python3.10"
-        echo -e "${BLUE}Usando Python 3.10${NC}"
-    else
-        # Verificar la versión de python3 por defecto
-        SYSTEM_PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-        SYSTEM_PYTHON_MINOR=$(echo $SYSTEM_PYTHON_VERSION | cut -d'.' -f2)
-        
-        if [ "$SYSTEM_PYTHON_MINOR" -ge 14 ]; then
-            echo -e "${RED}ERROR: Python 3.14 no es compatible con pydantic-core${NC}"
-            echo -e "${YELLOW}Por favor, instala Python 3.13 o anterior:${NC}"
-            echo -e "${BLUE}  macOS: brew install python@3.13${NC}"
-            echo -e "${BLUE}  O descarga desde: https://www.python.org/downloads/${NC}"
-            exit 1
-        else
-            PYTHON_CMD="python3"
-            echo -e "${BLUE}Usando Python $SYSTEM_PYTHON_VERSION${NC}"
-        fi
-    fi
-    
-    # Crear el entorno virtual
+    echo -e "${BLUE}Creando entorno virtual con Python $PYTHON_VERSION...${NC}"
     $PYTHON_CMD -m venv venv
     
     if [ $? -ne 0 ]; then
@@ -91,7 +91,7 @@ if [ ! -d "venv" ]; then
         exit 1
     fi
     
-    echo -e "${GREEN}✓ Entorno virtual creado exitosamente${NC}"
+    echo -e "${GREEN}✓ Entorno virtual creado exitosamente con Python $PYTHON_VERSION${NC}"
 fi
 
 # Verificar que existe el archivo .env
