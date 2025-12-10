@@ -565,13 +565,9 @@ if __name__ == "__main__":
                     request.headers["Authorization"] = f"Bearer {self.wso2_token}"
                     if DEBUG_MODE:
                         print(Colors.cyan(f"[WSO2 Interceptor] Token WSO2 agregado a headers"))
-                    
-                    # Asegurar verify=False
-                    kwargs['verify'] = False
-                    
-                    if DEBUG_MODE:
                         print(Colors.cyan(f"[WSO2 Interceptor] Enviando a: {request.url}"))
                     
+                    # verify=False ya está configurado en __init__, no se pasa en send()
                     return await super().send(request, **kwargs)
             
             # Crear cliente HTTP personalizado con interceptación
