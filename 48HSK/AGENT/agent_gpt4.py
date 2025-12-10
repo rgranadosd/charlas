@@ -538,7 +538,7 @@ if __name__ == "__main__":
             # y quita el /v1 antes de enviar a WSO2
             class WSO2HTTPClient(httpx.AsyncClient):
                 def __init__(self, *args, **kwargs):
-                    # No pasar base_url aquí, lo manejaremos en request
+                    # No pasar base_url aquí - AsyncOpenAI lo manejará
                     kwargs.pop('base_url', None)
                     # IMPORTANTE: verify=False para certificados autofirmados
                     kwargs['verify'] = False
@@ -546,46 +546,34 @@ if __name__ == "__main__":
                     self.wso2_base_url = openai_gateway_base
                     self.wso2_token = wso2_token
                 
-                async def request(self, method, url, **kwargs):
-                    # Convertir URL a string - AsyncOpenAI puede pasar httpx.URL
-                    if hasattr(url, 'raw_path'):
-                        # Es un objeto httpx.URL, extraer el path
-                        url_str = url.raw_path.decode() if isinstance(url.raw_path, bytes) else str(url.raw_path)
-                        # Construir URL completa desde el base_url del objeto
-                        if hasattr(url, 'raw_scheme') and hasattr(url, 'raw_host'):
-                            scheme = url.raw_scheme.decode() if isinstance(url.raw_scheme, bytes) else str(url.raw_scheme)
-                            host = url.raw_host.decode() if isinstance(url.raw_host, bytes) else str(url.raw_host)
-                            url_str = f"{scheme}://{host}{url_str}"
-                    else:
-                        url_str = str(url)
+                async def send(self, request, **kwargs):
+                    # Interceptar en send() - aquí es donde AsyncOpenAI envía las requests
+                    url_str = str(request.url)
+                    
+                    if DEBUG_MODE:
+                        print(Colors.cyan(f"[WSO2 Interceptor] URL original: {url_str}"))
                     
                     # Interceptar y quitar /v1/chat/completions
-                    original_url = url_str
                     if "/v1/chat/completions" in url_str:
-                        url_str = url_str.replace("/v1/chat/completions", "/chat/completions")
+                        new_url_str = url_str.replace("/v1/chat/completions", "/chat/completions")
                         if DEBUG_MODE:
-                            print(Colors.cyan(f"[WSO2 Interceptor] URL corregida: {original_url} -> {url_str}"))
-                    
-                    # Si la URL no es completa, construirla desde base_url
-                    if not url_str.startswith("http"):
-                        if url_str.startswith("/"):
-                            url_str = f"{self.wso2_base_url}{url_str}"
-                        else:
-                            url_str = f"{self.wso2_base_url}/{url_str}"
+                            print(Colors.cyan(f"[WSO2 Interceptor] URL corregida: {url_str} -> {new_url_str}"))
+                        # Crear nuevo request con URL corregida
+                        request.url = httpx.URL(new_url_str)
                     
                     # Agregar token de WSO2 si no está presente
-                    if "headers" not in kwargs:
-                        kwargs["headers"] = {}
-                    if "Authorization" not in kwargs["headers"]:
-                        kwargs["headers"]["Authorization"] = f"Bearer {self.wso2_token}"
+                    if "Authorization" not in request.headers:
+                        request.headers["Authorization"] = f"Bearer {self.wso2_token}"
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[WSO2 Interceptor] Token agregado a headers"))
                     
-                    # Asegurar verify=False en cada request
+                    # Asegurar verify=False
                     kwargs['verify'] = False
                     
                     if DEBUG_MODE:
-                        print(Colors.cyan(f"[WSO2 Interceptor] Enviando a: {url_str}"))
+                        print(Colors.cyan(f"[WSO2 Interceptor] Enviando a: {request.url}"))
                     
-                    return await super().request(method, url_str, **kwargs)
+                    return await super().send(request, **kwargs)
             
             # Crear cliente HTTP personalizado con interceptación
             # IMPORTANTE: verify=False para certificados autofirmados de localhost
