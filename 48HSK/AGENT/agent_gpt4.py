@@ -547,19 +547,31 @@ if __name__ == "__main__":
                     self.wso2_token = wso2_token
                 
                 async def request(self, method, url, **kwargs):
-                    # Convertir URL a string si es necesario
-                    url_str = str(url)
+                    # Convertir URL a string - AsyncOpenAI puede pasar httpx.URL
+                    if hasattr(url, 'raw_path'):
+                        # Es un objeto httpx.URL, extraer el path
+                        url_str = url.raw_path.decode() if isinstance(url.raw_path, bytes) else str(url.raw_path)
+                        # Construir URL completa desde el base_url del objeto
+                        if hasattr(url, 'raw_scheme') and hasattr(url, 'raw_host'):
+                            scheme = url.raw_scheme.decode() if isinstance(url.raw_scheme, bytes) else str(url.raw_scheme)
+                            host = url.raw_host.decode() if isinstance(url.raw_host, bytes) else str(url.raw_host)
+                            url_str = f"{scheme}://{host}{url_str}"
+                    else:
+                        url_str = str(url)
                     
                     # Interceptar y quitar /v1/chat/completions
+                    original_url = url_str
                     if "/v1/chat/completions" in url_str:
                         url_str = url_str.replace("/v1/chat/completions", "/chat/completions")
-                    # También manejar si la URL termina en /v1 y luego se agrega /chat/completions
-                    elif url_str.endswith("/v1"):
-                        url_str = url_str.replace("/v1", "")
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[WSO2 Interceptor] URL corregida: {original_url} -> {url_str}"))
                     
-                    # Asegurar que la URL base sea correcta
+                    # Si la URL no es completa, construirla desde base_url
                     if not url_str.startswith("http"):
-                        url_str = f"{self.wso2_base_url}{url_str}"
+                        if url_str.startswith("/"):
+                            url_str = f"{self.wso2_base_url}{url_str}"
+                        else:
+                            url_str = f"{self.wso2_base_url}/{url_str}"
                     
                     # Agregar token de WSO2 si no está presente
                     if "headers" not in kwargs:
@@ -569,6 +581,9 @@ if __name__ == "__main__":
                     
                     # Asegurar verify=False en cada request
                     kwargs['verify'] = False
+                    
+                    if DEBUG_MODE:
+                        print(Colors.cyan(f"[WSO2 Interceptor] Enviando a: {url_str}"))
                     
                     return await super().request(method, url_str, **kwargs)
             
