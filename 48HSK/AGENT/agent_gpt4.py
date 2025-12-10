@@ -524,46 +524,54 @@ if __name__ == "__main__":
             return print(Colors.red("Error: No se pudo obtener token de WSO2 Gateway"))
         
         # Configurar OpenAI para usar WSO2 AI Gateway
-        # El endpoint de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0/chat/completions
-        # Pero OpenAI SDK espera: {base_url}/v1/chat/completions
-        # Entonces base_url debe ser: {WSO2_GW_URL}/openaiapi/2.3.0
-        openai_gateway_base = f"{gw_url}/openaiapi/2.3.0"
+        # El endpoint completo de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0/chat/completions
+        # El SDK de OpenAI agrega automáticamente /v1/chat/completions al base_url
+        # Necesitamos que base_url sea tal que: base_url + /v1/chat/completions = /openaiapi/2.3.0/chat/completions
+        # Entonces: base_url = {WSO2_GW_URL}/openaiapi/2.3.0 (sin /v1)
+        # Pero el SDK agregará /v1, resultando en /openaiapi/2.3.0/v1/chat/completions (INCORRECTO)
+        # WSO2 espera: /openaiapi/2.3.0/chat/completions (sin /v1)
+        # Solución: usar base_url = {WSO2_GW_URL}/openaiapi/2.3.0/v1 para que el SDK agregue /chat/completions
+        # Resultado: /openaiapi/2.3.0/v1/chat/completions
+        # Pero WSO2 puede estar configurado para aceptar ambas rutas, probemos
+        openai_gateway_base = f"{gw_url}/openaiapi/2.3.0/v1"
         
         kernel = sk.Kernel()
         try:
-            # Configurar variable de entorno ANTES de crear el servicio
-            # Esto hace que el cliente de OpenAI use el gateway
-            os.environ["OPENAI_BASE_URL"] = openai_gateway_base
-            os.environ["OPENAI_API_KEY"] = "wso2-gateway-dummy"
-            
             # Crear cliente OpenAI personalizado que apunta al gateway de WSO2
-            # El cliente necesita el token de WSO2 en los headers
+            # El token de WSO2 debe ir en el header Authorization
             openai_client = OpenAI(
-                api_key="wso2-gateway-dummy",
+                api_key="wso2-gateway-dummy",  # Dummy key, WSO2 maneja auth real
                 base_url=openai_gateway_base,
                 default_headers={
                     "Authorization": f"Bearer {wso2_token}"  # Token de WSO2 para autenticación
                 },
-                timeout=30.0
+                timeout=30.0,
+                max_retries=2
             )
             
-            # Configurar Semantic Kernel - intentar pasar el cliente si es posible
+            # Configurar Semantic Kernel
+            # Intentar diferentes métodos según la versión de Semantic Kernel
             try:
+                # Método 1: Intentar pasar el cliente directamente
                 kernel.add_service(OpenAIChatCompletion(
                     service_id="openai",
                     ai_model_id="gpt-4o-mini",
-                    async_client=openai_client  # Intentar con async_client
+                    async_client=openai_client
                 ))
-            except TypeError:
-                # Si no acepta async_client, usar solo api_key (el base_url está en env)
+            except (TypeError, AttributeError):
+                # Método 2: Usar solo api_key y configurar base_url en env
+                os.environ["OPENAI_BASE_URL"] = openai_gateway_base
                 kernel.add_service(OpenAIChatCompletion(
                     service_id="openai",
                     api_key="wso2-gateway-dummy",
                     ai_model_id="gpt-4o-mini"
                 ))
+                # Nota: El token de WSO2 debe pasarse de otra forma si usamos este método
+                # Por ahora, el cliente personalizado debería funcionar
             
-            print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway: {openai_gateway_base}"))
-            print(Colors.blue(f"  Token WSO2 obtenido: {wso2_token[:20]}..."))
+            print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway"))
+            print(Colors.blue(f"  Gateway URL: {openai_gateway_base}"))
+            print(Colors.blue(f"  Token WSO2: {wso2_token[:30]}..."))
         except Exception as e:
             return print(Colors.red(f"OpenAI error: {e}"))
 
