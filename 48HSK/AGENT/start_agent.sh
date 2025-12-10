@@ -36,8 +36,32 @@ if [ ! -d "venv" ]; then
         exit 1
     fi
     
-    # Crear el entorno virtual
-    python3 -m venv venv
+    # Verificar versión de Python y usar Python 3.13 o anterior si está disponible
+    PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+    PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
+    PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
+    
+    # Si es Python 3.14 o superior, intentar usar Python 3.13
+    if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 14 ]; then
+        echo -e "${YELLOW}Python 3.14 detectado. Buscando Python 3.13 o anterior...${NC}"
+        if command -v python3.13 &> /dev/null; then
+            echo -e "${BLUE}Usando Python 3.13 para compatibilidad${NC}"
+            python3.13 -m venv venv
+        elif command -v python3.12 &> /dev/null; then
+            echo -e "${BLUE}Usando Python 3.12 para compatibilidad${NC}"
+            python3.12 -m venv venv
+        elif command -v python3.11 &> /dev/null; then
+            echo -e "${BLUE}Usando Python 3.11 para compatibilidad${NC}"
+            python3.11 -m venv venv
+        else
+            echo -e "${YELLOW}ADVERTENCIA: Python 3.14 puede tener problemas de compatibilidad${NC}"
+            echo -e "${YELLOW}Se intentará instalar con workaround para pydantic-core${NC}"
+            python3 -m venv venv
+        fi
+    else
+        # Crear el entorno virtual con la versión disponible
+        python3 -m venv venv
+    fi
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}ERROR: No se pudo crear el entorno virtual${NC}"
@@ -106,6 +130,15 @@ else
     if ! python3 -c "import semantic_kernel, requests, dotenv" 2>/dev/null; then
         echo -e "${YELLOW}Algunas dependencias faltan. Instalando desde requirements.txt...${NC}"
         pip3 install --upgrade pip
+        
+        # Si es Python 3.14, configurar workaround para pydantic-core
+        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+        PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
+        if [ "$PYTHON_MINOR" -ge 14 ]; then
+            echo -e "${YELLOW}Configurando workaround para Python 3.14 (pydantic-core)...${NC}"
+            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+        fi
+        
         pip3 install -r requirements.txt
         
         if [ $? -ne 0 ]; then
