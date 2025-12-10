@@ -241,8 +241,12 @@ class ShopifyPlugin:
         
         # Verificar que SHOPIFY_API_TOKEN esté configurado
         shopify_token = os.getenv("SHOPIFY_API_TOKEN")
-        if not shopify_token:
-            return {"error": "Configuration Error: SHOPIFY_API_TOKEN not configured"}
+        if not shopify_token or shopify_token == "your_shopify_api_token_here":
+            return {
+                "error": "Configuration Error: SHOPIFY_API_TOKEN not configured",
+                "details": "The SHOPIFY_API_TOKEN environment variable is missing or not set to a valid value.",
+                "suggestion": "Please configure SHOPIFY_API_TOKEN in your .env file with a valid Shopify API token."
+            }
         
         url = f"{gw_url}/shopify/1.0.0{path}"
         headers = {
