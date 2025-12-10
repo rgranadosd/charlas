@@ -25,43 +25,63 @@ if [ ! -f "agent_gpt4.py" ]; then
     exit 1
 fi
 
+# Verificar que Python está disponible
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}ERROR: python3 no está instalado o no está en el PATH${NC}"
+    exit 1
+fi
+
+# Verificar versión de Python en el venv existente o en el sistema
+if [ -d "venv" ] && [ -f "venv/bin/python" ]; then
+    VENV_PYTHON_VERSION=$(venv/bin/python --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+    VENV_PYTHON_MINOR=$(echo $VENV_PYTHON_VERSION | cut -d'.' -f2)
+    
+    # Si el venv usa Python 3.14, eliminarlo y crear uno nuevo
+    if [ "$VENV_PYTHON_MINOR" -ge 14 ]; then
+        echo -e "${YELLOW}El entorno virtual existente usa Python 3.14 (incompatible)${NC}"
+        echo -e "${BLUE}Eliminando y recreando con Python 3.13 o anterior...${NC}"
+        rm -rf venv
+    fi
+fi
+
 # Verificar o crear el entorno virtual
 if [ ! -d "venv" ]; then
     echo -e "${YELLOW}No se encontró el entorno virtual 'venv'${NC}"
     echo -e "${BLUE}Creando entorno virtual...${NC}"
     
-    # Verificar que Python está disponible
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}ERROR: python3 no está instalado o no está en el PATH${NC}"
-        exit 1
-    fi
-    
-    # Verificar versión de Python y usar Python 3.13 o anterior si está disponible
-    PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-    PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
-    PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
-    
-    # Si es Python 3.14 o superior, intentar usar Python 3.13
-    if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 14 ]; then
-        echo -e "${YELLOW}Python 3.14 detectado. Buscando Python 3.13 o anterior...${NC}"
-        if command -v python3.13 &> /dev/null; then
-            echo -e "${BLUE}Usando Python 3.13 para compatibilidad${NC}"
-            python3.13 -m venv venv
-        elif command -v python3.12 &> /dev/null; then
-            echo -e "${BLUE}Usando Python 3.12 para compatibilidad${NC}"
-            python3.12 -m venv venv
-        elif command -v python3.11 &> /dev/null; then
-            echo -e "${BLUE}Usando Python 3.11 para compatibilidad${NC}"
-            python3.11 -m venv venv
-        else
-            echo -e "${YELLOW}ADVERTENCIA: Python 3.14 puede tener problemas de compatibilidad${NC}"
-            echo -e "${YELLOW}Se intentará instalar con workaround para pydantic-core${NC}"
-            python3 -m venv venv
-        fi
+    # Buscar Python 3.13, 3.12, 3.11 o 3.10 (en orden de preferencia)
+    PYTHON_CMD=""
+    if command -v python3.13 &> /dev/null; then
+        PYTHON_CMD="python3.13"
+        echo -e "${BLUE}Usando Python 3.13${NC}"
+    elif command -v python3.12 &> /dev/null; then
+        PYTHON_CMD="python3.12"
+        echo -e "${BLUE}Usando Python 3.12${NC}"
+    elif command -v python3.11 &> /dev/null; then
+        PYTHON_CMD="python3.11"
+        echo -e "${BLUE}Usando Python 3.11${NC}"
+    elif command -v python3.10 &> /dev/null; then
+        PYTHON_CMD="python3.10"
+        echo -e "${BLUE}Usando Python 3.10${NC}"
     else
-        # Crear el entorno virtual con la versión disponible
-        python3 -m venv venv
+        # Verificar la versión de python3 por defecto
+        SYSTEM_PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+        SYSTEM_PYTHON_MINOR=$(echo $SYSTEM_PYTHON_VERSION | cut -d'.' -f2)
+        
+        if [ "$SYSTEM_PYTHON_MINOR" -ge 14 ]; then
+            echo -e "${RED}ERROR: Python 3.14 no es compatible con pydantic-core${NC}"
+            echo -e "${YELLOW}Por favor, instala Python 3.13 o anterior:${NC}"
+            echo -e "${BLUE}  macOS: brew install python@3.13${NC}"
+            echo -e "${BLUE}  O descarga desde: https://www.python.org/downloads/${NC}"
+            exit 1
+        else
+            PYTHON_CMD="python3"
+            echo -e "${BLUE}Usando Python $SYSTEM_PYTHON_VERSION${NC}"
+        fi
     fi
+    
+    # Crear el entorno virtual
+    $PYTHON_CMD -m venv venv
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}ERROR: No se pudo crear el entorno virtual${NC}"
@@ -130,15 +150,6 @@ else
     if ! python3 -c "import semantic_kernel, requests, dotenv" 2>/dev/null; then
         echo -e "${YELLOW}Algunas dependencias faltan. Instalando desde requirements.txt...${NC}"
         pip3 install --upgrade pip
-        
-        # Si es Python 3.14, configurar workaround para pydantic-core
-        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-        PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
-        if [ "$PYTHON_MINOR" -ge 14 ]; then
-            echo -e "${YELLOW}Configurando workaround para Python 3.14 (pydantic-core)...${NC}"
-            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-        fi
-        
         pip3 install -r requirements.txt
         
         if [ $? -ne 0 ]; then
