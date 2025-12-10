@@ -15,6 +15,9 @@ semantic-kernel>=1.0.0
 # OpenAI SDK (requerido por Semantic Kernel)
 openai>=1.0.0
 
+# Para decodificar JWT y leer claims
+PyJWT>=2.8.0
+
 # ============================================
 # DEPENDENCIAS OPCIONALES
 # ============================================

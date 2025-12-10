@@ -25,11 +25,29 @@ if [ ! -f "agent_gpt4.py" ]; then
     exit 1
 fi
 
-# Verificar que existe el entorno virtual
+# Verificar o crear el entorno virtual
 if [ ! -d "venv" ]; then
-    echo -e "${RED}ERROR: No se encontró el entorno virtual 'venv'${NC}"
-    echo -e "${YELLOW}Ejecuta primero: python -m venv venv${NC}"
-    exit 1
+    echo -e "${YELLOW}No se encontró el entorno virtual 'venv'${NC}"
+    echo -e "${BLUE}Creando entorno virtual...${NC}"
+    
+    # Verificar que Python está disponible
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}ERROR: python3 no está instalado o no está en el PATH${NC}"
+        exit 1
+    fi
+    
+    # Crear el entorno virtual
+    python3 -m venv venv
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}ERROR: No se pudo crear el entorno virtual${NC}"
+        echo -e "${YELLOW}Asegúrate de que python3-venv está instalado:${NC}"
+        echo -e "${BLUE}  macOS: python3 viene con venv incluido${NC}"
+        echo -e "${BLUE}  Linux: sudo apt-get install python3-venv${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✓ Entorno virtual creado exitosamente${NC}"
 fi
 
 # Verificar que existe el archivo .env
@@ -78,9 +96,25 @@ fi
 
 # Verificar que las dependencias están instaladas
 echo -e "${BLUE}Checking dependencies...${NC}"
-if ! python3 -c "import semantic_kernel, requests, dotenv" 2>/dev/null; then
-    echo -e "${YELLOW}Instalando dependencias...${NC}"
-    pip3 install -r requirements.txt
+
+# Verificar que requirements.txt existe
+if [ ! -f "requirements.txt" ]; then
+    echo -e "${YELLOW}ADVERTENCIA: requirements.txt no encontrado${NC}"
+    echo -e "${YELLOW}Algunas dependencias pueden faltar${NC}"
+else
+    # Verificar dependencias críticas
+    if ! python3 -c "import semantic_kernel, requests, dotenv" 2>/dev/null; then
+        echo -e "${YELLOW}Algunas dependencias faltan. Instalando desde requirements.txt...${NC}"
+        pip3 install --upgrade pip
+        pip3 install -r requirements.txt
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}ERROR: No se pudieron instalar las dependencias${NC}"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}✓ Dependencias instaladas${NC}"
+    fi
 fi
 
 # Mostrar información del entorno

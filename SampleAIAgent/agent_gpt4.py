@@ -14,6 +14,12 @@ import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.functions import kernel_function
 
+# Para decodificar JWT
+try:
+    import jwt
+except ImportError:
+    jwt = None
+
 # ============================================
 # CONFIGURACIÓN Y UTILIDADES
 # ============================================
@@ -34,6 +40,8 @@ class Colors:
     def red(text): return f"{Colors.RED}[ERROR] {text}{Colors.RESET}"
     @staticmethod
     def green(text): return f"{Colors.GREEN}[OK] {text}{Colors.RESET}"
+    @staticmethod
+    def yellow(text): return f"{Colors.YELLOW}{text}{Colors.RESET}"
     @staticmethod
     def cyan(text): return f"{Colors.CYAN}{text}{Colors.RESET}"
 
@@ -83,28 +91,218 @@ class ShopifyPlugin:
     def __init__(self):
         self.memory = PriceMemory()
 
+    def _validate_user_against_is(self):
+        """
+        Valida usuario/contraseña contra Identity Server (solo para autenticación inicial).
+        No retorna token para usar en API, solo valida que el usuario existe y las credenciales son correctas.
+        
+        Returns:
+            bool: True si el usuario fue validado exitosamente, False en caso contrario
+        """
+        username = os.getenv("WSO2_USERNAME")
+        password = os.getenv("WSO2_PASSWORD")
+        client_id = os.getenv("WSO2_CLIENT_ID")
+        client_secret = os.getenv("WSO2_CLIENT_SECRET")
+        
+        if not (username and password and client_id and client_secret):
+            return False  # No hay credenciales de usuario configuradas
+        
+        # Para Password Grant, usar endpoint de Identity Server (puerto 9443)
+        token_endpoint = os.getenv("WSO2_TOKEN_ENDPOINT", "")
+        is_url = os.getenv("WSO2_IS_TOKEN_ENDPOINT")  # Endpoint específico de IS si está configurado
+        
+        if not is_url:
+            # Detectar si el endpoint actual es de APIM y construir el de IS
+            if "9453" in token_endpoint or "8253" in token_endpoint or "8243" in token_endpoint:
+                # Reemplazar puerto de APIM por puerto de IS (9443)
+                is_url = token_endpoint.replace(":9453", ":9443").replace(":8253", ":9443").replace(":8243", ":9443")
+            elif "9443" in token_endpoint:
+                is_url = token_endpoint
+            else:
+                # Por defecto, usar puerto 9443
+                is_url = "https://localhost:9443/oauth2/token"
+        
+        # Password Grant: valida usuario/contraseña contra IS (OBLIGATORIO)
+        data = {
+            "grant_type": "password",
+            "username": username,
+            "password": password
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        creds = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        headers["Authorization"] = f"Basic {creds}"
+        
+        try:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"Validando usuario '{username}' contra Identity Server: {is_url}"))
+            r = requests.post(is_url, headers=headers, data=data, verify=False, timeout=10)
+            if r.status_code == 200:
+                if DEBUG_MODE:
+                    print(Colors.green(f"✓ Usuario '{username}' validado exitosamente en Identity Server"))
+                return True
+            else:
+                # Si falla, mostrar error
+                try:
+                    error_json = r.json()
+                    error_detail = error_json.get('error_description', str(error_json))
+                    print(Colors.red(f"✗ Validación de usuario falló (HTTP {r.status_code}): {error_detail}"))
+                except:
+                    print(Colors.red(f"✗ Validación de usuario falló (HTTP {r.status_code})"))
+                return False
+        except Exception as e:
+            print(Colors.red(f"✗ Error al validar usuario: {e}"))
+            return False
+    
     def _get_token(self):
+        """
+        Obtiene token de acceso de WSO2 APIM Gateway para usar en llamadas API.
+        Siempre usa Client Credentials Grant con Consumer Key/Secret (APIM).
+        NO valida usuario aquí, eso se hace en _validate_user_against_is().
+        
+        Returns:
+            token: Token de acceso de APIM o None si falla
+        """
         url = os.getenv("WSO2_TOKEN_ENDPOINT")
-        key = os.getenv("WSO2_CONSUMER_KEY")
-        secret = os.getenv("WSO2_CONSUMER_SECRET")
-        if not all([url, key, secret]): return None
-        creds = base64.b64encode(f"{key}:{secret}".encode()).decode()
-        headers = {"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"}
+        if not url:
+            return None
+            
+        consumer_key = os.getenv("WSO2_CONSUMER_KEY")
+        consumer_secret = os.getenv("WSO2_CONSUMER_SECRET")
+        
+        if not (consumer_key and consumer_secret):
+            return None
+        
+        headers = {"Authorization": f"Basic {base64.b64encode(f'{consumer_key}:{consumer_secret}'.encode()).decode()}", 
+                  "Content-Type": "application/x-www-form-urlencoded"}
         try:
-            r = requests.post(url, headers=headers, data="grant_type=client_credentials", verify=False)
-            return r.json().get("access_token") if r.status_code == 200 else None
-        except: return None
+            if DEBUG_MODE:
+                print(Colors.cyan(f"Obteniendo token de APIM Gateway: {url}"))
+            r = requests.post(url, headers=headers, data="grant_type=client_credentials", verify=False, timeout=10)
+            if r.status_code == 200:
+                response = r.json()
+                token = response.get("access_token")
+                if token:
+                    if DEBUG_MODE:
+                        print(Colors.green(f"✓ Token de APIM obtenido exitosamente"))
+                    return token
+            else:
+                try:
+                    error_json = r.json()
+                    error_detail = error_json.get('error_description', str(error_json))
+                    if DEBUG_MODE:
+                        print(Colors.red(f"✗ Error obteniendo token APIM (HTTP {r.status_code}): {error_detail}"))
+                except:
+                    if DEBUG_MODE:
+                        print(Colors.red(f"✗ Error obteniendo token APIM (HTTP {r.status_code})"))
+        except Exception as e:
+            if DEBUG_MODE:
+                print(Colors.red(f"✗ Error en client credentials: {e}"))
+        
+        return None
 
+    def _validate_user(self, token):
+        """
+        Valida que el usuario esté autenticado en WSO2 IS.
+        Si el token se obtuvo correctamente, el usuario está autenticado.
+        Retorna True si el token es válido, False en caso contrario.
+        """
+        if not token:
+            return False
+        
+        # Si el token es JWT, decodificarlo para verificar que es válido
+        if token.startswith("eyJ"):
+            try:
+                decoded = jwt.decode(token, options={"verify_signature": False})
+                # Si tiene sub (subject), el usuario está autenticado
+                return "sub" in decoded
+            except Exception:
+                return False
+        
+        # Si no es JWT pero existe, asumir que es válido (UUID token)
+        return True
+    
     def _api(self, method, path, data=None):
+        # Obtener token de APIM Gateway para las llamadas API
         token = self._get_token()
-        if not token: return {"error": "Token Error"}
-        url = f"{os.getenv('WSO2_GW_URL')}/shopify/1.0.0{path}"
-        headers = {"Authorization": f"Bearer {token}", "X-Shopify-Access-Token": os.getenv("SHOPIFY_API_TOKEN"), "Content-Type": "application/json"}
+        if not token: 
+            return {
+                "error": "Authentication Error: Unable to obtain APIM Gateway token",
+                "details": "Failed to obtain access token from APIM Gateway. Please check your credentials.",
+                "suggestion": "Verify:\n  - WSO2_CONSUMER_KEY and WSO2_CONSUMER_SECRET are correct\n  - WSO2_TOKEN_ENDPOINT is correct\n  - WSO2 APIM Gateway is running and accessible"
+            }
+        
+        # Verificar que WSO2_GW_URL esté configurado
+        gw_url = os.getenv('WSO2_GW_URL')
+        if not gw_url:
+            return {"error": "Configuration Error: WSO2_GW_URL not configured"}
+        
+        # Verificar que SHOPIFY_API_TOKEN esté configurado
+        shopify_token = os.getenv("SHOPIFY_API_TOKEN")
+        if not shopify_token:
+            return {"error": "Configuration Error: SHOPIFY_API_TOKEN not configured"}
+        
+        url = f"{gw_url}/shopify/1.0.0{path}"
+        headers = {
+            "Authorization": f"Bearer {token}", 
+            "X-Shopify-Access-Token": shopify_token, 
+            "Content-Type": "application/json"
+        }
+        
         try:
-            if method == 'GET': r = requests.get(url, headers=headers, verify=False)
-            else: r = requests.put(url, headers=headers, json=data, verify=False)
-            return r.json() if r.content else {}
-        except Exception as e: return {"error": str(e)}
+            if method == 'GET': 
+                r = requests.get(url, headers=headers, verify=False, timeout=10)
+            else: 
+                r = requests.put(url, headers=headers, json=data, verify=False, timeout=10)
+            
+            # Check HTTP status code first
+            if r.status_code == 401 or r.status_code == 403:
+                error_detail = "Invalid Credentials"
+                try:
+                    error_json = r.json()
+                    if isinstance(error_json, dict):
+                        error_code = error_json.get('code', '')
+                        error_msg = error_json.get('message', 'Invalid Credentials')
+                        error_desc = error_json.get('description', '')
+                        if error_code == '900901':
+                            return {
+                                "error": f"WSO2 Gateway Authentication Failed (Code: {error_code})",
+                                "details": error_desc or error_msg,
+                                "suggestion": "Please verify:\n  - WSO2_CLIENT_ID and WSO2_CLIENT_SECRET are correct\n  - WSO2_USERNAME and WSO2_PASSWORD are valid\n  - The token endpoint URL is correct\n  - Your user has permission to access the Shopify API"
+                            }
+                        return {"error": f"Authentication Failed: {error_msg}", "details": error_desc}
+                except:
+                    pass
+                return {"error": f"Authentication Failed (HTTP {r.status_code}): {error_detail}"}
+            
+            if r.status_code != 200:
+                return {"error": f"HTTP {r.status_code} Error", "details": r.text[:200] if r.text else "No response body"}
+            
+            # Si hay contenido, intentar parsear JSON
+            if r.content:
+                try:
+                    response_data = r.json()
+                    # Check if response contains WSO2 error structure
+                    if isinstance(response_data, dict) and 'code' in response_data and 'message' in response_data:
+                        error_code = response_data.get('code', '')
+                        error_msg = response_data.get('message', '')
+                        error_desc = response_data.get('description', '')
+                        return {
+                            "error": f"WSO2 Gateway Error (Code: {error_code})",
+                            "details": error_desc or error_msg,
+                            "suggestion": "Check your WSO2 Gateway configuration and API permissions"
+                        }
+                    return response_data
+                except:
+                    return {"error": f"Invalid JSON response: {r.text[:200]}"}
+            else:
+                return {"error": f"Empty response (HTTP {r.status_code})"}
+                
+        except requests.exceptions.ConnectionError as e:
+            return {"error": f"Connection Error: Cannot connect to {gw_url}. Is WSO2 Gateway running?"}
+        except requests.exceptions.Timeout:
+            return {"error": f"Timeout: Gateway at {gw_url} did not respond"}
+        except Exception as e: 
+            return {"error": f"API Error: {str(e)}"}
 
     def find_id_by_name(self, name):
         data = self._api("GET", "/products.json")
@@ -125,13 +323,20 @@ class ShopifyPlugin:
     @kernel_function(name="get_products_list")
     def get_products_list(self, show_price=True):
         data = self._api("GET", "/products.json")
+        if "error" in data:
+            error_msg = f"Error: {data['error']}"
+            if "details" in data:
+                error_msg += f"\n{data['details']}"
+            if "suggestion" in data:
+                error_msg += f"\n\n{data['suggestion']}"
+            return error_msg
         if "products" in data:
             lines = []
             for p in data["products"]:
                 price_txt = f" - ${p['variants'][0]['price']}" if show_price else ""
                 lines.append(f"- ID: {p['id']} - {p['title']}{price_txt}")
             return "\n".join(lines)
-        return "Error listing products"
+        return f"Error listing products: {json.dumps(data, indent=2) if isinstance(data, dict) else str(data)}"
 
     @kernel_function(name="update_product_price")
     def update_product_price(self, product_id, price):
@@ -312,6 +517,35 @@ if __name__ == "__main__":
         except: return print(Colors.red("OpenAI error"))
 
         plugin = ShopifyPlugin()
+        
+        # PASO 1: Validar usuario contra Identity Server (si hay credenciales configuradas)
+        username = os.getenv("WSO2_USERNAME")
+        if username:
+            if not plugin._validate_user_against_is():
+                print(Colors.red("✗ El agente requiere validación de usuario contra Identity Server"))
+                print(Colors.yellow("  Por favor verifica:"))
+                print(Colors.yellow("  - WSO2_USERNAME y WSO2_PASSWORD son correctos"))
+                print(Colors.yellow("  - WSO2_CLIENT_ID y WSO2_CLIENT_SECRET son correctos para Identity Server"))
+                print(Colors.yellow("  - WSO2_IS_TOKEN_ENDPOINT (por defecto: https://localhost:9443/oauth2/token)"))
+                print(Colors.yellow("  - El usuario existe en WSO2 Identity Server"))
+                print(Colors.yellow("  - El grant type 'password' está habilitado para el cliente"))
+                print(Colors.yellow("  - WSO2 Identity Server está corriendo y accesible"))
+                print(Colors.red("\n✗ El agente no puede continuar sin validación de usuario. Saliendo..."))
+                return
+            else:
+                print(Colors.green(f"✓ Usuario '{username}' autenticado exitosamente en WSO2 Identity Server"))
+        
+        # PASO 2: Verificar que se puede obtener token de APIM para las llamadas API
+        token = plugin._get_token()
+        if not token:
+            print(Colors.red("✗ Error: No se pudo obtener token de APIM Gateway"))
+            print(Colors.yellow("  Por favor verifica:"))
+            print(Colors.yellow("  - WSO2_TOKEN_ENDPOINT es correcto"))
+            print(Colors.yellow("  - WSO2_CONSUMER_KEY y WSO2_CONSUMER_SECRET son correctos (para APIM)"))
+            print(Colors.yellow("  - WSO2 APIM Gateway está corriendo y accesible"))
+            print(Colors.red("\n✗ El agente no puede continuar sin token de APIM. Saliendo..."))
+            return
+        
         agent = Agent(kernel, plugin)
         print(Colors.green("Ready. Type 'exit' (or 'salir') to quit."))
 
