@@ -524,50 +524,46 @@ if __name__ == "__main__":
             return print(Colors.red("Error: No se pudo obtener token de WSO2 Gateway"))
         
         # Configurar OpenAI para usar WSO2 AI Gateway
-        # El endpoint de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0
+        # El endpoint de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0/chat/completions
+        # Pero OpenAI SDK espera: {base_url}/v1/chat/completions
+        # Entonces base_url debe ser: {WSO2_GW_URL}/openaiapi/2.3.0
         openai_gateway_base = f"{gw_url}/openaiapi/2.3.0"
         
         kernel = sk.Kernel()
         try:
-            # Crear cliente OpenAI personalizado que apunta al gateway de WSO2
-            # El endpoint completo es: {WSO2_GW_URL}/openaiapi/2.3.0/v1/chat/completions
-            openai_gateway_url = f"{openai_gateway_base}/v1"
+            # Configurar variable de entorno ANTES de crear el servicio
+            # Esto hace que el cliente de OpenAI use el gateway
+            os.environ["OPENAI_BASE_URL"] = openai_gateway_base
+            os.environ["OPENAI_API_KEY"] = "wso2-gateway-dummy"
             
-            # Crear cliente OpenAI con base_url personalizado apuntando al gateway
+            # Crear cliente OpenAI personalizado que apunta al gateway de WSO2
+            # El cliente necesita el token de WSO2 en los headers
             openai_client = OpenAI(
-                api_key="wso2-gateway-dummy",  # Dummy key, WSO2 maneja la auth real
-                base_url=openai_gateway_url,
+                api_key="wso2-gateway-dummy",
+                base_url=openai_gateway_base,
                 default_headers={
                     "Authorization": f"Bearer {wso2_token}"  # Token de WSO2 para autenticación
-                }
+                },
+                timeout=30.0
             )
             
-            # Configurar Semantic Kernel para usar el cliente personalizado
-            # OpenAIChatCompletion puede aceptar un cliente personalizado
-            kernel.add_service(OpenAIChatCompletion(
-                service_id="openai",
-                ai_model_id="gpt-4o-mini",
-                client=openai_client  # Pasar cliente personalizado
-            ))
-            
-            print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway: {openai_gateway_url}"))
-        except TypeError:
-            # Si el parámetro 'client' no existe, usar método alternativo
+            # Configurar Semantic Kernel - intentar pasar el cliente si es posible
             try:
-                # Método alternativo: configurar variable de entorno para que OpenAI use el gateway
-                os.environ["OPENAI_BASE_URL"] = f"{openai_gateway_base}/v1"
-                os.environ["OPENAI_API_KEY"] = "wso2-gateway-dummy"
-                
+                kernel.add_service(OpenAIChatCompletion(
+                    service_id="openai",
+                    ai_model_id="gpt-4o-mini",
+                    async_client=openai_client  # Intentar con async_client
+                ))
+            except TypeError:
+                # Si no acepta async_client, usar solo api_key (el base_url está en env)
                 kernel.add_service(OpenAIChatCompletion(
                     service_id="openai",
                     api_key="wso2-gateway-dummy",
                     ai_model_id="gpt-4o-mini"
                 ))
-                
-                print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway (método alternativo): {openai_gateway_base}"))
-                print(Colors.yellow("⚠ Nota: Las llamadas pasarán por WSO2 Gateway"))
-            except Exception as e2:
-                return print(Colors.red(f"OpenAI error: {e2}"))
+            
+            print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway: {openai_gateway_base}"))
+            print(Colors.blue(f"  Token WSO2 obtenido: {wso2_token[:20]}..."))
         except Exception as e:
             return print(Colors.red(f"OpenAI error: {e}"))
 
