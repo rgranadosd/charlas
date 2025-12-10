@@ -1,0 +1,44 @@
+name: Setup Environment from Secrets
+
+on:
+  workflow_dispatch:  # Permite ejecutar manualmente
+  push:
+    branches: [ main ]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Configure .env from Secrets
+        working-directory: ./AGENT
+        env:
+          WSO2_TOKEN_ENDPOINT: ${{ secrets.WSO2_TOKEN_ENDPOINT }}
+          WSO2_CONSUMER_KEY: ${{ secrets.WSO2_CONSUMER_KEY }}
+          WSO2_CONSUMER_SECRET: ${{ secrets.WSO2_CONSUMER_SECRET }}
+          WSO2_GW_URL: ${{ secrets.WSO2_GW_URL }}
+          SHOPIFY_API_TOKEN: ${{ secrets.SHOPIFY_API_TOKEN }}
+          WSO2_USERNAME: ${{ secrets.WSO2_USERNAME }}
+          WSO2_PASSWORD: ${{ secrets.WSO2_PASSWORD }}
+          WSO2_CLIENT_ID: ${{ secrets.WSO2_CLIENT_ID }}
+          WSO2_CLIENT_SECRET: ${{ secrets.WSO2_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          chmod +x setup_env_from_secrets.sh
+          ./setup_env_from_secrets.sh
+      
+      - name: Upload .env (for verification)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-file
+          path: AGENT/.env
+          retention-days: 1
+
