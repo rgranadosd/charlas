@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.functions import kernel_function
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 # Para decodificar JWT
 try:
