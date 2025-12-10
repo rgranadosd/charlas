@@ -1,59 +1,59 @@
-# Charlas y Presentaciones
+# Talks and Presentations
 
-Repositorio con ejemplos, demos y proyectos presentados en charlas y conferencias por **Rafa Granados**.
+Repository with examples, demos, and projects presented in talks and conferences by **Rafa Granados**.
 
-## Charlas Incluidas
+## Included Talks
 
 ### [Sample AI Agent for WSO2 API Manager](./SampleAIAgent/)
 
-**Demostración:** Agente inteligente de ecommerce con Microsoft Semantic Kernel y WSO2 API Manager
+**Demo:** Intelligent ecommerce agent with Microsoft Semantic Kernel and WSO2 API Manager
 
-**Temática:** Integración de IA con APIs empresariales, orquestación de microservicios, y gestión de ecommerce.
+**Topic:** AI integration with enterprise APIs, microservices orchestration, and ecommerce management.
 
-**Tecnologías mostradas:**
-- Microsoft Semantic Kernel para orquestación de IA
-- WSO2 API Manager como gateway empresarial
-- Shopify Admin API para gestión de ecommerce
-- OpenAI GPT para procesamiento de lenguaje natural
-- Python para desarrollo del agente
+**Technologies shown:**
+- Microsoft Semantic Kernel for AI orchestration
+- WSO2 API Manager as enterprise gateway
+- Shopify Admin API for ecommerce management
+- OpenAI GPT for natural language processing
+- Python for agent development
 
 ---
 
-## Uso de las Demos
+## Using the Demos
 
-Cada charla incluye su propia documentación detallada y código funcional. Navega a la carpeta de la charla que te interese:
+Each talk includes its own detailed documentation and functional code. Navigate to the folder of the talk you're interested in:
 
 ```bash
-# Clonar el repositorio
+# Clone the repository
 git clone https://github.com/rgranadosd/charlas.git
 cd charlas
 
-# Navegar a la charla deseada
+# Navigate to the desired talk
 cd SampleAIAgent/
 ```
 
-## Estructura del Repositorio
+## Repository Structure
 
 ```
 charlas/
-├── README.md                    # Este archivo
+├── README.md                    # This file
 └── SampleAIAgent/              # Demo: AI Agent + WSO2 + Shopify
-    ├── README.md               # Documentación de la charla
-    ├── agent_gpt4.py           # Código funcional
-    ├── start_agent.sh          # Scripts de demostración
-    └── ...                     # Archivos del proyecto
+    ├── README.md               # Talk documentation
+    ├── agent_gpt4.py           # Functional code
+    ├── start_agent.sh          # Demo scripts
+    └── ...                     # Project files
 ```
 
-## Licencia
+## License
 
-Las demos en este repositorio están licenciadas bajo **Apache License 2.0**. Ver los archivos LICENSE individuales en cada charla.
+The demos in this repository are licensed under **Apache License 2.0**. See individual LICENSE files in each talk.
 
-## Sobre el Autor
+## About the Author
 
 **Rafa Granados** - [@rgranadosd](https://github.com/rgranadosd)
 
-*Consultor especializado en integración empresarial, APIs, y tecnologías de IA.*
+*Consultant specialized in enterprise integration, APIs, and AI technologies.*
 
 ---
 
-*Este repositorio contiene ejemplos y demos presentados en charlas sobre tecnologías de integración, APIs, agentes de IA, y arquitecturas empresariales.*
+*This repository contains examples and demos presented in talks about integration technologies, APIs, AI agents, and enterprise architectures.*

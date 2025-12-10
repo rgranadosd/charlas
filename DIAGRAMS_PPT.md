@@ -1,33 +1,33 @@
-# Diagramas para Presentación PowerPoint
+# Diagrams for PowerPoint Presentation
 
-Este documento contiene diagramas simplificados y listos para usar en presentaciones PowerPoint.
+This document contains simplified diagrams ready to use in PowerPoint presentations.
 
 ---
 
-## Diagrama 1: Arquitectura de Alto Nivel
+## Diagram 1: High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    ARQUITECTURA DE ALTO NIVEL                      │
+│                    HIGH-LEVEL ARCHITECTURE                        │
 └─────────────────────────────────────────────────────────────────────┘
 
     ┌──────────┐
-    │ Usuario  │
-    │ (NLP)    │
+    │  User    │
+    │  (NLP)   │
     └────┬─────┘
          │
-         │ Consulta en lenguaje natural
+         │ Natural language query
          ▼
     ┌─────────────────────┐
-    │  Agente Python      │
-    │  (Orquestador)      │
+    │  Python Agent       │
+    │  (Orchestrator)     │
     └────┬────────────────┘
          │
-         │ Consulta procesada
+         │ Processed query
          ▼
     ┌─────────────────────┐
     │ Semantic Kernel     │
-    │  (Orquestación IA)   │
+    │  (AI Orchestration) │
     └────┬────────────────┘
          │
          ├─────────────────┬──────────────┐
@@ -42,11 +42,11 @@ Este documento contiene diagramas simplificados y listos para usar en presentaci
          └─────────┬───────┴──────────────┘
                    │
                    │ OAuth2
-                   │ (Todas las llamadas externas)
+                   │ (All external calls)
                    ▼
          ┌─────────────────────┐
          │  WSO2 API Gateway   │
-         │  (Centralizado)      │
+         │  (Centralized)      │
          └────┬─────────────────┘
               │
               ├─────────────────┬──────────────┐
@@ -54,270 +54,270 @@ Este documento contiene diagramas simplificados y listos para usar en presentaci
               ▼                 ▼
     ┌─────────────────┐  ┌─────────────────┐
     │   Shopify API   │  │   OpenAI API    │
-    │                 │  │  (IA Gateway)    │
+    │                 │  │  (AI Gateway)   │
     └─────────────────┘  └─────────────────┘
 ```
 
 ---
 
-## Diagrama 2: Flujo de una Llamada (Simplificado)
+## Diagram 2: Call Flow (Simplified)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              FLUJO DE UNA LLAMADA - ACTUALIZAR PRECIO              │
+│              CALL FLOW - UPDATE PRICE                              │
 └─────────────────────────────────────────────────────────────────────┘
 
-1. USUARIO
-   "Actualiza precio ID 123456 a 99.99"
+1. USER
+   "Update price ID 123456 to 99.99"
          │
          ▼
-2. AGENTE PYTHON
-   • Detecta intención: UPDATE_PRICE
-   • Extrae: ID=123456, precio=99.99
+2. PYTHON AGENT
+   • Detects intention: UPDATE_PRICE
+   • Extracts: ID=123456, price=99.99
          │
          ▼
 3. SEMANTIC KERNEL
-   • Orquesta ejecución
-   • Llama a función del plugin
+   • Orchestrates execution
+   • Calls plugin function
          │
          ▼
-4. PLUGIN SHOPIFY
-   • Obtiene precio actual ($150.00)
-   • Prepara actualización
+4. SHOPIFY PLUGIN
+   • Gets current price ($150.00)
+   • Prepares update
          │
          ▼
-5. AUTENTICACIÓN WSO2
-   • Obtiene token OAuth2
+5. WSO2 AUTHENTICATION
+   • Gets OAuth2 token
          │
          ▼
 6. WSO2 GATEWAY
-   • Valida token
-   • Enruta a Shopify
+   • Validates token
+   • Routes to Shopify
          │
          ▼
 7. SHOPIFY API
-   • Actualiza precio a $99.99
-   • Confirma cambio
+   • Updates price to $99.99
+   • Confirms change
          │
          ▼
-8. RESPUESTA
-   • Plugin valida éxito
-   • Guarda en memoria
+8. RESPONSE
+   • Plugin validates success
+   • Saves to memory
          │
          ▼
 9. SEMANTIC KERNEL
-   • Prepara prompt para LLM
+   • Prepares prompt for LLM
          │
          │ OAuth2
          ▼
-10. WSO2 IA GATEWAY
-    • Valida token
-    • Enruta a OpenAI
+10. WSO2 AI GATEWAY
+    • Validates token
+    • Routes to OpenAI
          │
          ▼
 11. OPENAI API
-    • Procesa prompt
-    • Genera respuesta natural
+    • Processes prompt
+    • Generates natural response
          │
-         │ Respuesta vía WSO2
+         │ Response via WSO2
          ▼
 12. SEMANTIC KERNEL
-    • Recibe respuesta formateada
+    • Receives formatted response
          │
          ▼
-13. USUARIO
-    "Precio actualizado de $150.00 a $99.99"
+13. USER
+    "Price updated from $150.00 to $99.99"
 ```
 
 ---
 
-## Diagrama 3: Componentes y Responsabilidades
+## Diagram 3: Components and Responsibilities
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              COMPONENTES Y SUS RESPONSABILIDADES                   │
+│              COMPONENTS AND THEIR RESPONSIBILITIES                 │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────┐
-│   USUARIO            │
-│ • Envía consultas     │
-│ • Recibe respuestas   │
+│   USER               │
+│ • Sends queries       │
+│ • Receives responses  │
 └──────────────────────┘
 
 ┌──────────────────────┐
-│   AGENTE PYTHON      │
-│ • Orquestación        │
-│ • Detección intenciones│
-│ • Gestión de estado   │
-│ • Memoria de precios  │
+│   PYTHON AGENT       │
+│ • Orchestration       │
+│ • Intent detection    │
+│ • State management    │
+│ • Price memory        │
 └──────────────────────┘
 
 ┌──────────────────────┐
 │ SEMANTIC KERNEL      │
-│ • Conecta LLM y       │
-│   funciones          │
-│ • Gestiona contexto   │
-│ • Sistema de plugins  │
+│ • Connects LLM and    │
+│   functions          │
+│ • Manages context     │
+│ • Plugin system       │
 └──────────────────────┘
 
 ┌──────────────────────┐
 │   OPENAI GPT-4o-mini  │
-│ • Procesa lenguaje    │
-│   natural             │
-│ • Genera respuestas   │
-│ • Anti-alucinación    │
-│ • Acceso vía WSO2     │
-│   IA Gateway          │
+│ • Processes natural   │
+│   language            │
+│ • Generates responses │
+│ • Anti-hallucination  │
+│ • Access via WSO2     │
+│   AI Gateway          │
 └──────────────────────┘
 
 ┌──────────────────────┐
-│  PLUGIN SHOPIFY      │
-│ • Funciones ejecutables│
-│ • Abstracción API     │
-│ • Operaciones CRUD    │
+│  SHOPIFY PLUGIN      │
+│ • Executable functions│
+│ • API abstraction     │
+│ • CRUD operations     │
 └──────────────────────┘
 
 ┌──────────────────────┐
 │  WSO2 API GATEWAY    │
-│ • Autenticación OAuth2│
-│ • Enrutamiento        │
+│ • OAuth2 authentication│
+│ • Routing             │
 │   - Shopify API       │
 │   - OpenAI API        │
-│ • Seguridad           │
+│ • Security            │
 │ • Rate limiting       │
-│ • Centralizado        │
+│ • Centralized         │
 └──────────────────────┘
 
 ┌──────────────────────┐
 │   SHOPIFY API        │
-│ • Gestión productos   │
-│ • Actualización precios│
-│ • Búsqueda            │
-│ • Acceso vía WSO2     │
+│ • Product management  │
+│ • Price updates       │
+│ • Search              │
+│ • Access via WSO2     │
 └──────────────────────┘
 ```
 
 ---
 
-## Diagrama 4: Flujo de Autenticación OAuth2
+## Diagram 4: OAuth2 Authentication Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    FLUJO OAUTH2 CLIENT CREDENTIALS                  │
+│                    OAUTH2 CLIENT CREDENTIALS FLOW                  │
 └─────────────────────────────────────────────────────────────────────┘
 
-AGENTE PYTHON                    WSO2 TOKEN ENDPOINT
+PYTHON AGENT                    WSO2 TOKEN ENDPOINT
 ┌─────────────┐                  ┌──────────────────┐
 │             │                  │                  │
-│ Necesita    │                  │                  │
+│ Needs       │                  │                  │
 │ token       │                  │                  │
 │             │                  │                  │
-│ POST /token │─────────────────►│ Valida           │
-│ Headers:    │                  │ credenciales      │
+│ POST /token │─────────────────►│ Validates        │
+│ Headers:    │                  │ credentials       │
 │ Basic auth  │                  │                  │
-│             │                  │ Genera            │
+│             │                  │ Generates         │
 │             │                  │ access_token      │
 │             │◄─────────────────│                  │
-│ Almacena    │                  │ Respuesta:        │
+│ Stores      │                  │ Response:         │
 │ token       │                  │ {access_token}    │
 │             │                  │                  │
 └──────┬──────┘                  └──────────────────┘
        │
-       │ Usa token en llamadas
+       │ Uses token in calls
        │ Authorization: Bearer {token}
        ▼
 WSO2 API GATEWAY
 ┌─────────────────────────────┐
 │                             │
-│ Valida token                │
+│ Validates token             │
 │                             │
-│ Enruta a:                   │
+│ Routes to:                  │
 │  • Shopify API              │
-│  • OpenAI API (IA Gateway)  │
+│  • OpenAI API (AI Gateway)  │
 │                             │
 └─────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 5: Stack Tecnológico
+## Diagram 5: Technology Stack
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      STACK TECNOLÓGICO                             │
+│                      TECHNOLOGY STACK                             │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                    CAPA DE PRESENTACIÓN                     │
-│  • Interfaz de línea de comandos (CLI)                      │
-│  • Lenguaje natural (Español/Inglés)                        │
+│                    PRESENTATION LAYER                       │
+│  • Command line interface (CLI)                              │
+│  • Natural language (Spanish/English)                        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                    CAPA DE APLICACIÓN                        │
+│                    APPLICATION LAYER                        │
 │  • Python 3.8+                                               │
 │  • Microsoft Semantic Kernel                                 │
 │  • OpenAI GPT-4o-mini                                        │
-│  • Sistema de plugins                                        │
+│  • Plugin system                                             │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                    CAPA DE INTEGRACIÓN                       │
+│                    INTEGRATION LAYER                        │
 │  • WSO2 API Manager (Gateway)                                │
 │  • OAuth2 Client Credentials                                 │
 │  • REST API                                                  │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                    CAPA DE DATOS/SERVICIOS                    │
-│  • Shopify Admin API (vía WSO2 Gateway)                      │
-│  • OpenAI API (vía WSO2 IA Gateway)                          │
-│  • Gestión de productos                                      │
-│  • Gestión de precios                                        │
-│  • Procesamiento de lenguaje natural                         │
+│                    DATA/SERVICES LAYER                      │
+│  • Shopify Admin API (via WSO2 Gateway)                     │
+│  • OpenAI API (via WSO2 AI Gateway)                          │
+│  • Product management                                        │
+│  • Price management                                          │
+│  • Natural language processing                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 6: Funciones del Plugin Shopify
+## Diagram 6: Shopify Plugin Functions
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              FUNCIONES EXPUESTAS AL LLM                            │
+│              FUNCTIONS EXPOSED TO LLM                            │
 └─────────────────────────────────────────────────────────────────────┘
 
 PLUGIN SHOPIFY
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
-│  CONSULTAS                                                  │
+│  QUERIES                                                    │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │ • get_products_list()                               │   │
-│  │   → Lista todos los productos                       │   │
+│  │   → Lists all products                              │   │
 │  │                                                      │   │
 │  │ • get_products_sorted(order)                        │   │
-│  │   → Productos ordenados por precio                  │   │
+│  │   → Products sorted by price                        │   │
 │  │                                                      │   │
 │  │ • count_products()                                  │   │
-│  │   → Cuenta total de productos                       │   │
+│  │   → Total product count                             │   │
 │  │                                                      │   │
 │  │ • find_product_by_name(name)                        │   │
-│  │   → Búsqueda con fuzzy matching                     │   │
+│  │   → Search with fuzzy matching                      │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
-│  ACTUALIZACIONES                                            │
+│  UPDATES                                                    │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │ • update_product_price(id, price)                   │   │
-│  │   → Actualiza por ID                                │   │
+│  │   → Updates by ID                                    │   │
 │  │                                                      │   │
 │  │ • update_product_price_by_name(name, price)        │   │
-│  │   → Actualiza por nombre                            │   │
+│  │   → Updates by name                                 │   │
 │  │                                                      │   │
 │  │ • update_product_price_with_math(id, op, value)    │   │
-│  │   → Operaciones matemáticas                         │   │
+│  │   → Mathematical operations                         │   │
 │  │                                                      │   │
 │  │ • revert_price(id)                                  │   │
-│  │   → Restaura precio anterior                        │   │
+│  │   → Restores previous price                         │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -325,170 +325,170 @@ PLUGIN SHOPIFY
 
 ---
 
-## Diagrama 7: Casos de Uso Principales
+## Diagram 7: Main Use Cases
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      CASOS DE USO PRINCIPALES                      │
+│                      MAIN USE CASES                      │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  1. LISTAR PRODUCTOS                                        │
-│  Usuario: "Lista los productos"                             │
+│  1. LIST PRODUCTS                                           │
+│  User: "List the products"                                  │
 │  → get_products_list()                                      │
-│  → Respuesta: Lista completa con IDs y precios              │
+│  → Response: Complete list with IDs and prices              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  2. CONTAR PRODUCTOS                                        │
-│  Usuario: "¿Cuántos productos hay?"                         │
+│  2. COUNT PRODUCTS                                          │
+│  User: "How many products are there?"                       │
 │  → count_products()                                         │
-│  → Respuesta: "La tienda tiene X productos"                 │
+│  → Response: "The store has X products"                      │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  3. ACTUALIZAR PRECIO POR ID                                │
-│  Usuario: "Actualiza precio ID 123456 a 99.99"              │
+│  3. UPDATE PRICE BY ID                                      │
+│  User: "Update price ID 123456 to 99.99"                    │
 │  → update_product_price(123456, "99.99")                   │
-│  → Respuesta: "Precio actualizado de $X a $99.99"           │
+│  → Response: "Price updated from $X to $99.99"              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  4. ACTUALIZAR PRECIO POR NOMBRE                            │
-│  Usuario: "Cambia precio de Gift Card a 200"                │
+│  4. UPDATE PRICE BY NAME                                    │
+│  User: "Change price of Gift Card to 200"                   │
 │  → find_product_by_name("Gift Card")                        │
 │  → update_product_price_by_name("Gift Card", "200")         │
-│  → Respuesta: "Precio actualizado..."                       │
+│  → Response: "Price updated..."                             │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  5. OPERACIÓN MATEMÁTICA                                    │
-│  Usuario: "Añade 1000 al precio de X"                       │
+│  5. MATHEMATICAL OPERATION                                  │
+│  User: "Add 1000 to the price of X"                         │
 │  → update_product_price_with_math(id, "add", 1000)        │
-│  → Respuesta: "Precio actualizado de $X a $Y (añadiendo...)"│
+│  → Response: "Price updated from $X to $Y (adding...)"      │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  6. REVERTIR PRECIO                                         │
-│  Usuario: "Vuelve precio original del ID 123456"            │
+│  6. REVERT PRICE                                            │
+│  User: "Restore original price of ID 123456"                │
 │  → revert_price(123456)                                     │
-│  → Respuesta: "Precio restaurado a $X"                      │
+│  → Response: "Price restored to $X"                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 8: Ventajas de la Arquitectura
+## Diagram 8: Architecture Advantages
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    VENTAJAS DE LA ARQUITECTURA                     │
+│                    ARCHITECTURE ADVANTAGES                     │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────┐  ┌──────────────────────┐
-│   SEGURIDAD          │  │   ESCALABILIDAD      │
-│ • OAuth2             │  │ • Componentes        │
-│ • WSO2 Gateway       │  │   independientes     │
-│   Centralizado       │  │ • Escala horizontal  │
-│ • Tokens seguros     │  │ • Gateway único      │
-│ • Todas las APIs     │  │   punto de entrada   │
-│   por gateway        │  │                     │
+│   SECURITY           │  │   SCALABILITY        │
+│ • OAuth2             │  │ • Independent        │
+│ • WSO2 Gateway       │  │   components         │
+│   Centralized        │  │ • Horizontal scaling │
+│ • Secure tokens      │  │ • Gateway as single  │
+│ • All APIs           │  │   entry point        │
+│   via gateway        │  │                     │
 └──────────────────────┘  └──────────────────────┘
 
 ┌──────────────────────┐  ┌──────────────────────┐
-│   MANTENIBILIDAD     │  │   EXTENSIBILIDAD      │
-│ • Código modular     │  │ • Nuevos plugins      │
-│ • Separación de      │  │ • Nuevas funciones    │
-│   responsabilidades  │  │ • Fácil integración    │
+│   MAINTAINABILITY    │  │   EXTENSIBILITY      │
+│ • Modular code       │  │ • New plugins        │
+│ • Separation of      │  │ • New functions      │
+│   responsibilities   │  │ • Easy integration   │
 └──────────────────────┘  └──────────────────────┘
 
 ┌──────────────────────┐  ┌──────────────────────┐
-│   EXPERIENCIA         │  │   CONFIABILIDAD      │
-│ • Lenguaje natural    │  │ • Anti-alucinación   │
-│ • Bilingüe            │  │ • Validación datos   │
-│ • Respuestas claras   │  │ • Verificación       │
+│   USER EXPERIENCE    │  │   RELIABILITY       │
+│ • Natural language    │  │ • Anti-hallucination │
+│ • Bilingual           │  │ • Data validation    │
+│ • Clear responses     │  │ • Verification       │
 └──────────────────────┘  └──────────────────────┘
 ```
 
 ---
 
-## Diagrama 9: Flujo de Datos Detallado
+## Diagram 9: Detailed Data Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                  FLUJO DE DATOS DETALLADO                         │
+│                  DETAILED DATA FLOW                         │
 └─────────────────────────────────────────────────────────────────────┘
 
-USUARIO
+USER
   │
-  │ "Actualiza precio ID 123456 a 99.99"
+  │ "Update price ID 123456 to 99.99"
   ▼
-AGENTE PYTHON
-  │ • Parsea entrada
-  │ • Detecta: UPDATE_PRICE
-  │ • Extrae: ID=123456, precio=99.99
+PYTHON AGENT
+  │ • Parses input
+  │ • Detects: UPDATE_PRICE
+  │ • Extracts: ID=123456, price=99.99
   ▼
 SEMANTIC KERNEL
-  │ • Construye prompt
-  │ • Identifica función: update_product_price()
-  │ • Prepara contexto
+  │ • Builds prompt
+  │ • Identifies function: update_product_price()
+  │ • Prepares context
   ▼
-PLUGIN SHOPIFY
-  │ • Ejecuta update_product_price()
-  │ • PASO 1: GET /products/123456.json
-  │   → Obtiene precio actual: $150.00
-  │ • PASO 2: Prepara payload PUT
-  │ • PASO 3: PUT /products/123456.json
-  │   → Actualiza a $99.99
-  │ • PASO 4: Valida respuesta
-  │ • PASO 5: Guarda en PriceMemory
+SHOPIFY PLUGIN
+  │ • Executes update_product_price()
+  │ • STEP 1: GET /products/123456.json
+  │   → Gets current price: $150.00
+  │ • STEP 2: Prepares PUT payload
+  │ • STEP 3: PUT /products/123456.json
+  │   → Updates to $99.99
+  │ • STEP 4: Validates response
+  │ • STEP 5: Saves to PriceMemory
   ▼
 WSO2 GATEWAY
-  │ • Autentica con OAuth2
-  │ • Enruta peticiones
-  │ • Aplica políticas
+  │ • Authenticates with OAuth2
+  │ • Routes requests
+  │ • Applies policies
   ▼
 SHOPIFY API
-  │ • Procesa GET (obtener actual)
-  │ • Procesa PUT (actualizar)
-  │ • Retorna confirmación
+  │ • Processes GET (get current)
+  │ • Processes PUT (update)
+  │ • Returns confirmation
   ▼
-RESPUESTA
-  │ • Plugin retorna: "Éxito: $150.00 → $99.99"
+RESPONSE
+  │ • Plugin returns: "Success: $150.00 → $99.99"
   ▼
 SEMANTIC KERNEL
-  │ • Construye prompt mejorado
-  │ • Prepara llamada a LLM
-  │ • OAuth2 para OpenAI
+  │ • Builds enhanced prompt
+  │ • Prepares LLM call
+  │ • OAuth2 for OpenAI
   ▼
-WSO2 IA GATEWAY
-  │ • Valida token OAuth2
-  │ • Enruta a OpenAI API
-  │ • Aplica políticas
+WSO2 AI GATEWAY
+  │ • Validates OAuth2 token
+  │ • Routes to OpenAI API
+  │ • Applies policies
   ▼
 OPENAI GPT-4o-mini
-  │ • Recibe prompt vía WSO2 Gateway
-  │ • Genera respuesta natural
-  │ • "El precio del producto ID 123456
-  │    se ha actualizado de $150.00 a $99.99"
-  │ • Retorna vía WSO2 Gateway
+  │ • Receives prompt via WSO2 Gateway
+  │ • Generates natural response
+  │ • "The price of product ID 123456
+  │    has been updated from $150.00 to $99.99"
+  │ • Returns via WSO2 Gateway
   ▼
 SEMANTIC KERNEL
-  │ • Recibe respuesta formateada
-  │ • Procesa y retorna
+  │ • Receives formatted response
+  │ • Processes and returns
   ▼
-USUARIO
-  │ Recibe respuesta formateada
+USER
+  │ Receives formatted response
   └
 ```
 
 ---
 
-## Diagrama 10: Sistema de Memoria de Precios
+## Diagram 10: Price Memory System
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              SISTEMA DE MEMORIA DE PRECIOS (PriceMemory)           │
+│              PRICE MEMORY SYSTEM (PriceMemory)           │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -506,310 +506,310 @@ USUARIO
 │  │  }                                                    │   │
 │  └───────────────────────────────────────────────────────┘   │
 │                                                              │
-│  OPERACIONES:                                                │
+│  OPERATIONS:                                                │
 │  • remember_price_change(id, old, new)                       │
 │  • get_previous_price(id)                                    │
 │  • has_history(id)                                           │
-│  • revert_price(id) → Restaura precio anterior              │
+│  • revert_price(id) → Restores previous price              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 11: ¿Qué es Semantic Kernel? (Explicación Visual)
+## Diagram 11: What is Semantic Kernel? (Visual Explanation)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              ¿QUÉ ES SEMANTIC KERNEL Y PARA QUÉ SIRVE?              │
+│              WHAT IS SEMANTIC KERNEL AND WHAT IS IT FOR?              │
 └─────────────────────────────────────────────────────────────────────┘
 
-PROBLEMA SIN SEMANTIC KERNEL:
+PROBLEM WITHOUT SEMANTIC KERNEL:
 ┌─────────────────────────────────────────────────────────────┐
-│  Usuario: "Actualiza precio de Gift Card a 200"            │
+│  User: "Update price of Gift Card to 200"                  │
 │                                                             │
-│  Código tradicional necesita:                               │
-│  • Parsing manual de texto                                 │
-│  • Extracción manual de parámetros                         │
-│  • Manejo de múltiples variaciones                         │
-│  • Lógica condicional compleja                             │
+│  Traditional code needs:                                    │
+│  • Manual text parsing                                     │
+│  • Manual parameter extraction                              │
+│  • Handling multiple variations                            │
+│  • Complex conditional logic                                │
 │                                                             │
-│  if "actualiza" in texto and "precio" in texto:            │
-│      producto = extraer_producto(texto)                    │
-│      precio = extraer_precio(texto)                        │
-│      actualizar(producto, precio)                          │
+│  if "update" in text and "price" in text:                  │
+│      product = extract_product(text)                       │
+│      price = extract_price(text)                           │
+│      update(product, price)                                │
 └─────────────────────────────────────────────────────────────┘
 
-SOLUCIÓN CON SEMANTIC KERNEL:
+SOLUTION WITH SEMANTIC KERNEL:
 ┌─────────────────────────────────────────────────────────────┐
-│  Usuario: "Actualiza precio de Gift Card a 200"            │
+│  User: "Update price of Gift Card to 200"                  │
 │                                                             │
-│  Semantic Kernel automáticamente:                          │
-│  1. LLM analiza la intención                               │
-│  2. LLM decide qué función llamar                          │
-│  3. LLM extrae parámetros automáticamente                  │
-│  4. Ejecuta la función                                     │
-│  5. LLM genera respuesta natural                          │
+│  Semantic Kernel automatically:                             │
+│  1. LLM analyzes the intention                             │
+│  2. LLM decides which function to call                      │
+│  3. LLM extracts parameters automatically                   │
+│  4. Executes the function                                  │
+│  5. LLM generates natural response                         │
 │                                                             │
-│  kernel.invoke_prompt("Actualiza precio...")                │
-│  → LLM llama: update_product_price_by_name(                │
-│       "Gift Card", "200")                                  │
-│  → Respuesta: "Precio actualizado exitosamente"            │
+│  kernel.invoke_prompt("Update price...")                    │
+│  → LLM calls: update_product_price_by_name(                 │
+│       "Gift Card", "200")                                   │
+│  → Response: "Price updated successfully"                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 12: Flujo de Semantic Kernel (Ejemplo Detallado)
+## Diagram 12: Semantic Kernel Flow (Detailed Example)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│         FLUJO DE SEMANTIC KERNEL - EJEMPLO PASO A PASO              │
+│         SEMANTIC KERNEL FLOW - STEP BY STEP EXAMPLE              │
 └─────────────────────────────────────────────────────────────────────┘
 
-ENTRADA DEL USUARIO
+USER INPUT
 ┌─────────────────────────────────────┐
-│ "Actualiza el precio del producto  │
-│  Gift Card a 200 dólares"          │
+│ "Update the price of product       │
+│  Gift Card to 200 dollars"         │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-SEMANTIC KERNEL RECIBE EL MENSAJE
+SEMANTIC KERNEL RECEIVES MESSAGE
 ┌─────────────────────────────────────┐
-│ • Agrega mensaje al ChatHistory     │
-│ • Prepara contexto para el LLM     │
+│ • Adds message to ChatHistory        │
+│ • Prepares context for LLM          │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-LLM (OpenAI) ANALIZA LA INTENCIÓN
+LLM (OpenAI) ANALYZES INTENTION
 ┌─────────────────────────────────────┐
-│ Análisis:                           │
-│ • Intención: ACTUALIZAR_PRECIO      │
-│ • Entidad: producto = "Gift Card"  │
-│ • Entidad: precio = "200"           │
-│ • Acción necesaria: llamar función  │
+│ Analysis:                           │
+│ • Intention: UPDATE_PRICE           │
+│ • Entity: product = "Gift Card"    │
+│ • Entity: price = "200"             │
+│ • Required action: call function     │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-LLM DECIDE QUÉ FUNCIÓN LLAMAR
+LLM DECIDES WHICH FUNCTION TO CALL
 ┌─────────────────────────────────────┐
-│ Funciones disponibles:             │
-│ • update_product_price(id, price)   │
-│ • update_product_price_by_name(...) │ ← SELECCIONA ESTA
-│ • get_products_list()               │
-│ • count_products()                  │
+│ Available functions:                │
+│ • update_product_price(id, price)    │
+│ • update_product_price_by_name(...)  │ ← SELECTS THIS
+│ • get_products_list()                │
+│ • count_products()                   │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-LLM EXTRAE PARÁMETROS
+LLM EXTRACTS PARAMETERS
 ┌─────────────────────────────────────┐
-│ Parámetros extraídos:              │
-│ • product_name = "Gift Card"       │
-│ • new_price = "200"                 │
+│ Extracted parameters:               │
+│ • product_name = "Gift Card"        │
+│ • new_price = "200"                  │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-SEMANTIC KERNEL EJECUTA LA FUNCIÓN
+SEMANTIC KERNEL EXECUTES FUNCTION
 ┌─────────────────────────────────────┐
-│ shopify_plugin.update_product_     │
-│   price_by_name("Gift Card", "200") │
-│                                     │
-│ → Busca producto por nombre        │
-│ → Obtiene ID del producto          │
-│ → Actualiza precio vía WSO2        │
-│ → Retorna: "Éxito: $150 → $200"   │
+│ shopify_plugin.update_product_       │
+│   price_by_name("Gift Card", "200")  │
+│                                      │
+│ → Searches product by name           │
+│ → Gets product ID                     │
+│ → Updates price via WSO2             │
+│ → Returns: "Success: $150 → $200"   │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-LLM RECIBE RESULTADO Y GENERA RESPUESTA
+LLM RECEIVES RESULT AND GENERATES RESPONSE
 ┌─────────────────────────────────────┐
-│ Resultado recibido:                 │
-│ "Éxito: Precio actualizado de       │
-│  $150.00 a $200.00"                 │
-│                                     │
-│ LLM genera respuesta natural:       │
-│ "El precio del producto Gift Card  │
-│  se ha actualizado exitosamente    │
-│  de $150.00 a $200.00."             │
+│ Result received:                     │
+│ "Success: Price updated from         │
+│  $150.00 to $200.00"                 │
+│                                      │
+│ LLM generates natural response:      │
+│ "The price of product Gift Card      │
+│  has been successfully updated       │
+│  from $150.00 to $200.00."           │
 └──────────────┬─────────────────────┘
                 │
                 ▼
-RESPUESTA AL USUARIO
+RESPONSE TO USER
 ┌─────────────────────────────────────┐
-│ "El precio del producto Gift Card  │
-│  se ha actualizado exitosamente    │
-│  de $150.00 a $200.00."             │
+│ "The price of product Gift Card    │
+│  has been successfully updated     │
+│  from $150.00 to $200.00."         │
 └─────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 13: Ventajas de Semantic Kernel
+## Diagram 13: Semantic Kernel Advantages
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    VENTAJAS DE SEMANTIC KERNEL                     │
+│                    SEMANTIC KERNEL ADVANTAGES                     │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  1. NO NECESITAS PARSING MANUAL                             │
+│  1. NO MANUAL PARSING NEEDED                                 │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │ Entiende múltiples formas de expresar lo mismo:      │   │
-│  │ • "Actualiza precio de X a Y"                        │   │
-│  │ • "Cambia el precio de X a Y"                        │   │
-│  │ • "Modifica precio de X a Y"                         │   │
-│  │ • "Pon el precio de X en Y"                          │   │
-│  │ • "Update price of X to Y" (inglés también)         │   │
+│  │ Understands multiple ways to express the same thing:  │   │
+│  │ • "Update price of X to Y"                             │   │
+│  │ • "Change the price of X to Y"                        │   │
+│  │ • "Modify price of X to Y"                            │   │
+│  │ • "Set the price of X to Y"                           │   │
+│  │ • "Update price of X to Y" (English too)             │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  2. EXTRACCIÓN AUTOMÁTICA DE PARÁMETROS                     │
+│  2. AUTOMATIC PARAMETER EXTRACTION                           │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │ El LLM identifica automáticamente:                  │   │
-│  │ • Qué es el nombre del producto                      │   │
-│  │ • Qué es el precio                                    │   │
-│  │ • Qué es el ID                                        │   │
-│  │ • Qué operación realizar                             │   │
+│  │ LLM automatically identifies:                          │   │
+│  │ • What is the product name                            │   │
+│  │ • What is the price                                    │   │
+│  │ • What is the ID                                        │   │
+│  │ • What operation to perform                           │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  3. MANEJO DE CONTEXTO                                      │
+│  3. CONTEXT HANDLING                                         │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │ Usuario: "Lista los productos"                       │   │
-│  │ Sistema: [Muestra lista]                               │   │
-│  │ Usuario: "Actualiza el primero a 100"                │   │
-│  │ Sistema: [Entiende "el primero" = primer producto]   │   │
+│  │ User: "List the products"                              │   │
+│  │ System: [Shows list]                                    │   │
+│  │ User: "Update the first one to 100"                    │   │
+│  │ System: [Understands "the first one" = first product]  │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  4. COMPOSICIÓN DE FUNCIONES                                │
+│  4. FUNCTION COMPOSITION                                     │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │ Usuario: "Busca el producto más caro y reduce 10%"  │   │
-│  │ → LLM llama: get_products_sorted("desc")            │   │
-│  │ → LLM llama: update_product_price_with_math(         │   │
-│  │     id, "percent_reduce", 10)                         │   │
+│  │ User: "Find the most expensive product and reduce 10%"│   │
+│  │ → LLM calls: get_products_sorted("desc")               │   │
+│  │ → LLM calls: update_product_price_with_math(          │   │
+│  │     id, "percent_reduce", 10)                          │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  5. MANEJO INTELIGENTE DE ERRORES                            │
+│  5. INTELLIGENT ERROR HANDLING                               │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │ Si una función falla, el LLM puede:                 │   │
-│  │ • Intentar otra estrategia                           │   │
-│  │ • Sugerir alternativas                               │   │
-│  │ • Explicar el error de forma natural                 │   │
+│  │ If a function fails, the LLM can:                      │   │
+│  │ • Try another strategy                                 │   │
+│  │ • Suggest alternatives                                 │   │
+│  │ • Explain the error naturally                          │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 14: Componentes del Agente Python - Explicación Detallada
+## Diagram 14: Python Agent Components - Detailed Explanation
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│         COMPONENTES DEL AGENTE PYTHON - FUNCIONALIDADES             │
+│         PYTHON AGENT COMPONENTS - FUNCTIONALITIES             │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  1. DETECCIÓN DE INTENCIONES (Intent Detection)            │
+│  1. INTENT DETECTION                                         │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │                                                      │   │
-│  │  ¿QUÉ HACE?                                         │   │
-│  │  Analiza el texto del usuario para identificar      │   │
-│  │  qué acción quiere realizar                         │   │
-│  │                                                      │   │
-│  │  CÓMO FUNCIONA:                                      │   │
-│  │  • Usa diccionarios de palabras clave               │   │
-│  │  • Detecta patrones con regex                      │   │
-│  │  • Funciona en español e inglés                     │   │
-│  │  • Extrae parámetros automáticamente                │   │
-│  │                                                      │   │
-│  │  EJEMPLO:                                            │   │
-│  │  Usuario: "Actualiza precio ID 123456 a 99.99"     │   │
-│  │  → Detecta: 'update_price'                          │   │
-│  │  → Extrae: ID=123456, precio=99.99                 │   │
-│  │                                                      │   │
-│  │  Palabras clave detectadas:                         │   │
-│  │  • Listar: ['productos', 'lista', 'mostrar', ...]  │   │
-│  │  • Actualizar: ['actualizar', 'cambiar', ...]      │   │
-│  │  • Contar: ['cuántos', 'cantidad', ...]            │   │
-│  │  • Operaciones: ['añadir', 'sumar', 'restar', ...] │   │
+│  │                                                         │   │
+│  │  WHAT DOES IT DO?                                       │   │
+│  │  Analyzes user text to identify                        │   │
+│  │  what action they want to perform                      │   │
+│  │                                                         │   │
+│  │  HOW IT WORKS:                                          │   │
+│  │  • Uses keyword dictionaries                           │   │
+│  │  • Detects patterns with regex                         │   │
+│  │  • Works in Spanish and English                        │   │
+│  │  • Extracts parameters automatically                    │   │
+│  │                                                         │   │
+│  │  EXAMPLE:                                               │   │
+│  │  User: "Update price ID 123456 to 99.99"               │   │
+│  │  → Detects: 'update_price'                             │   │
+│  │  → Extracts: ID=123456, price=99.99                    │   │
+│  │                                                         │   │
+│  │  Detected keywords:                                     │   │
+│  │  • List: ['products', 'list', 'show', ...]            │   │
+│  │  • Update: ['update', 'change', ...]                   │   │
+│  │  • Count: ['how many', 'quantity', ...]               │   │
+│  │  • Operations: ['add', 'subtract', ...]                │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  2. PRICE MEMORY (Memoria de Precios)                      │
+│  2. PRICE MEMORY                                             │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │                                                      │   │
-│  │  ¿QUÉ HACE?                                         │   │
-│  │  Guarda el historial de cambios de precio para      │   │
-│  │  permitir revertir cambios                          │   │
-│  │                                                      │   │
-│  │  CÓMO FUNCIONA:                                      │   │
-│  │  • Al actualizar precio, guarda precio anterior    │   │
-│  │  • Mantiene diccionario en memoria                  │   │
-│  │  • Permite consultar precio anterior                │   │
-│  │  • Permite revertir cambios                         │   │
-│  │                                                      │   │
-│  │  ESTRUCTURA DE DATOS:                                │   │
-│  │  price_history = {                                   │   │
-│  │    "123456": {                                       │   │
-│  │      "previous": "150.00",                          │   │
-│  │      "current": "99.99"                             │   │
-│  │    }                                                 │   │
-│  │  }                                                   │   │
-│  │                                                      │   │
-│  │  EJEMPLO:                                            │   │
-│  │  1. Usuario: "Actualiza ID 123456 a 99.99"         │   │
-│  │     → Guarda: previous=$150.00, current=$99.99     │   │
-│  │                                                      │   │
-│  │  2. Usuario: "Vuelve precio original ID 123456"    │   │
-│  │     → Consulta: get_previous_price("123456")        │   │
-│  │     → Retorna: "150.00"                             │   │
-│  │     → Restaura precio a $150.00                     │   │
+│  │                                                         │   │
+│  │  WHAT DOES IT DO?                                       │   │
+│  │  Stores price change history to                        │   │
+│  │  allow reverting changes                                │   │
+│  │                                                         │   │
+│  │  HOW IT WORKS:                                          │   │
+│  │  • When updating price, saves previous price            │   │
+│  │  • Maintains in-memory dictionary                        │   │
+│  │  • Allows querying previous price                       │   │
+│  │  • Allows reverting changes                             │   │
+│  │                                                         │   │
+│  │  DATA STRUCTURE:                                        │   │
+│  │  price_history = {                                      │   │
+│  │    "123456": {                                          │   │
+│  │      "previous": "150.00",                              │   │
+│  │      "current": "99.99"                                 │   │
+│  │    }                                                    │   │
+│  │  }                                                      │   │
+│  │                                                         │   │
+│  │  EXAMPLE:                                               │   │
+│  │  1. User: "Update ID 123456 to 99.99"                  │   │
+│  │     → Saves: previous=$150.00, current=$99.99         │   │
+│  │                                                         │   │
+│  │  2. User: "Restore original price ID 123456"           │   │
+│  │     → Queries: get_previous_price("123456")            │   │
+│  │     → Returns: "150.00"                                 │   │
+│  │     → Restores price to $150.00                         │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│  3. THINKING INDICATOR (Indicador de Progreso)             │
+│  3. THINKING INDICATOR (Progress Indicator)                 │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │                                                      │   │
-│  │  ¿QUÉ HACE?                                         │   │
-│  │  Muestra indicador visual animado mientras         │   │
-│  │  procesa la consulta                                │   │
-│  │                                                      │   │
-│  │  CÓMO FUNCIONA:                                      │   │
-│  │  • Se activa al inicio del procesamiento            │   │
-│  │  • Muestra animación: "Pensando...", "Pensando...."│   │
-│  │  • Se ejecuta en hilo separado                      │   │
-│  │  • Se detiene cuando termina                        │   │
-│  │                                                      │   │
-│  │  EJEMPLO VISUAL:                                     │   │
-│  │  Usuario: "Lista los productos"                    │   │
-│  │  → Muestra: "Pensando..." (animado)                 │   │
-│  │  → [Procesando...]                                  │   │
-│  │  → [Obteniendo datos...]                           │   │
-│  │  → Oculta: "Pensando..."                            │   │
-│  │  → Muestra: "Productos encontrados..."              │   │
-│  │                                                      │   │
-│  │  VENTAJAS:                                          │   │
-│  │  • Mejor experiencia de usuario                     │   │
-│  │  • Feedback visual inmediato                        │   │
-│  │  • Evita sensación de sistema "congelado"          │   │
+│  │                                                         │   │
+│  │  WHAT DOES IT DO?                                       │   │
+│  │  Shows animated visual indicator while                  │   │
+│  │  processing the query                                    │   │
+│  │                                                         │   │
+│  │  HOW IT WORKS:                                          │   │
+│  │  • Activates at start of processing                     │   │
+│  │  • Shows animation: "Thinking...", "Thinking...."     │   │
+│  │  • Runs in separate thread                             │   │
+│  │  • Stops when finished                                  │   │
+│  │                                                         │   │
+│  │  VISUAL EXAMPLE:                                        │   │
+│  │  User: "List the products"                              │   │
+│  │  → Shows: "Thinking..." (animated)                      │   │
+│  │  → [Processing...]                                      │   │
+│  │  → [Getting data...]                                    │   │
+│  │  → Hides: "Thinking..."                                 │   │
+│  │  → Shows: "Products found..."                          │   │
+│  │                                                         │   │
+│  │  ADVANTAGES:                                            │   │
+│  │  • Better user experience                                │   │
+│  │  • Immediate visual feedback                            │   │
+│  │  • Prevents feeling of system "frozen"                  │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 15: Flujo de Detección de Intenciones
+## Diagram 15: Intent Detection Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│              FLUJO DE DETECCIÓN DE INTENCIONES                     │
+│              INTENT DETECTION FLOW                     │
 └─────────────────────────────────────────────────────────────────────┘
 
 USUARIO ENVÍA CONSULTA
@@ -869,50 +869,50 @@ EJECUCIÓN DE FUNCIÓN
 
 ---
 
-## Diagrama 16: Flujo de PriceMemory
+## Diagram 16: PriceMemory Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    FLUJO DE PRICE MEMORY                           │
+│                    PRICE MEMORY FLOW                           │
 └─────────────────────────────────────────────────────────────────────┘
 
-ESCENARIO 1: ACTUALIZAR PRECIO
+SCENARIO 1: UPDATE PRICE
 ┌─────────────────────────────────────────────────────────────┐
-│ Usuario: "Actualiza precio ID 123456 a 99.99"             │
+│ User: "Update price ID 123456 to 99.99"                    │
 │                                                             │
-│ 1. Sistema obtiene precio actual: $150.00                 │
-│ 2. Actualiza precio a $99.99                               │
-│ 3. PriceMemory guarda automáticamente:                    │
+│ 1. System gets current price: $150.00                    │
+│ 2. Updates price to $99.99                                 │
+│ 3. PriceMemory automatically saves:                        │
 │                                                             │
 │    price_history["123456"] = {                              │
 │      "previous": "150.00",                                 │
 │      "current": "99.99"                                     │
 │    }                                                        │
 │                                                             │
-│ 4. Confirmación: "Precio actualizado de $150.00 a $99.99" │
+│ 4. Confirmation: "Price updated from $150.00 to $99.99"   │
 └─────────────────────────────────────────────────────────────┘
 
-ESCENARIO 2: REVERTIR PRECIO
+SCENARIO 2: REVERT PRICE
 ┌─────────────────────────────────────────────────────────────┐
-│ Usuario: "Vuelve precio original del ID 123456"            │
+│ User: "Restore original price of ID 123456"               │
 │                                                             │
-│ 1. Sistema consulta PriceMemory:                          │
+│ 1. System queries PriceMemory:                            │
 │    → has_history("123456") = True                          │
 │    → get_previous_price("123456") = "150.00"               │
 │                                                             │
-│ 2. Sistema restaura precio:                                │
+│ 2. System restores price:                                  │
 │    → update_product_price("123456", "150.00")              │
 │                                                             │
-│ 3. PriceMemory actualiza:                                  │
+│ 3. PriceMemory updates:                                     │
 │    price_history["123456"] = {                              │
-│      "previous": "99.99",   (ahora es el anterior)        │
-│      "current": "150.00"    (precio restaurado)            │
+│      "previous": "99.99",   (now is the previous)         │
+│      "current": "150.00"    (restored price)                │
 │    }                                                        │
 │                                                             │
-│ 4. Confirmación: "Precio restaurado a $150.00"            │
+│ 4. Confirmation: "Price restored to $150.00"              │
 └─────────────────────────────────────────────────────────────┘
 
-ESTADO DE LA MEMORIA
+MEMORY STATE
 ┌─────────────────────────────────────────────────────────────┐
 │ price_history = {                                           │
 │   "123456": {                                               │
@@ -925,119 +925,119 @@ ESTADO DE LA MEMORIA
 │   }                                                          │
 │ }                                                            │
 │                                                              │
-│ Operaciones disponibles:                                    │
+│ Available operations:                                       │
 │ • remember_price_change(id, old, new)                       │
 │ • get_previous_price(id)                                    │
 │ • has_history(id)                                           │
-│ • revert_price(id)                                           │
+│ • revert_price(id)                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Diagrama 17: Flujo de ThinkingIndicator
+## Diagram 17: ThinkingIndicator Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                  FLUJO DE THINKING INDICATOR                       │
+│                  THINKING INDICATOR FLOW                       │
 └─────────────────────────────────────────────────────────────────────┘
 
-INICIO DEL PROCESAMIENTO
+PROCESSING START
 ┌─────────────────────────────────────┐
-│ Usuario: "Lista los productos"     │
+│ User: "List the products"            │
 └──────────────┬─────────────────────┘
                │
                ▼
-THINKING INDICATOR SE ACTIVA
+THINKING INDICATOR ACTIVATES
 ┌─────────────────────────────────────┐
-│ thinking = ThinkingIndicator(       │
-│   "Processing query")               │
-│ thinking.start()                    │
-│                                     │
-│ Pantalla muestra:                   │
-│ "Processing query..." (animado)    │
-│                                     │
-│ [Hilo separado ejecuta animación]  │
+│ thinking = ThinkingIndicator(        │
+│   "Processing query")                │
+│ thinking.start()                     │
+│                                      │
+│ Screen shows:                        │
+│ "Processing query..." (animated)     │
+│                                      │
+│ [Separate thread runs animation]    │
 └──────────────┬─────────────────────┘
                │
                ▼
-PROCESAMIENTO EN PARALELO
+PARALLEL PROCESSING
 ┌─────────────────────────────────────┐
-│ [Hilo 1: Animación]                 │
-│ "Processing query..."               │
-│ "Processing query...."              │
-│ "Processing query....."             │
-│ "Processing query...."              │
-│ (ciclo continuo)                    │
-│                                     │
-│ [Hilo 2: Procesamiento]             │
-│ • Detectar intención                 │
-│ • Llamar a Shopify                   │
-│ • Obtener datos                      │
-│ • Generar respuesta                  │
+│ [Thread 1: Animation]                │
+│ "Processing query..."                 │
+│ "Processing query...."                │
+│ "Processing query....."               │
+│ "Processing query...."                │
+│ (continuous cycle)                    │
+│                                      │
+│ [Thread 2: Processing]               │
+│ • Detect intention                    │
+│ • Call Shopify                        │
+│ • Get data                            │
+│ • Generate response                   │
 └──────────────┬─────────────────────┘
                │
                ▼
-FINALIZACIÓN
+COMPLETION
 ┌─────────────────────────────────────┐
 │ thinking.stop()                      │
-│                                     │
-│ • Detiene animación                  │
-│ • Limpia línea                       │
-│ • Muestra respuesta                  │
-│                                     │
-│ Pantalla muestra:                   │
-│ "Productos encontrados (5 total):   │
-│  - ID: 123456 - Gift Card - $150.00"│
+│                                      │
+│ • Stops animation                    │
+│ • Clears line                         │
+│ • Shows response                      │
+│                                      │
+│ Screen shows:                        │
+│ "Products found (5 total):          │
+│  - ID: 123456 - Gift Card - $150.00" │
 └─────────────────────────────────────┘
 
-EJEMPLO VISUAL COMPLETO
+COMPLETE VISUAL EXAMPLE
 ┌─────────────────────────────────────┐
-│ Usuario: Lista los productos       │
-│                                     │
-│ Sistema: Processing query...        │
-│          Processing query....       │
-│          Processing query.....      │
-│          Processing query....       │
-│                                     │
-│ Sistema: [Limpia línea]            │
-│                                     │
-│ Sistema: Productos encontrados:     │
-│          - ID: 123456 - Gift Card   │
-│          - ID: 789012 - Snowboard   │
+│ User: List the products              │
+│                                      │
+│ System: Processing query...           │
+│          Processing query....        │
+│          Processing query.....       │
+│          Processing query....        │
+│                                      │
+│ System: [Clears line]                │
+│                                      │
+│ System: Products found:              │
+│          - ID: 123456 - Gift Card    │
+│          - ID: 789012 - Snowboard    │
 └─────────────────────────────────────┘
 ```
 
 ---
 
-## Instrucciones para PowerPoint
+## Instructions for PowerPoint
 
-### Colores Sugeridos:
-- **Usuario**: Azul claro (#E3F2FD)
-- **Agente Python**: Verde (#C8E6C9)
-- **Semantic Kernel**: Púrpura (#E1BEE7)
-- **OpenAI**: Naranja (#FFE0B2)
-- **WSO2 Gateway**: Rojo/Naranja (#FFCCBC)
-- **Shopify**: Verde esmeralda (#B2DFDB)
+### Suggested Colors:
+- **User**: Light blue (#E3F2FD)
+- **Python Agent**: Green (#C8E6C9)
+- **Semantic Kernel**: Purple (#E1BEE7)
+- **OpenAI**: Orange (#FFE0B2)
+- **WSO2 Gateway**: Red/Orange (#FFCCBC)
+- **Shopify**: Emerald green (#B2DFDB)
 
-### Tipografía:
-- Títulos: Arial Bold, 24pt
-- Subtítulos: Arial Bold, 18pt
-- Texto: Arial Regular, 14pt
-- Código: Courier New, 12pt
+### Typography:
+- Titles: Arial Bold, 24pt
+- Subtitles: Arial Bold, 18pt
+- Text: Arial Regular, 14pt
+- Code: Courier New, 12pt
 
-### Animaciones Sugeridas:
-- Entrada de componentes: Aparecer uno por uno
-- Flujos: Flechas animadas siguiendo el orden
-- Resaltar: Componente activo con efecto de brillo
+### Suggested Animations:
+- Component entry: Appear one by one
+- Flows: Animated arrows following order
+- Highlight: Active component with glow effect
 
-### Transiciones:
-- Entre diapositivas: Desvanecer suave
-- Entre secciones: Cortina vertical
+### Transitions:
+- Between slides: Soft fade
+- Between sections: Vertical curtain
 
 ---
 
-**Documento de diagramas para presentación PowerPoint**  
-**Versión**: 1.0  
-**Fecha**: 2024
+**Diagram document for PowerPoint presentation**  
+**Version**: 1.0  
+**Date**: 2024
 
