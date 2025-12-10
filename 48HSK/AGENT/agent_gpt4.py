@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.functions import kernel_function
+from openai import OpenAI
 
 # Para decodificar JWT
 try:
@@ -509,12 +510,66 @@ if __name__ == "__main__":
         DEBUG_MODE = args.debug
 
         print(Colors.blue("=== SHOPIFY AI AGENT (v2.5 FINAL) ==="))
-        if not os.getenv("OPENAI_API_KEY"): return print(Colors.red("Missing API key"))
-
+        
+        # Verificar que WSO2 Gateway está configurado
+        gw_url = os.getenv('WSO2_GW_URL')
+        if not gw_url:
+            return print(Colors.red("Missing WSO2_GW_URL"))
+        
+        # Obtener token de WSO2 Gateway primero
+        plugin = ShopifyPlugin()
+        wso2_token = plugin._get_token()
+        
+        if not wso2_token:
+            return print(Colors.red("Error: No se pudo obtener token de WSO2 Gateway"))
+        
+        # Configurar OpenAI para usar WSO2 AI Gateway
+        # El endpoint de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0
+        openai_gateway_base = f"{gw_url}/openaiapi/2.3.0"
+        
         kernel = sk.Kernel()
         try:
-            kernel.add_service(OpenAIChatCompletion(service_id="openai", api_key=os.getenv("OPENAI_API_KEY"), ai_model_id="gpt-4o-mini"))
-        except: return print(Colors.red("OpenAI error"))
+            # Crear cliente OpenAI personalizado que apunta al gateway de WSO2
+            # El endpoint completo es: {WSO2_GW_URL}/openaiapi/2.3.0/v1/chat/completions
+            openai_gateway_url = f"{openai_gateway_base}/v1"
+            
+            # Crear cliente OpenAI con base_url personalizado apuntando al gateway
+            openai_client = OpenAI(
+                api_key="wso2-gateway-dummy",  # Dummy key, WSO2 maneja la auth real
+                base_url=openai_gateway_url,
+                default_headers={
+                    "Authorization": f"Bearer {wso2_token}"  # Token de WSO2 para autenticación
+                }
+            )
+            
+            # Configurar Semantic Kernel para usar el cliente personalizado
+            # OpenAIChatCompletion puede aceptar un cliente personalizado
+            kernel.add_service(OpenAIChatCompletion(
+                service_id="openai",
+                ai_model_id="gpt-4o-mini",
+                client=openai_client  # Pasar cliente personalizado
+            ))
+            
+            print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway: {openai_gateway_url}"))
+        except TypeError:
+            # Si el parámetro 'client' no existe, usar método alternativo
+            try:
+                # Método alternativo: configurar variable de entorno para que OpenAI use el gateway
+                os.environ["OPENAI_BASE_URL"] = f"{openai_gateway_base}/v1"
+                os.environ["OPENAI_API_KEY"] = "wso2-gateway-dummy"
+                
+                kernel.add_service(OpenAIChatCompletion(
+                    service_id="openai",
+                    api_key="wso2-gateway-dummy",
+                    ai_model_id="gpt-4o-mini"
+                ))
+                
+                print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway (método alternativo): {openai_gateway_base}"))
+                print(Colors.yellow("⚠ Nota: Las llamadas pasarán por WSO2 Gateway"))
+            except Exception as e2:
+                return print(Colors.red(f"OpenAI error: {e2}"))
+        except Exception as e:
+            return print(Colors.red(f"OpenAI error: {e}"))
 
         plugin = ShopifyPlugin()
         
