@@ -159,8 +159,7 @@ class ShopifyPlugin:
     def _get_token(self):
         """
         Obtiene token de acceso de WSO2 APIM Gateway para usar en llamadas API.
-        Siempre usa Client Credentials Grant con Consumer Key/Secret (APIM).
-        NO valida usuario aquí, eso se hace en _validate_user_against_is().
+        Intenta primero Password Grant si hay credenciales de usuario, luego Client Credentials.
         
         Returns:
             token: Token de acceso de APIM o None si falla
@@ -168,7 +167,7 @@ class ShopifyPlugin:
         url = os.getenv("WSO2_TOKEN_ENDPOINT")
         if not url:
             return None
-            
+        
         consumer_key = os.getenv("WSO2_CONSUMER_KEY")
         consumer_secret = os.getenv("WSO2_CONSUMER_SECRET")
         
@@ -177,16 +176,46 @@ class ShopifyPlugin:
         
         headers = {"Authorization": f"Basic {base64.b64encode(f'{consumer_key}:{consumer_secret}'.encode()).decode()}", 
                   "Content-Type": "application/x-www-form-urlencoded"}
+        
+        # Intentar primero Password Grant si hay credenciales de usuario
+        username = os.getenv("WSO2_USERNAME")
+        password = os.getenv("WSO2_PASSWORD")
+        
+        if username and password:
+            try:
+                if DEBUG_MODE:
+                    print(Colors.cyan(f"Obteniendo token con Password Grant: {url}"))
+                data = f"grant_type=password&username={username}&password={password}"
+                r = requests.post(url, headers=headers, data=data, verify=False, timeout=10)
+                if r.status_code == 200:
+                    response = r.json()
+                    token = response.get("access_token")
+                    if token:
+                        if DEBUG_MODE:
+                            print(Colors.green(f"✓ Token obtenido con Password Grant"))
+                        return token
+                elif DEBUG_MODE:
+                    try:
+                        error_json = r.json()
+                        error_detail = error_json.get('error_description', str(error_json))
+                        print(Colors.yellow(f"⚠ Password Grant falló: {error_detail}, intentando Client Credentials..."))
+                    except:
+                        print(Colors.yellow(f"⚠ Password Grant falló (HTTP {r.status_code}), intentando Client Credentials..."))
+            except Exception as e:
+                if DEBUG_MODE:
+                    print(Colors.yellow(f"⚠ Error en Password Grant: {e}, intentando Client Credentials..."))
+        
+        # Fallback a Client Credentials
         try:
             if DEBUG_MODE:
-                print(Colors.cyan(f"Obteniendo token de APIM Gateway: {url}"))
+                print(Colors.cyan(f"Obteniendo token con Client Credentials: {url}"))
             r = requests.post(url, headers=headers, data="grant_type=client_credentials", verify=False, timeout=10)
             if r.status_code == 200:
                 response = r.json()
                 token = response.get("access_token")
                 if token:
                     if DEBUG_MODE:
-                        print(Colors.green(f"✓ Token de APIM obtenido exitosamente"))
+                        print(Colors.green(f"✓ Token de APIM obtenido con Client Credentials"))
                     return token
             else:
                 try:
