@@ -524,24 +524,18 @@ if __name__ == "__main__":
             return print(Colors.red("Error: No se pudo obtener token de WSO2 Gateway"))
         
         # Configurar OpenAI para usar WSO2 AI Gateway
-        # El endpoint base de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi/2.3.0
-        # El endpoint completo es: {WSO2_GW_URL}/openaiapi/2.3.0/chat/completions
-        # El SDK de OpenAI agrega automáticamente /v1/chat/completions al base_url
-        # Necesitamos interceptar para cambiar /v1/chat/completions a /chat/completions
-        # Solución: usar base_url = {WSO2_GW_URL}/openaiapi/2.3.0/v1
-        # Y crear un wrapper HTTP que quite el /v1 de la URL antes de enviar
-        openai_gateway_base = f"{gw_url}/openaiapi/2.3.0"
+        # El endpoint base de OpenAI en WSO2 es: {WSO2_GW_URL}/openaiapi
+        # El SDK de OpenAI agrega automáticamente /v1/chat/completions
+        # Resultado final: {WSO2_GW_URL}/openaiapi/v1/chat/completions
+        openai_gateway_base = f"{gw_url}/openaiapi"
         
         kernel = sk.Kernel()
         try:
-            # Crear cliente OpenAI personalizado que apunta al gateway de WSO2
-            # El SDK agregará /v1/chat/completions, pero WSO2 espera /chat/completions
-            # Usamos base_url con /v1 para que el SDK funcione, pero necesitamos
-            # interceptar y modificar la URL antes de enviar
-            # Por ahora, probemos si WSO2 acepta /v1/chat/completions o necesitamos quitar el /v1
-            openai_client = OpenAI(
+            # Crear cliente AsyncOpenAI (requerido por Semantic Kernel)
+            # El token de WSO2 debe ir en el header Authorization
+            openai_client = AsyncOpenAI(
                 api_key="wso2-gateway-dummy",  # Dummy key, WSO2 maneja auth real
-                base_url=f"{openai_gateway_base}/v1",  # Incluir /v1 para que SDK funcione
+                base_url=openai_gateway_base,
                 default_headers={
                     "Authorization": f"Bearer {wso2_token}"  # Token de WSO2 para autenticación
                 },
@@ -549,28 +543,17 @@ if __name__ == "__main__":
                 max_retries=2
             )
             
-            # Configurar Semantic Kernel
-            try:
-                # Método 1: Intentar pasar el cliente directamente
-                kernel.add_service(OpenAIChatCompletion(
-                    service_id="openai",
-                    ai_model_id="gpt-4o-mini",
-                    async_client=openai_client
-                ))
-            except (TypeError, AttributeError):
-                # Método 2: Usar solo api_key y configurar base_url en env
-                os.environ["OPENAI_BASE_URL"] = f"{openai_gateway_base}/v1"
-                kernel.add_service(OpenAIChatCompletion(
-                    service_id="openai",
-                    api_key="wso2-gateway-dummy",
-                    ai_model_id="gpt-4o-mini"
-                ))
+            # Configurar Semantic Kernel con el cliente AsyncOpenAI
+            kernel.add_service(OpenAIChatCompletion(
+                service_id="openai",
+                ai_model_id="gpt-4o-mini",
+                async_client=openai_client
+            ))
             
             print(Colors.green(f"✓ OpenAI configurado para usar WSO2 Gateway"))
             print(Colors.blue(f"  Gateway Base URL: {openai_gateway_base}"))
-            print(Colors.blue(f"  Endpoint esperado: {openai_gateway_base}/v1/chat/completions"))
+            print(Colors.blue(f"  Endpoint completo: {openai_gateway_base}/v1/chat/completions"))
             print(Colors.blue(f"  Token WSO2: {wso2_token[:30]}..."))
-            print(Colors.yellow("  ⚠ Si falla, WSO2 puede necesitar /chat/completions sin /v1"))
         except Exception as e:
             return print(Colors.red(f"OpenAI error: {e}"))
 
