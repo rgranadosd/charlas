@@ -561,11 +561,10 @@ if __name__ == "__main__":
                         # Crear nuevo request con URL corregida
                         request.url = httpx.URL(new_url_str)
                     
-                    # Agregar token de WSO2 si no está presente
-                    if "Authorization" not in request.headers:
-                        request.headers["Authorization"] = f"Bearer {self.wso2_token}"
-                        if DEBUG_MODE:
-                            print(Colors.cyan(f"[WSO2 Interceptor] Token agregado a headers"))
+                    # Reemplazar siempre el token con el de WSO2 (AsyncOpenAI puede agregar uno con api_key)
+                    request.headers["Authorization"] = f"Bearer {self.wso2_token}"
+                    if DEBUG_MODE:
+                        print(Colors.cyan(f"[WSO2 Interceptor] Token WSO2 agregado a headers"))
                     
                     # Asegurar verify=False
                     kwargs['verify'] = False
