@@ -540,6 +540,8 @@ if __name__ == "__main__":
                 def __init__(self, *args, **kwargs):
                     # No pasar base_url aquí, lo manejaremos en request
                     kwargs.pop('base_url', None)
+                    # IMPORTANTE: verify=False para certificados autofirmados
+                    kwargs['verify'] = False
                     super().__init__(*args, **kwargs)
                     self.wso2_base_url = openai_gateway_base
                     self.wso2_token = wso2_token
@@ -565,11 +567,16 @@ if __name__ == "__main__":
                     if "Authorization" not in kwargs["headers"]:
                         kwargs["headers"]["Authorization"] = f"Bearer {self.wso2_token}"
                     
-                    return await super().request(method, url_str, verify=False, **kwargs)
+                    # Asegurar verify=False en cada request
+                    kwargs['verify'] = False
+                    
+                    return await super().request(method, url_str, **kwargs)
             
             # Crear cliente HTTP personalizado con interceptación
+            # IMPORTANTE: verify=False para certificados autofirmados de localhost
             http_client = WSO2HTTPClient(
-                timeout=30.0
+                timeout=30.0,
+                verify=False  # Para certificados autofirmados de localhost
             )
             
             # Crear cliente AsyncOpenAI con el HTTP client personalizado
