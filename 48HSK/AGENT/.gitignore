@@ -27,3 +27,9 @@ token_cache.json
 # OS
 .DS_Store
 Thumbs.db
+# Banners personalizados (solo permitir default y example_client)
+banners/*.py
+!banners/__init__.py
+!banners/default.py
+!banners/example_client.py
+!banners/README.md
