@@ -23,6 +23,7 @@ from semantic_kernel.functions import KernelArguments
 from semantic_kernel.functions import kernel_function
 
 from oauth2_apim import create_openai_client_with_gateway
+from banners import get_banner, list_available_banners
 
 # ============================================
 # CONFIGURACIÓN Y UTILIDADES
@@ -104,8 +105,8 @@ def _safe_version(module_name: str) -> str:
         return "?"
 
 
-def print_start_motd():
-    """MOTD estilo ANSI (original) al arrancar."""
+def print_start_motd(banner_name="default"):
+    """MOTD estilo ANSI al arrancar, con banners dinámicos."""
     import sys
     import shutil
 
@@ -131,25 +132,17 @@ def print_start_motd():
         f"{ORANGE}WSO2 APIM {os.getenv('WSO2_APIM_TOKEN_ENDPOINT','https://localhost:9453')}{RESET}",
     ]
 
-    # Banner grande (original, no copiado)
-    big = [
-        # RAFA'S (arriba)
-        f"{ORANGE}{BOLD}██████╗  █████╗ ███████╗ █████╗     ███████╗{RESET}",
-        f"{ORANGE}{BOLD}██╔══██╗██╔══██╗██╔════╝██╔══██╗    ██╔════╝{RESET}",
-        f"{ORANGE}{BOLD}██████╔╝███████║█████╗  ███████║    ███████╗{RESET}",
-        f"{ORANGE}{BOLD}██╔══██╗██╔══██║██╔══╝  ██╔══██║    ╚════██║{RESET}",
-        f"{ORANGE}{BOLD}██║  ██║██║  ██║██║     ██║  ██║    ███████║{RESET}",
-        f"{ORANGE}{BOLD}╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝    ╚══════╝{RESET}",
-        # AGENT (abajo)
-        f"{ORANGE}{BOLD}  █████╗  ██████╗ ███████╗███╗   ██╗████████╗{RESET}",
-        f"{ORANGE}{BOLD} ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝{RESET}",
-        f"{ORANGE}{BOLD} ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   {RESET}",
-        f"{ORANGE}{BOLD} ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   {RESET}",
-        f"{ORANGE}{BOLD} ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   {RESET}",
-        f"{ORANGE}{BOLD} ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   {RESET}",
-    ]
+    # Cargar banner dinámicamente
+    try:
+        banner_data = get_banner(banner_name)
+        big = banner_data["lines"]
+        title = banner_data["title"]
+    except Exception as e:
+        print(f"⚠️  Error cargando banner '{banner_name}': {e}")
+        # Fallback si falla la carga del banner
+        big = [f"{ORANGE}{BOLD}(Banner no disponible){RESET}"]
+        title = f"{ORANGE}{BOLD}{APP_NAME}{RESET} {ORANGE}{APP_VERSION}{RESET}"
 
-    title = f"{ORANGE}{BOLD}{APP_NAME}{RESET} {ORANGE}{APP_VERSION}{RESET}"
     line_prefix = "\r" if getattr(sys.stdout, "isatty", lambda: False)() else ""
 
     # Ajustar longitud del separador al ancho real del contenido (sin pasarse del terminal)
@@ -1468,13 +1461,23 @@ if __name__ == "__main__":
 
     async def main():
         global DEBUG_MODE
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(description="Rafa's Agent - Agente Shopify con WSO2")
         parser.add_argument('-d', '--debug', action='store_true', help='Modo debug con logs detallados')
         parser.add_argument('--force-auth', action='store_true', help='Fuerza nuevo login, ignorando cache')
+        parser.add_argument('--custom', type=str, default='default', help='Banner personalizado (nombre del archivo en banners/)')
+        parser.add_argument('--list-banners', action='store_true', help='Lista todos los banners disponibles')
         args = parser.parse_args()
+        
+        if args.list_banners:
+            available = list_available_banners()
+            print("Banners disponibles:")
+            for banner in available:
+                print(f"  - {banner}")
+            return
+        
         DEBUG_MODE = args.debug
 
-        print_start_motd()
+        print_start_motd(banner_name=args.custom)
         print(Colors.cyan("=== AGENTE SHOPIFY IA (v2.5 FINAL) ==="))
         if DEBUG_MODE: print(Colors.cyan("[DEBUG MODE ON]"))
         if args.force_auth and _auth_trace_enabled():
