@@ -24,8 +24,8 @@ COLORS = {
 BANNER_CONFIG = {
     "name": "El Corte Inglés",
     "version": "AI Agent v1.0",
-    "color_primary": COLORS["RED"],       # Rojo (color corporativo)
-    "color_secondary": COLORS["YELLOW"],  # Amarillo
+    "color_primary": COLORS["BRIGHT_GREEN"],   # Verde corporativo
+    "color_secondary": COLORS["LIGHT_GREEN"],  # Verde claro
     "show_info": True,
 }
 
