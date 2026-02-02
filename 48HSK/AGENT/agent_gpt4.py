@@ -138,7 +138,7 @@ def print_start_motd(banner_name="default"):
         big = banner_data["lines"]
         title = banner_data["title"]
     except Exception as e:
-        print(f"⚠️  Error cargando banner '{banner_name}': {e}")
+        print(f"WARN: Error cargando banner '{banner_name}': {e}")
         # Fallback si falla la carga del banner
         big = [f"{ORANGE}{BOLD}(Banner no disponible){RESET}"]
         title = f"{ORANGE}{BOLD}{APP_NAME}{RESET} {ORANGE}{APP_VERSION}{RESET}"
@@ -356,16 +356,16 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             
             if OAuthCallbackHandler.scopes:
                 scopes_list = OAuthCallbackHandler.scopes.split() if isinstance(OAuthCallbackHandler.scopes, str) else OAuthCallbackHandler.scopes
-                scopes_html = "<h3>📋 Scopes OAuth:</h3><ul>"
+                scopes_html = "<h3>Scopes OAuth:</h3><ul>"
                 for scope in scopes_list:
                     scopes_html += f"<li><code>{scope}</code></li>"
                 scopes_html += "</ul>"
                 
                 # NUEVO: Mostrar permisos específicos de aplicación
                 if hasattr(OAuthCallbackHandler, 'user_permissions') and OAuthCallbackHandler.user_permissions:
-                    scopes_html += "<h3>🔑 Permisos de Aplicación:</h3><ul>"
+                    scopes_html += "<h3>Permisos de Aplicación:</h3><ul>"
                     for permission in sorted(OAuthCallbackHandler.user_permissions):
-                        scopes_html += f"<li><span style='color: green;'>✓</span> <strong>{permission}</strong></li>"
+                        scopes_html += f"<li><span style='color: green;'>OK</span> <strong>{permission}</strong></li>"
                     scopes_html += "</ul>"
                     
                     # Mapear a funcionalidades del agente
@@ -374,22 +374,22 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                     can_update_descriptions = "Update Descriptions" in OAuthCallbackHandler.user_permissions
                     
                     if can_view and can_update_prices and can_update_descriptions:
-                        scopes_html += "<h3 style='color: green;'>🟢 Funcionalidades del Agente Disponibles:</h3><ul>"
-                        scopes_html += "<li>✓ Ver productos del catálogo</li>"
-                        scopes_html += "<li>✓ Modificar precios de productos</li>"
-                        scopes_html += "<li>✓ Actualizar descripciones</li>"
+                        scopes_html += "<h3 style='color: green;'>Funcionalidades del Agente Disponibles:</h3><ul>"
+                        scopes_html += "<li>Ver productos del catálogo</li>"
+                        scopes_html += "<li>Modificar precios de productos</li>"
+                        scopes_html += "<li>Actualizar descripciones</li>"
                         scopes_html += "</ul>"
                     else:
-                        scopes_html += "<h3 style='color: orange;'>⚠️ Funcionalidades Limitadas:</h3><ul>"
+                        scopes_html += "<h3 style='color: orange;'>Funcionalidades Limitadas:</h3><ul>"
                         if not can_view:
-                            scopes_html += "<li style='color: red;'>❌ NO puede ver productos</li>"
+                            scopes_html += "<li style='color: red;'>NO puede ver productos</li>"
                         if not can_update_prices:
-                            scopes_html += "<li style='color: red;'>❌ NO puede modificar precios</li>"
+                            scopes_html += "<li style='color: red;'>NO puede modificar precios</li>"
                         if not can_update_descriptions:
-                            scopes_html += "<li style='color: red;'>❌ NO puede actualizar descripciones</li>"
+                            scopes_html += "<li style='color: red;'>NO puede actualizar descripciones</li>"
                         scopes_html += "</ul>"
                 else:
-                    scopes_html += "<h3 style='color: red;'>❌ Sin permisos de aplicación específicos</h3>"
+                    scopes_html += "<h3 style='color: red;'>Sin permisos de aplicación específicos</h3>"
                 
                 scopes_debug_info = f"<p><strong>Debug:</strong> Scopes raw = {OAuthCallbackHandler.scopes}</p>"
                 
@@ -399,7 +399,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                     scopes_debug_info += f"<p><strong>Usuario (sub):</strong> {user_sub}</p>"
                     scopes_debug_info += f"<p><strong>ID Token claims:</strong> {list(OAuthCallbackHandler.id_token_payload.keys())}</p>"
             else:
-                scopes_html = "<h3>⚠️ Scopes:</h3><p>No se pudieron extraer los scopes del token</p>"
+                scopes_html = "<h3>Scopes:</h3><p>No se pudieron extraer los scopes del token</p>"
                 scopes_debug_info = f"<p><strong>Debug:</strong> OAuthCallbackHandler.scopes = {repr(OAuthCallbackHandler.scopes)}</p>"
                 scopes_debug_info += f"<p><strong>Debug:</strong> access_token presente = {bool(OAuthCallbackHandler.access_token)}</p>"
                 scopes_debug_info += f"<p><strong>Debug:</strong> id_token_payload presente = {bool(getattr(OAuthCallbackHandler, 'id_token_payload', None))}</p>"
@@ -408,7 +408,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             <html>
             <head><title>Login Exitoso</title></head>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                <h2 style="color: #28a745;">✅ Usuario Validado Correctamente</h2>
+                <h2 style="color: #28a745;">Usuario Validado Correctamente</h2>
                 <p>El código de autorización fue recibido exitosamente.</p>
                 <p>Puedes volver a la terminal para continuar usando el agente.</p>
                 {scopes_html}
@@ -426,7 +426,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             else:
                 # Mensaje opcional (traza) para confirmar que llegó el callback
                 if _auth_trace_enabled():
-                    print(Colors.debug("✅ Login completado. Vuelve a la terminal."))
+                    print(Colors.debug("Login completado. Vuelve a la terminal."))
         elif "error" in qs:
             OAuthCallbackHandler.error = qs.get("error", [None])[0]
             OAuthCallbackHandler.error_description = qs.get("error_description", ["Sin descripción"])[0]
@@ -437,7 +437,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             <html>
             <head><title>Error de Autenticación</title></head>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                <h2 style="color: #dc3545;">❌ Usuario NO Validado</h2>
+                <h2 style="color: #dc3545;">Usuario NO Validado</h2>
                 <p><strong>Error:</strong> {}</p>
                 <p><strong>Descripción:</strong> {}</p>
                 <hr>
@@ -455,7 +455,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             <html>
             <head><title>Callback Inválido</title></head>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                <h2 style="color: #ffc107;">⚠️ Callback Inválido</h2>
+                <h2 style="color: #ffc107;">Callback Inválido</h2>
                 <p>No se recibió código de autorización ni error.</p>
                 <p>Parámetros recibidos: {}</p>
             </body>
@@ -681,7 +681,7 @@ class OAuthClient:
 
         except requests.exceptions.RequestException:
             if DEBUG_MODE:
-                print(Colors.red("❌ Error de red conectando a WSO2 Identity Server"))
+                print(Colors.red("Error de red conectando a WSO2 Identity Server"))
             return set()
         except Exception as e:
             if DEBUG_MODE:
@@ -870,12 +870,35 @@ class WeatherPlugin:
         # Las credenciales se toman de WSO2_APIM_CONSUMER_KEY/SECRET
         self._token_cache = None
         self._token_expires_at = 0
+        self._mcp_session_id = None  # Session ID para el protocolo MCP
         
         # URL del MCP Weather a través de APIM
         self.mcp_base_url = os.getenv("WSO2_WEATHER_MCP_URL", "https://localhost:9453/weather-mcp/1.0.0")
         
         if DEBUG_MODE:
             print(Colors.cyan(f"[DEBUG] WeatherPlugin inicializado - URL: {self.mcp_base_url}"))
+
+    def _normalize_city(self, city: str) -> str:
+        """Normaliza nombres de ciudad para el MCP Weather (respeta acentos)."""
+        if not city:
+            return city
+        normalized = city.strip().lower()
+        city_map = {
+            "barcelona": "Barcelona",
+            "madrid": "Madrid",
+            "valencia": "Valencia",
+            "sevilla": "Sevilla",
+            "zaragoza": "Zaragoza",
+            "malaga": "Málaga",
+            "murcia": "Murcia",
+            "bilbao": "Bilbao",
+            "alicante": "Alicante",
+            "cordoba": "Córdoba",
+            "burgos": "Burgos",
+            "la coruna": "La Coruña",
+            "coruna": "La Coruña",
+        }
+        return city_map.get(normalized, city.strip().title())
     
     def _get_apim_token(self):
         """Obtener token OAuth2 usando Client Credentials (mismo método que el Gateway)"""
@@ -896,50 +919,183 @@ class WeatherPlugin:
                 print(Colors.red(f"Error obteniendo token APIM: {e}"))
             return None
     
-    def _call_mcp(self, tool_name: str, params: dict = None):
-        """Llamar a una herramienta del MCP a través de APIM"""
-        token = self._get_apim_token()
-        if not token:
-            return {"error": "No se pudo obtener token de autenticación"}
-        
-        url = f"{self.mcp_base_url}/tools/{tool_name}"
+    def _initialize_mcp_session(self, token: str) -> str | None:
+        """Inicializa una sesión MCP y retorna el session-id"""
+        url = f"{self.mcp_base_url}/mcp"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json, text/event-stream"
+        }
+        
+        # Payload de inicialización según protocolo MCP
+        init_payload = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "WeatherPlugin",
+                    "version": "1.0"
+                }
+            },
+            "id": 1
+        }
+        
+        try:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[MCP] Inicializando sesión MCP..."))
+            
+            response = requests.post(
+                url,
+                headers=headers,
+                json=init_payload,
+                verify=False
+            )
+            
+            # El session-id viene en los headers de respuesta
+            session_id = response.headers.get("mcp-session-id")
+            
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[MCP] Init Status: {response.status_code}"))
+                print(Colors.cyan(f"[MCP] Session ID obtenido: {session_id}"))
+            
+            if response.status_code == 200 and session_id:
+                return session_id
+            else:
+                if DEBUG_MODE:
+                    print(Colors.red(f"[MCP] Error inicializando sesión: {response.text[:500]}"))
+                return None
+                
+        except Exception as e:
+            if DEBUG_MODE:
+                print(Colors.red(f"[MCP] Exception en init: {str(e)}"))
+            return None
+    
+    def _call_mcp(self, tool_name: str, params: dict = None):
+        """Llamar a una herramienta del MCP (directo o a través de APIM)"""
+        # Si la URL es localhost:8080 (directo), usar el token fijo del MCP
+        # Si es APIM (8253), usar OAuth2 token
+        if "localhost:8080" in self.mcp_base_url:
+            # Conexión directa al MCP
+            token = "weather-mcp-2026"  # Bearer token fijo del MCP
+        else:
+            # Conexión a través de APIM
+            token = self._get_apim_token()
+            if not token:
+                return {"error": "No se pudo obtener token de autenticación APIM"}
+        
+        # Inicializar sesión MCP si no existe
+        if not self._mcp_session_id:
+            self._mcp_session_id = self._initialize_mcp_session(token)
+            if not self._mcp_session_id:
+                return {"error": "No se pudo inicializar sesión MCP"}
+        
+        # El endpoint correcto para MCP con Streamable HTTP es /mcp
+        url = f"{self.mcp_base_url}/mcp"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Mcp-Session-Id": self._mcp_session_id  # Session ID requerido
+        }
+        
+        # Construir payload JSON-RPC para MCP
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {
+                    "params": params or {}
+                }
+            },
+            "id": 2
         }
         
         try:
             if DEBUG_MODE:
                 print(Colors.cyan(f"[MCP] Llamando a {tool_name} con params: {params}"))
                 print(Colors.cyan(f"[MCP] URL: {url}"))
+                print(Colors.cyan(f"[MCP] Session ID: {self._mcp_session_id}"))
             
             response = requests.post(
                 url,
                 headers=headers,
-                json={"params": params or {}},
+                json=payload,
                 verify=False  # Para localhost con certificados self-signed
             )
             
             if DEBUG_MODE:
                 print(Colors.cyan(f"[MCP] Status: {response.status_code}"))
+                print(Colors.cyan(f"[MCP] Response (first 500 chars): {response.text[:500]}"))
             
             if response.status_code == 200:
-                return response.json()
+                try:
+                    # La respuesta puede ser SSE (Server-Sent Events), parsear correctamente
+                    response_text = response.text
+                    
+                    # Si es SSE, extraer el JSON del evento "data:"
+                    if response_text.startswith("event:"):
+                        for line in response_text.split("\n"):
+                            if line.startswith("data:"):
+                                json_data = line[5:].strip()
+                                json_response = json.loads(json_data)
+                                break
+                        else:
+                            return {"error": "No se encontró data en respuesta SSE"}
+                    else:
+                        json_response = json.loads(response_text)
+                    
+                    # Verificar si es una respuesta JSON-RPC con resultado
+                    if "result" in json_response:
+                        result = json_response["result"]
+                        # El resultado de tools/call tiene formato especial
+                        if isinstance(result, dict) and "content" in result:
+                            # Extraer el texto del contenido
+                            content_list = result.get("content", [])
+                            if content_list and isinstance(content_list, list):
+                                text_content = ""
+                                for item in content_list:
+                                    if isinstance(item, dict) and item.get("type") == "text":
+                                        text_content += item.get("text", "")
+                                return {"content": text_content} if text_content else result
+                        return result
+                    elif "error" in json_response:
+                        return {"error": f"MCP Error: {json_response['error']}"}
+                    else:
+                        return json_response
+                        
+                except Exception as e:
+                    print(Colors.red(f"[MCP] Error parsing response: {e}"))
+                    print(Colors.red(f"[MCP] Response: {response.text[:1000]}"))
+                    return {"error": f"Respuesta inválida del MCP: {str(e)}"}
+            elif response.status_code == 400:
+                # Si el session-id expiró, reinicializar
+                if "Missing session ID" in response.text or "session" in response.text.lower():
+                    if DEBUG_MODE:
+                        print(Colors.yellow("[MCP] Session expirada, reinicializando..."))
+                    self._mcp_session_id = None
+                    return self._call_mcp(tool_name, params)  # Reintentar
+                return {"error": f"Error MCP 400: {response.text[:200]}"}
             elif response.status_code == 401:
                 return {"error": "Token de autenticación inválido o expirado"}
             elif response.status_code == 403:
                 return {"error": "Sin permisos para esta operación"}
+            elif response.status_code == 404:
+                return {"error": f"Endpoint no encontrado: {url}"}
             else:
                 if DEBUG_MODE:
                     print(Colors.red(f"MCP Error {response.status_code}: {response.text}"))
-                return {"error": f"Error MCP {response.status_code}"}
+                return {"error": f"Error MCP {response.status_code}: {response.text[:200]}"}
         
         except requests.exceptions.ConnectionError:
             return {"error": f"No se pudo conectar al MCP Weather: {self.mcp_base_url}"}
         except Exception as e:
             if DEBUG_MODE:
                 print(Colors.red(f"Exception en MCP call: {str(e)}"))
+                traceback.print_exc()
             return {"error": f"Error inesperado: {str(e)}"}
     
     @kernel_function(
@@ -948,7 +1104,11 @@ class WeatherPlugin:
     )
     def get_current_weather(self, city: str = "madrid"):
         """Obtiene el clima actual de una ciudad española"""
-        result = self._call_mcp("get_current_weather", {"city": city.lower()})
+        city_normalized = self._normalize_city(city)
+        result = self._call_mcp(
+            "get_current_weather",
+            {"city": city_normalized, "response_format": "markdown"}
+        )
         
         if "error" in result:
             return Colors.red(f"Error: {result['error']}")
@@ -961,7 +1121,11 @@ class WeatherPlugin:
     )
     def get_weather_forecast(self, city: str = "madrid", days: int = 5):
         """Obtiene el pronóstico del clima para los próximos días"""
-        result = self._call_mcp("get_weather_forecast", {"city": city.lower(), "days": min(days, 7)})
+        city_normalized = self._normalize_city(city)
+        result = self._call_mcp(
+            "get_weather_forecast",
+            {"city": city_normalized, "days": min(days, 7), "response_format": "markdown"}
+        )
         
         if "error" in result:
             return Colors.red(f"Error: {result['error']}")
@@ -974,7 +1138,11 @@ class WeatherPlugin:
     )
     def get_retail_weather_insights(self, city: str = "madrid", days: int = 3):
         """Obtiene insights de clima para decisiones de retail"""
-        result = self._call_mcp("get_retail_weather_insights", {"city": city.lower(), "days": min(days, 7)})
+        city_normalized = self._normalize_city(city)
+        result = self._call_mcp(
+            "get_retail_weather_insights",
+            {"city": city_normalized, "days": min(days, 7)}
+        )
         
         if "error" in result:
             return Colors.red(f"Error: {result['error']}")
@@ -1013,12 +1181,12 @@ class ShopifyPlugin:
         if not self._token_initialized or self._force_auth:
             if self._force_auth:
                 if _auth_trace_enabled():
-                    print(Colors.debug("🔄 Forzando nueva autenticación completa..."))
+                    print(Colors.debug("Forzando nueva autenticación completa..."))
                 # Limpiar permisos anteriores
                 self._user_permissions = set()
             else:
                 if _auth_trace_enabled():
-                    print(Colors.debug("🔐 Autenticación OAuth iniciada..."))
+                    print(Colors.debug("Autenticación OAuth iniciada..."))
             
             self._token_initialized = True
             
@@ -1026,7 +1194,7 @@ class ShopifyPlugin:
             token = self.oauth.ensure_token()
             
             if not token:
-                print(Colors.red("❌ No se pudo obtener token OAuth. Verifica WSO2 Identity Server."))
+                print(Colors.red("No se pudo obtener token OAuth. Verifica WSO2 Identity Server."))
                 # Sin token => no hay permisos
                 self._user_permissions = set()
                 return None
@@ -1044,11 +1212,11 @@ class ShopifyPlugin:
                 self._user_permissions = OAuthCallbackHandler.user_permissions
                 if self._user_permissions:
                     if DEBUG_MODE:
-                        print(Colors.green(f"🔑 Permisos OAuth cargados: {sorted(self._user_permissions)}"))
+                        print(Colors.green(f"Permisos OAuth cargados: {sorted(self._user_permissions)}"))
                 else:
-                    print(Colors.yellow("⚠️ Usuario autenticado pero sin permisos."))
+                    print(Colors.yellow("Usuario autenticado pero sin permisos."))
             else:
-                print(Colors.yellow("⚠️ No se pudieron verificar permisos WSO2."))
+                print(Colors.yellow("No se pudieron verificar permisos WSO2."))
                 self._user_permissions = set()
                 
             return token
@@ -1804,10 +1972,10 @@ if __name__ == "__main__":
         if os.getenv("WSO2_WEATHER_MCP_URL") or os.getenv("WSO2_APIM_CONSUMER_KEY"):
             try:
                 weather_plugin = WeatherPlugin(force_auth=args.force_auth)
-                print(Colors.green("✓ Weather MCP Plugin inicializado"))
+                print(Colors.green("Weather MCP Plugin inicializado"))
             except Exception as e:
                 if DEBUG_MODE:
-                    print(Colors.yellow(f"⚠ No se pudo inicializar Weather Plugin: {e}"))
+                    print(Colors.yellow(f"No se pudo inicializar Weather Plugin: {e}"))
         
         agent = Agent(kernel, shopify_plugin, weather_plugin)
         print(Colors.green("Listo. Escribe 'salir' para terminar."))

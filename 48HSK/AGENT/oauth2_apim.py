@@ -139,5 +139,5 @@ def create_openai_client_with_gateway() -> Optional[AsyncOpenAI]:
         )
         return client
     except Exception as e:
-        print(f"⚠️  Error creando cliente Gateway: {e}")
+        print(f"Error creando cliente Gateway: {e}")
         return None

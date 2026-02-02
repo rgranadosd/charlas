@@ -10,7 +10,7 @@ import glob
 log_files = glob.glob('/Users/rafagranados/Develop/wso2/wso2am-4.6.0/repository/logs/http_access_*.log')
 
 if not log_files:
-    print("❌ No se encontraron logs de acceso HTTP")
+    print("No se encontraron logs de acceso HTTP")
     exit(1)
 
 stats = {
@@ -19,7 +19,7 @@ stats = {
     'total_requests': 0
 }
 
-print("📊 Analizando logs de acceso del Gateway...\n")
+print("Analizando logs de acceso del Gateway...\n")
 
 for log_file in log_files:
     try:
@@ -47,10 +47,10 @@ for log_file in log_files:
                         method = match.group(1)
                         stats[api][f'method_{method}'] += 1
     except Exception as e:
-        print(f"⚠️  Error leyendo {log_file}: {e}")
+        print(f"Error leyendo {log_file}: {e}")
 
 print("=" * 60)
-print("📦 SHOPIFY API")
+print("SHOPIFY API")
 print("=" * 60)
 print(f"Total requests: {sum(v for k,v in stats['shopify'].items() if k.startswith('status_'))}")
 print("\nPor método:")
@@ -63,7 +63,7 @@ for k, v in stats['shopify'].items():
         print(f"  {k.replace('status_', '')}: {v}")
 
 print("\n" + "=" * 60)
-print("🤖 OPENAI API")
+print("OPENAI API")
 print("=" * 60)
 print(f"Total requests: {sum(v for k,v in stats['openai'].items() if k.startswith('status_'))}")
 print("\nPor método:")
@@ -76,7 +76,7 @@ for k, v in stats['openai'].items():
         print(f"  {k.replace('status_', '')}: {v}")
 
 print("\n" + "=" * 60)
-print(f"📊 TOTAL: {stats['total_requests']} requests procesados")
+print(f"TOTAL: {stats['total_requests']} requests procesados")
 print("=" * 60)
-print("\n💡 Para monitoreo en tiempo real ejecuta:")
+print("\nPara monitoreo en tiempo real ejecuta:")
 print("   ./monitor_gateway.sh")

@@ -57,18 +57,18 @@ class SimpleShopifyPlugin:
         if not self.shopify_token:
             raise ValueError("SHOPIFY_API_TOKEN no configurado en .env")
         
-        print(Colors.blue("🛍️ Plugin Shopify inicializado"))
-        print(Colors.green("✅ Shopify conectado - verificando..."))
+        print(Colors.blue("Plugin Shopify inicializado"))
+        print(Colors.green("Shopify conectado - verificando..."))
         
         # Test inmediato
         try:
             count_result = self._api("GET", "/products/count.json")
             if "count" in count_result:
-                print(Colors.green(f"✅ Shopify conectado - {count_result['count']} productos"))
+                print(Colors.green(f"Shopify conectado - {count_result['count']} productos"))
             else:
-                print(Colors.yellow("⚠️ Shopify conectado pero respuesta inesperada"))
+                print(Colors.yellow("Shopify conectado pero respuesta inesperada"))
         except Exception as e:
-            print(Colors.red(f"❌ Error conectando a Shopify: {e}"))
+            print(Colors.red(f"Error conectando a Shopify: {e}"))
 
     def _api(self, method, path, data=None):
         url = f"{self.shopify_store}/admin/api/2024-01{path}"

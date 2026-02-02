@@ -22,7 +22,7 @@ def load_banner_module(banner_name="default"):
     banner_file = banners_dir / f"{banner_name}.py"
     
     if not banner_file.exists():
-        print(f"⚠️  Banner '{banner_name}' no encontrado. Usando 'default'")
+        print(f"Banner '{banner_name}' no encontrado. Usando 'default'")
         banner_file = banners_dir / "default.py"
     
     if not banner_file.exists():
