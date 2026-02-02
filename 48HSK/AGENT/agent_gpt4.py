@@ -859,6 +859,171 @@ class OAuthClient:
         return new_tok.get("access_token") if new_tok else None
 
 # ============================================
+# LÓGICA WEATHER MCP (Plugin)
+# ============================================
+
+class WeatherPlugin:
+    """Plugin para interactuar con el MCP Weather a través de WSO2 APIM"""
+    
+    def __init__(self, force_auth=False):
+        self.oauth = OAuthClient(force_auth=force_auth)
+        self._token_initialized = False
+        self._user_permissions = set()
+        self._force_auth = force_auth
+        
+        # URL del MCP Weather a través de APIM
+        self.mcp_base_url = os.getenv("WSO2_WEATHER_MCP_URL", "https://localhost:9453/weather-mcp/1.0.0")
+        
+        if DEBUG_MODE:
+            print(Colors.cyan(f"[DEBUG] WeatherPlugin inicializado - URL: {self.mcp_base_url}"))
+    
+    def _get_token(self):
+        """Obtener token OAuth para acceder al MCP a través de APIM"""
+        if not self._token_initialized or self._force_auth:
+            if self._force_auth:
+                if _auth_trace_enabled():
+                    print(Colors.debug("🔄 Forzando nueva autenticación para Weather MCP..."))
+                self._user_permissions = set()
+            else:
+                if _auth_trace_enabled():
+                    print(Colors.debug("🔐 Autenticación OAuth para Weather MCP..."))
+            
+            self._token_initialized = True
+            token = self.oauth.ensure_token()
+            
+            if not token:
+                print(Colors.red("❌ No se pudo obtener token OAuth para Weather MCP."))
+                self._user_permissions = set()
+                return None
+            
+            self._force_auth = False
+            try:
+                self.oauth.store.force_auth = False
+            except Exception:
+                pass
+            
+            # Cargar permisos del usuario
+            if hasattr(OAuthCallbackHandler, 'user_permissions') and OAuthCallbackHandler.user_permissions is not None:
+                self._user_permissions = OAuthCallbackHandler.user_permissions
+                if DEBUG_MODE and self._user_permissions:
+                    print(Colors.green(f"🔑 Permisos Weather MCP: {sorted(self._user_permissions)}"))
+            
+            return token
+        
+        return self.oauth.ensure_token()
+    
+    def _has_permission(self, required_permission):
+        """Verificar si el usuario tiene un permiso específico"""
+        return required_permission in self._user_permissions
+    
+    def _check_permission(self, required_permission, action_name):
+        """Verificar permiso y retornar mensaje de error si no lo tiene"""
+        if not self._token_initialized:
+            token = self._get_token()
+            if not token:
+                return Colors.red(f"Necesitas iniciar sesión para {action_name}.")
+        
+        if not self._has_permission(required_permission):
+            return Colors.red(f"No tienes permisos para {action_name}.")
+        return None
+    
+    def _call_mcp(self, tool_name: str, params: dict = None):
+        """Llamar a una herramienta del MCP a través de APIM"""
+        token = self._get_token()
+        if not token:
+            return {"error": "No se pudo obtener token de autenticación"}
+        
+        url = f"{self.mcp_base_url}/tools/{tool_name}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        
+        try:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[MCP] Llamando a {tool_name} con params: {params}"))
+            
+            response = requests.post(
+                url,
+                headers=headers,
+                json={"params": params or {}},
+                verify=False  # Para localhost con certificados self-signed
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                return {"error": "Token de autenticación inválido o expirado"}
+            elif response.status_code == 403:
+                return {"error": "Sin permisos para esta operación"}
+            else:
+                if DEBUG_MODE:
+                    print(Colors.red(f"MCP Error {response.status_code}: {response.text}"))
+                return {"error": f"Error MCP {response.status_code}"}
+        
+        except requests.exceptions.ConnectionError:
+            return {"error": f"No se pudo conectar al MCP Weather: {self.mcp_base_url}"}
+        except Exception as e:
+            if DEBUG_MODE:
+                print(Colors.red(f"Exception en MCP call: {str(e)}"))
+            return {"error": f"Error inesperado: {str(e)}"}
+    
+    @kernel_function(
+        name="get_current_weather",
+        description="Obtiene el clima actual de una ciudad española. Ciudades disponibles: madrid, barcelona, valencia, sevilla, malaga, bilbao, zaragoza, murcia, palma, las_palmas, alicante, cordoba, valladolid, vigo, gijon, la_coruna, granada, vitoria, elche, oviedo, santa_cruz_tenerife, pamplona, almeria, san_sebastian, burgos, santander, castellon, albacete, logrono, badajoz, salamanca, huelva, lleida, tarragona, leon, cadiz, jaen, orense, lugo, caceres, melilla, ceuta"
+    )
+    def get_current_weather(self, city: str = "madrid"):
+        """Obtiene el clima actual de una ciudad española"""
+        # Verificar permisos
+        permission_error = self._check_permission("View Weather", "consultar el clima")
+        if permission_error:
+            return permission_error
+        
+        result = self._call_mcp("get_current_weather", {"city": city.lower()})
+        
+        if "error" in result:
+            return Colors.red(f"Error: {result['error']}")
+        
+        return result.get("content", "No se pudo obtener información del clima")
+    
+    @kernel_function(
+        name="get_weather_forecast",
+        description="Obtiene el pronóstico del clima para los próximos días en una ciudad española. Parámetros: city (nombre de la ciudad), days (número de días, máximo 7)"
+    )
+    def get_weather_forecast(self, city: str = "madrid", days: int = 5):
+        """Obtiene el pronóstico del clima para los próximos días"""
+        # Verificar permisos
+        permission_error = self._check_permission("View Weather", "consultar pronósticos del clima")
+        if permission_error:
+            return permission_error
+        
+        result = self._call_mcp("get_weather_forecast", {"city": city.lower(), "days": min(days, 7)})
+        
+        if "error" in result:
+            return Colors.red(f"Error: {result['error']}")
+        
+        return result.get("content", "No se pudo obtener el pronóstico del clima")
+    
+    @kernel_function(
+        name="get_retail_weather_insights",
+        description="Obtiene insights de clima enfocados en retail y e-commerce para una ciudad española. Incluye recomendaciones de inventario y estrategias de marketing basadas en el pronóstico del clima."
+    )
+    def get_retail_weather_insights(self, city: str = "madrid", days: int = 3):
+        """Obtiene insights de clima para decisiones de retail"""
+        # Verificar permisos
+        permission_error = self._check_permission("View Weather", "consultar insights de retail")
+        if permission_error:
+            return permission_error
+        
+        result = self._call_mcp("get_retail_weather_insights", {"city": city.lower(), "days": min(days, 7)})
+        
+        if "error" in result:
+            return Colors.red(f"Error: {result['error']}")
+        
+        return result.get("content", "No se pudieron obtener insights de retail")
+
+# ============================================
 # LÓGICA SHOPIFY (Plugin)
 # ============================================
 
@@ -1167,9 +1332,10 @@ class ShopifyPlugin:
 # ============================================
 
 class Agent:
-    def __init__(self, kernel, plugin):
+    def __init__(self, kernel, shopify_plugin, weather_plugin=None):
         self.kernel = kernel
-        self.plugin = plugin
+        self.shopify_plugin = shopify_plugin
+        self.weather_plugin = weather_plugin
 
     def _clean_json(self, text):
         try:
@@ -1231,10 +1397,10 @@ class Agent:
         
         result = ""
         try:
-            # 1. CLASIFICAR INTENCIÓN (Prompt Mejorado)
+            # 1. CLASIFICAR INTENCIÓN (Prompt Mejorado con Weather)
             intent_prompt = (
-                "Clasifica la intención en: ['listar', 'consultar_precio', 'actualizar_precio', 'consultar_descripcion', 'descripcion', 'actualizar_titulo', 'revertir', 'contar', 'ordenar', 'general']\n"
-                "EJEMPLOS:\n"
+                "Clasifica la intención en: ['listar', 'consultar_precio', 'actualizar_precio', 'consultar_descripcion', 'descripcion', 'actualizar_titulo', 'revertir', 'contar', 'ordenar', 'clima_actual', 'pronostico_clima', 'insights_retail', 'general']\n"
+                "EJEMPLOS SHOPIFY:\n"
                 "User: 'Cuanto vale la gift card?' -> {\"category\": \"consultar_precio\"}\n"
                 "User: 'Pon la Gift Card a 50' -> {\"category\": \"actualizar_precio\"}\n"
                 "User: 'Dame la descripción de la Camiseta' -> {\"category\": \"consultar_descripcion\"}\n"
@@ -1243,7 +1409,13 @@ class Agent:
                 "User: 'Cuantos productos hay?' -> {\"category\": \"contar\"}\n"
                 "User: 'Dame la lista sin precios' -> {\"category\": \"listar\"}\n"
                 "User: 'Quiero ver el catálogo con precios' -> {\"category\": \"listar\"}\n"
-                f"User: '{user_input}'\n"
+                "\nEJEMPLOS WEATHER:\n"
+                "User: '¿Qué tiempo hace en Madrid?' -> {\"category\": \"clima_actual\"}\n"
+                "User: 'Cómo va a estar el clima en Barcelona?' -> {\"category\": \"pronostico_clima\"}\n"
+                "User: 'Dame insights de retail para Valencia' -> {\"category\": \"insights_retail\"}\n"
+                "User: '¿Va a llover en Sevilla?' -> {\"category\": \"pronostico_clima\"}\n"
+                "User: 'Qué debo hacer con mi inventario según el clima?' -> {\"category\": \"insights_retail\"}\n"
+                f"\nUser: '{user_input}'\n"
                 "Output JSON:"
             )
             
@@ -1288,14 +1460,14 @@ class Agent:
                     # Pero para hacerlo rápido y robusto, asumimos True a menos que sea explícito
                     show_p = True
                 
-                result = self.plugin.get_products_list(show_price=show_p)
+                result = self.shopify_plugin.get_products_list(show_price=show_p)
 
-            elif intent == "contar": result = self.plugin.count_products()
-            elif intent == "ordenar": result = self.plugin.sort_products()
+            elif intent == "contar": result = self.shopify_plugin.count_products()
+            elif intent == "ordenar": result = self.shopify_plugin.sort_products()
             
             elif intent == "consultar_precio":
                 # Si no puede ver productos, devolver error de permisos directamente
-                permission_error = self.plugin._check_permission("View Products", "consultar precios de productos")
+                permission_error = self.shopify_plugin._check_permission("View Products", "consultar precios de productos")
                 if permission_error:
                     result = permission_error
                 else:
@@ -1303,16 +1475,16 @@ class Agent:
                     pname = str(await self.kernel.invoke_prompt(ext_prompt)).strip()
                     pid = pname
                     if not pid.isdigit():
-                        found = self.plugin.find_id_by_name(pname)
+                        found = self.shopify_plugin.find_id_by_name(pname)
                         pid = found if found else pid
                     if pid and pid.isdigit():
-                        result = self.plugin.get_product_price(pid)
+                        result = self.shopify_plugin.get_product_price(pid)
                     else:
                         result = Colors.red(f"No encontré el producto '{pname}'")
 
             elif intent == "actualizar_precio":
                 # Si no puede modificar precios, devolver error de permisos directamente
-                permission_error = self.plugin._check_permission("Update Prices", "modificar precios de productos")
+                permission_error = self.shopify_plugin._check_permission("Update Prices", "modificar precios de productos")
                 if permission_error:
                     result = permission_error
                 else:
@@ -1328,11 +1500,11 @@ class Agent:
 
                         pid = pname
                         if pid and not pid.isdigit():
-                            found = self.plugin.find_id_by_name(pname)
+                            found = self.shopify_plugin.find_id_by_name(pname)
                             pid = found if found else pid
 
                         if pid and pid.isdigit():
-                            result = self.plugin.update_product_price_by_percent(pid, pct)
+                            result = self.shopify_plugin.update_product_price_by_percent(pid, pct)
                         else:
                             result = Colors.red("Producto no encontrado.")
                     else:
@@ -1344,10 +1516,10 @@ class Agent:
 
                             pid = pname
                             if not pid.isdigit():
-                                found = self.plugin.find_id_by_name(pname)
+                                found = self.shopify_plugin.find_id_by_name(pname)
                                 pid = found if found else pid
                             if pid.isdigit():
-                                result = self.plugin.update_product_price(pid, new_price)
+                                result = self.shopify_plugin.update_product_price(pid, new_price)
                             else:
                                 result = Colors.red("Producto no encontrado.")
                         else:
@@ -1355,7 +1527,7 @@ class Agent:
 
             elif intent == "descripcion":
                 # Si no puede actualizar descripciones, devolver error de permisos directamente
-                permission_error = self.plugin._check_permission("Update Descriptions", "actualizar descripciones de productos")
+                permission_error = self.shopify_plugin._check_permission("Update Descriptions", "actualizar descripciones de productos")
                 if permission_error:
                     result = permission_error
                 else:
@@ -1368,10 +1540,10 @@ class Agent:
 
                         pid = pname
                         if not pid.isdigit():
-                            found = self.plugin.find_id_by_name(pname)
+                            found = self.shopify_plugin.find_id_by_name(pname)
                             pid = found if found else pid
                         if pid.isdigit():
-                            result = self.plugin.update_description(pid, new_desc)
+                            result = self.shopify_plugin.update_description(pid, new_desc)
                         else:
                             result = Colors.red("Producto no encontrado.")
                     else:
@@ -1382,7 +1554,7 @@ class Agent:
                         result = Colors.red("Datos incompletos.")
 
             elif intent == "consultar_descripcion":
-                permission_error = self.plugin._check_permission("View Products", "consultar descripciones de productos")
+                permission_error = self.shopify_plugin._check_permission("View Products", "consultar descripciones de productos")
                 if permission_error:
                     result = permission_error
                 else:
@@ -1391,10 +1563,10 @@ class Agent:
                         pname = str(data.get("product")).strip()
                         pid = pname
                         if not pid.isdigit():
-                            found = self.plugin.find_id_by_name(pname)
+                            found = self.shopify_plugin.find_id_by_name(pname)
                             pid = found if found else pid
                         if pid and pid.isdigit():
-                            result = self.plugin.get_product_description(pid)
+                            result = self.shopify_plugin.get_product_description(pid)
                         else:
                             result = Colors.red("Producto no encontrado.")
                     else:
@@ -1402,7 +1574,7 @@ class Agent:
 
             elif intent == "actualizar_titulo":
                 # Reutilizamos el mismo permiso que descripciones para cambios de contenido del producto
-                permission_error = self.plugin._check_permission("Update Descriptions", "actualizar títulos de productos")
+                permission_error = self.shopify_plugin._check_permission("Update Descriptions", "actualizar títulos de productos")
                 if permission_error:
                     result = permission_error
                 else:
@@ -1415,10 +1587,10 @@ class Agent:
 
                         pid = pname
                         if not pid.isdigit():
-                            found = self.plugin.find_id_by_name(pname)
+                            found = self.shopify_plugin.find_id_by_name(pname)
                             pid = found if found else pid
                         if pid.isdigit():
-                            result = self.plugin.update_title(pid, new_title)
+                            result = self.shopify_plugin.update_title(pid, new_title)
                         else:
                             result = Colors.red("Producto no encontrado.")
                     else:
@@ -1426,19 +1598,50 @@ class Agent:
 
             elif intent == "revertir":
                 # Revertir precio implica modificar precios
-                permission_error = self.plugin._check_permission("Update Prices", "revertir precios")
+                permission_error = self.shopify_plugin._check_permission("Update Prices", "revertir precios")
                 if permission_error:
                     result = permission_error
                 else:
                     prompt = f"Extrae ID o nombre de: {user_input}. Solo texto."
                     pid = str(await self.kernel.invoke_prompt(prompt)).strip()
                     if not pid.isdigit():
-                        found = self.plugin.find_id_by_name(pid)
+                        found = self.shopify_plugin.find_id_by_name(pid)
                         pid = found if found else pid
                     if pid.isdigit():
-                        result = self.plugin.revert_price(pid)
+                        result = self.shopify_plugin.revert_price(pid)
                     else:
                         result = Colors.red("Producto no encontrado.")
+            
+            # INTENCIONES DE WEATHER MCP
+            elif intent == "clima_actual":
+                if self.weather_plugin:
+                    # Extraer ciudad del input
+                    prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
+                    city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
+                    result = self.weather_plugin.get_current_weather(city=city)
+                else:
+                    result = Colors.red("Plugin de clima no disponible")
+            
+            elif intent == "pronostico_clima":
+                if self.weather_plugin:
+                    # Extraer ciudad y días del input
+                    prompt = f"Extrae la ciudad española y número de días (si se menciona) de: '{user_input}'. Devuelve JSON con {{\"city\": \"nombre\", \"days\": numero}}. Si no hay ciudad, usa 'madrid'. Si no hay días, usa 5."
+                    extraction = str(await self.kernel.invoke_prompt(prompt)).strip()
+                    data = self._clean_json(extraction)
+                    city = data.get("city", "madrid").lower() if data else "madrid"
+                    days = int(data.get("days", 5)) if data and data.get("days") else 5
+                    result = self.weather_plugin.get_weather_forecast(city=city, days=days)
+                else:
+                    result = Colors.red("Plugin de clima no disponible")
+            
+            elif intent == "insights_retail":
+                if self.weather_plugin:
+                    # Extraer ciudad del input
+                    prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
+                    city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
+                    result = self.weather_plugin.get_retail_weather_insights(city=city)
+                else:
+                    result = Colors.red("Plugin de clima no disponible")
 
             else: result = str(await self.kernel.invoke_prompt(user_input))
 
@@ -1636,8 +1839,19 @@ if __name__ == "__main__":
             prompt_execution_settings=extractor_settings,
         )
 
-        plugin = ShopifyPlugin(force_auth=args.force_auth)
-        agent = Agent(kernel, plugin)
+        shopify_plugin = ShopifyPlugin(force_auth=args.force_auth)
+        
+        # Inicializar Weather Plugin si está configurado
+        weather_plugin = None
+        if os.getenv("WSO2_WEATHER_MCP_URL") or os.getenv("WSO2_APIM_CONSUMER_KEY"):
+            try:
+                weather_plugin = WeatherPlugin(force_auth=args.force_auth)
+                print(Colors.green("✓ Weather MCP Plugin inicializado"))
+            except Exception as e:
+                if DEBUG_MODE:
+                    print(Colors.yellow(f"⚠ No se pudo inicializar Weather Plugin: {e}"))
+        
+        agent = Agent(kernel, shopify_plugin, weather_plugin)
         print(Colors.green("Listo. Escribe 'salir' para terminar."))
 
         while True:
