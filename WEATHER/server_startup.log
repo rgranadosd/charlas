@@ -1,0 +1,121 @@
+================================================================================
+  SOLUCIÓN: ASGI Wrapper para Inyección de Accept Header
+  Fecha: 2 Febrero 2026
+================================================================================
+
+PROBLEMA IDENTIFICADO:
+----------------------
+FastMCP rechazaba requests sin "Accept: application/json, text/event-stream"
+con error 406 Not Acceptable. WSO2 APIM MCP Playground podría no enviar este
+header exacto, causando fallos de conexión.
+
+SOLUCIONES INTENTADAS (que NO funcionaron):
+-------------------------------------------
+1. ❌ Parámetro FastMCP accept_headers_optional=True (no existe)
+2. ❌ @app.middleware decorator (se ejecuta DESPUÉS de validación FastMCP)
+3. ❌ BaseHTTPMiddleware (se ejecuta DESPUÉS de validación FastMCP)
+
+SOLUCIÓN FINAL (que SÍ funciona):
+---------------------------------
+✅ ASGI Wrapper que intercepta el scope ANTES de FastMCP
+
+Código:
+-------
+class ASGIAcceptHeaderWrapper:
+    def __init__(self, app):
+        self.app = app
+    
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            headers = dict(scope.get("headers", []))
+            accept = headers.get(b"accept", b"").decode("latin1")
+            
+            if "application/json" not in accept or "text/event-stream" not in accept:
+                # Inyectar header correcto
+                new_headers = [(k,v) for k,v in scope["headers"] if k.lower() != b"accept"]
+                new_headers.append((b"accept", b"application/json, text/event-stream"))
+                scope["headers"] = new_headers
+        
+        await self.app(scope, receive, send)
+
+RESULTADO:
+----------
+✅ Requests sin Accept header → 200 OK (header inyectado automáticamente)
+✅ APIM puede conectarse sin enviar el header exacto
+✅ Logs con emojis: 🎯🔍🔧✅ para debugging
+
+ARCHIVOS MODIFICADOS:
+--------------------
+- weather_mcp_openmeteo.py: Agregado ASGIAcceptHeaderWrapper (líneas ~110-145)
+
+PARA PROBAR CON APIM:
+---------------------
+1. https://localhost:9443/devportal
+2. MCP Servers → Try It Out
+3. El servidor acepta conexión automáticamente
+
+================================================================================
+
+📥 Instalando dependencias...
+Requirement already satisfied: uvicorn in ./venv/lib/python3.14/site-packages (0.40.0)
+Requirement already satisfied: fastapi in ./venv/lib/python3.14/site-packages (0.128.0)
+Requirement already satisfied: httpx in ./venv/lib/python3.14/site-packages (0.28.1)
+Requirement already satisfied: mcp[cli] in ./venv/lib/python3.14/site-packages (1.26.0)
+Requirement already satisfied: anyio>=4.5 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (4.12.1)
+Requirement already satisfied: httpx-sse>=0.4 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (0.4.3)
+Requirement already satisfied: jsonschema>=4.20.0 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (4.26.0)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (2.12.0)
+Requirement already satisfied: pydantic<3.0.0,>=2.11.0 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (2.12.5)
+Requirement already satisfied: pyjwt>=2.10.1 in ./venv/lib/python3.14/site-packages (from pyjwt[crypto]>=2.10.1->mcp[cli]) (2.10.1)
+Requirement already satisfied: python-multipart>=0.0.9 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (0.0.22)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (3.2.0)
+Requirement already satisfied: starlette>=0.27 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (0.50.0)
+Requirement already satisfied: typing-extensions>=4.9.0 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.1 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (0.4.2)
+Requirement already satisfied: python-dotenv>=1.0.0 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (1.2.1)
+Requirement already satisfied: typer>=0.16.0 in ./venv/lib/python3.14/site-packages (from mcp[cli]) (0.21.1)
+Requirement already satisfied: annotated-types>=0.6.0 in ./venv/lib/python3.14/site-packages (from pydantic<3.0.0,>=2.11.0->mcp[cli]) (0.7.0)
+Requirement already satisfied: pydantic-core==2.41.5 in ./venv/lib/python3.14/site-packages (from pydantic<3.0.0,>=2.11.0->mcp[cli]) (2.41.5)
+Requirement already satisfied: click>=7.0 in ./venv/lib/python3.14/site-packages (from uvicorn) (8.3.1)
+Requirement already satisfied: h11>=0.8 in ./venv/lib/python3.14/site-packages (from uvicorn) (0.16.0)
+Requirement already satisfied: annotated-doc>=0.0.2 in ./venv/lib/python3.14/site-packages (from fastapi) (0.0.4)
+Requirement already satisfied: idna>=2.8 in ./venv/lib/python3.14/site-packages (from anyio>=4.5->mcp[cli]) (3.11)
+Requirement already satisfied: certifi in ./venv/lib/python3.14/site-packages (from httpx) (2026.1.4)
+Requirement already satisfied: httpcore==1.* in ./venv/lib/python3.14/site-packages (from httpx) (1.0.9)
+Requirement already satisfied: attrs>=22.2.0 in ./venv/lib/python3.14/site-packages (from jsonschema>=4.20.0->mcp[cli]) (25.4.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in ./venv/lib/python3.14/site-packages (from jsonschema>=4.20.0->mcp[cli]) (2025.9.1)
+Requirement already satisfied: referencing>=0.28.4 in ./venv/lib/python3.14/site-packages (from jsonschema>=4.20.0->mcp[cli]) (0.37.0)
+Requirement already satisfied: rpds-py>=0.25.0 in ./venv/lib/python3.14/site-packages (from jsonschema>=4.20.0->mcp[cli]) (0.30.0)
+Requirement already satisfied: cryptography>=3.4.0 in ./venv/lib/python3.14/site-packages (from pyjwt[crypto]>=2.10.1->mcp[cli]) (46.0.4)
+Requirement already satisfied: cffi>=2.0.0 in ./venv/lib/python3.14/site-packages (from cryptography>=3.4.0->pyjwt[crypto]>=2.10.1->mcp[cli]) (2.0.0)
+Requirement already satisfied: pycparser in ./venv/lib/python3.14/site-packages (from cffi>=2.0.0->cryptography>=3.4.0->pyjwt[crypto]>=2.10.1->mcp[cli]) (3.0)
+Requirement already satisfied: shellingham>=1.3.0 in ./venv/lib/python3.14/site-packages (from typer>=0.16.0->mcp[cli]) (1.5.4)
+Requirement already satisfied: rich>=10.11.0 in ./venv/lib/python3.14/site-packages (from typer>=0.16.0->mcp[cli]) (14.3.1)
+Requirement already satisfied: markdown-it-py>=2.2.0 in ./venv/lib/python3.14/site-packages (from rich>=10.11.0->typer>=0.16.0->mcp[cli]) (4.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in ./venv/lib/python3.14/site-packages (from rich>=10.11.0->typer>=0.16.0->mcp[cli]) (2.19.2)
+Requirement already satisfied: mdurl~=0.1 in ./venv/lib/python3.14/site-packages (from markdown-it-py>=2.2.0->rich>=10.11.0->typer>=0.16.0->mcp[cli]) (0.1.2)
+🚀 Lanzando Servidor MCP HTTP Stream (Para WSO2)...
+📡 URL para WSO2: http://192.168.1.181:8080/mcp
+INFO:     Started server process [71492]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:53264 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53266 - "POST /mcp HTTP/1.1" 406 Not Acceptable
+INFO:     127.0.0.1:53268 - "POST /mcp HTTP/1.1" 406 Not Acceptable
+INFO:     127.0.0.1:53270 - "POST /mcp HTTP/1.1" 406 Not Acceptable
+INFO:     127.0.0.1:53281 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53283 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53285 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53287 - "POST /mcp HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:53300 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53302 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53302 - "POST /mcp HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:53305 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53354 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53377 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53383 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53385 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53385 - "POST /mcp HTTP/1.1" 400 Bad Request
+INFO:     192.168.1.181:56044 - "GET /health HTTP/1.1" 200 OK
+./run_weather_mcp.sh: line 62: 71492 Killed: 9               python3 -m uvicorn weather_mcp_openmeteo:asgi_app --host 0.0.0.0 --port 8080 --log-level info

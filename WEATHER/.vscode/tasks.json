@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run MCP Weather Server",
+      "type": "shell",
+      "command": "source venv/bin/activate && python3 weather_mcp_openmeteo.py",
+      "options": {
+        "cwd": "${workspaceFolder}/MCP/WEATHER"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run MCP Inspector",
+      "type": "shell",
+      "command": "DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector --config inspector_config.json --server weather",
+      "options": {
+        "cwd": "${workspaceFolder}/MCP/WEATHER"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

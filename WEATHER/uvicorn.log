@@ -1,0 +1,14 @@
+🚀 Lanzando Servidor MCP HTTP/SSE (Para WSO2)...
+📡 URL para WSO2: http://192.168.1.181:8080/sse
+INFO:     Started server process [18381]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50909 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50910 - "POST /sse/mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:50918 - "POST /messages HTTP/1.1" 307 Temporary Redirect
+WARNING:mcp.server.sse:Received request without session_id
+INFO:     127.0.0.1:50919 - "POST /messages/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:50925 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51065 - "GET /sse HTTP/1.1" 200 OK
+/Users/rafagranados/Develop/charlas/48HSK/MCP/WEATHER/run_weather_mcp.sh: line 53: 18381 Killed: 9               python -m uvicorn weather_mcp_openmeteo:asgi_app --host 0.0.0.0 --port 8080

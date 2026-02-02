@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: MCP Weather",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/MCP/WEATHER/weather_mcp_openmeteo.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/MCP/WEATHER",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/MCP/WEATHER"
+      }
+    }
+  ]
+}

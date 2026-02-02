@@ -1,0 +1,14 @@
+{
+  "name": "mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "obs-mcp.js",
+  "scripts": {
+    "start": "node obs-mcp.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "node-fetch": "^3.3.2",
+    "zod": "^4.1.13"
+  }
+}
