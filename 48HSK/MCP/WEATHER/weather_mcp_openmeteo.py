@@ -527,7 +527,7 @@ def _format_forecast_markdown(city: str, data: Dict[str, Any], days: int) -> str
         "openWorldHint": True
     }
 )
-async def get_current_weather(params: GetCurrentWeatherInput) -> str:
+async def get_current_weather(params: Optional[GetCurrentWeatherInput] = None) -> str:
     """
     Obtiene el tiempo actual para una ciudad española.
     
@@ -543,6 +543,10 @@ async def get_current_weather(params: GetCurrentWeatherInput) -> str:
         str: Datos del tiempo actual en el formato solicitado
     """
     try:
+        # Provide defaults if params is None
+        if params is None:
+            params = GetCurrentWeatherInput(city=SpanishCity.MADRID, response_format=ResponseFormat.MARKDOWN)
+        
         coords = SPANISH_CITIES[params.city.value]
         
         async with httpx.AsyncClient() as client:
@@ -578,7 +582,7 @@ async def get_current_weather(params: GetCurrentWeatherInput) -> str:
         "openWorldHint": True
     }
 )
-async def get_weather_forecast(params: GetForecastInput) -> str:
+async def get_weather_forecast(params: Optional[GetForecastInput] = None) -> str:
     """
     Obtiene la previsión meteorológica para los próximos días en una ciudad española.
     
@@ -599,6 +603,10 @@ async def get_weather_forecast(params: GetForecastInput) -> str:
             - Precipitación esperada
     """
     try:
+        # Provide defaults if params is None
+        if params is None:
+            params = GetForecastInput(city=SpanishCity.MADRID, days=5, response_format=ResponseFormat.MARKDOWN)
+        
         coords = SPANISH_CITIES[params.city.value]
         
         async with httpx.AsyncClient() as client:
@@ -635,7 +643,7 @@ async def get_weather_forecast(params: GetForecastInput) -> str:
         "openWorldHint": True
     }
 )
-async def get_retail_weather_insights(params: GetRetailInsightsInput) -> str:
+async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] = None) -> str:
     """
     Analiza el tiempo previsto y proporciona recomendaciones específicas para retail de moda.
     
@@ -664,6 +672,10 @@ async def get_retail_weather_insights(params: GetRetailInsightsInput) -> str:
             - Desglose día por día
     """
     try:
+        # Provide defaults if params is None
+        if params is None:
+            params = GetRetailInsightsInput(city=SpanishCity.MADRID, days=5)
+        
         coords = SPANISH_CITIES[params.city.value]
         
         # Get forecast data
