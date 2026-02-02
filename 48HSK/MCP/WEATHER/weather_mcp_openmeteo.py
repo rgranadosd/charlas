@@ -543,6 +543,7 @@ async def get_current_weather(params: Optional[GetCurrentWeatherInput] = None) -
         str: Datos del tiempo actual en el formato solicitado
     """
     try:
+        logger.info(f"🔍 get_current_weather called with params: {params}")
         # Provide defaults if params is None
         if params is None:
             params = GetCurrentWeatherInput(city=SpanishCity.MADRID, response_format=ResponseFormat.MARKDOWN)
@@ -603,6 +604,7 @@ async def get_weather_forecast(params: Optional[GetForecastInput] = None) -> str
             - Precipitación esperada
     """
     try:
+        logger.info(f"🔍 get_weather_forecast called with params: {params}")
         # Provide defaults if params is None
         if params is None:
             params = GetForecastInput(city=SpanishCity.MADRID, days=5, response_format=ResponseFormat.MARKDOWN)
@@ -672,6 +674,7 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
             - Desglose día por día
     """
     try:
+        logger.info(f"🔍 get_retail_weather_insights called with params: {params}")
         # Provide defaults if params is None
         if params is None:
             params = GetRetailInsightsInput(city=SpanishCity.MADRID, days=5)
