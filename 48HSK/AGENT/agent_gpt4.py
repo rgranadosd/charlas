@@ -866,10 +866,10 @@ class WeatherPlugin:
     """Plugin para interactuar con el MCP Weather a través de WSO2 APIM"""
     
     def __init__(self, force_auth=False):
-        self.oauth = OAuthClient(force_auth=force_auth)
-        self._token_initialized = False
-        self._user_permissions = set()
-        self._force_auth = force_auth
+        # Weather MCP usa Client Credentials, no requiere autenticación de usuario
+        # Las credenciales se toman de WSO2_APIM_CONSUMER_KEY/SECRET
+        self._token_cache = None
+        self._token_expires_at = 0
         
         # URL del MCP Weather a través de APIM
         self.mcp_base_url = os.getenv("WSO2_WEATHER_MCP_URL", "https://localhost:9453/weather-mcp/1.0.0")
@@ -877,59 +877,28 @@ class WeatherPlugin:
         if DEBUG_MODE:
             print(Colors.cyan(f"[DEBUG] WeatherPlugin inicializado - URL: {self.mcp_base_url}"))
     
-    def _get_token(self):
-        """Obtener token OAuth para acceder al MCP a través de APIM"""
-        if not self._token_initialized or self._force_auth:
-            if self._force_auth:
-                if _auth_trace_enabled():
-                    print(Colors.debug("🔄 Forzando nueva autenticación para Weather MCP..."))
-                self._user_permissions = set()
-            else:
-                if _auth_trace_enabled():
-                    print(Colors.debug("🔐 Autenticación OAuth para Weather MCP..."))
-            
-            self._token_initialized = True
-            token = self.oauth.ensure_token()
-            
-            if not token:
-                print(Colors.red("❌ No se pudo obtener token OAuth para Weather MCP."))
-                self._user_permissions = set()
-                return None
-            
-            self._force_auth = False
-            try:
-                self.oauth.store.force_auth = False
-            except Exception:
-                pass
-            
-            # Cargar permisos del usuario
-            if hasattr(OAuthCallbackHandler, 'user_permissions') and OAuthCallbackHandler.user_permissions is not None:
-                self._user_permissions = OAuthCallbackHandler.user_permissions
-                if DEBUG_MODE and self._user_permissions:
-                    print(Colors.green(f"🔑 Permisos Weather MCP: {sorted(self._user_permissions)}"))
-            
+    def _get_apim_token(self):
+        """Obtener token OAuth2 usando Client Credentials (mismo método que el Gateway)"""
+        # Reusar token si todavía es válido
+        now = time.time()
+        if self._token_cache and now < (self._token_expires_at - 30):
+            return self._token_cache
+        
+        # Obtener nuevo token
+        try:
+            from oauth2_apim import _fetch_oauth2_token_sync
+            token, expires_in = _fetch_oauth2_token_sync()
+            self._token_cache = token
+            self._token_expires_at = time.time() + expires_in
             return token
-        
-        return self.oauth.ensure_token()
-    
-    def _has_permission(self, required_permission):
-        """Verificar si el usuario tiene un permiso específico"""
-        return required_permission in self._user_permissions
-    
-    def _check_permission(self, required_permission, action_name):
-        """Verificar permiso y retornar mensaje de error si no lo tiene"""
-        if not self._token_initialized:
-            token = self._get_token()
-            if not token:
-                return Colors.red(f"Necesitas iniciar sesión para {action_name}.")
-        
-        if not self._has_permission(required_permission):
-            return Colors.red(f"No tienes permisos para {action_name}.")
-        return None
+        except Exception as e:
+            if DEBUG_MODE:
+                print(Colors.red(f"Error obteniendo token APIM: {e}"))
+            return None
     
     def _call_mcp(self, tool_name: str, params: dict = None):
         """Llamar a una herramienta del MCP a través de APIM"""
-        token = self._get_token()
+        token = self._get_apim_token()
         if not token:
             return {"error": "No se pudo obtener token de autenticación"}
         
@@ -943,6 +912,7 @@ class WeatherPlugin:
         try:
             if DEBUG_MODE:
                 print(Colors.cyan(f"[MCP] Llamando a {tool_name} con params: {params}"))
+                print(Colors.cyan(f"[MCP] URL: {url}"))
             
             response = requests.post(
                 url,
@@ -950,6 +920,9 @@ class WeatherPlugin:
                 json={"params": params or {}},
                 verify=False  # Para localhost con certificados self-signed
             )
+            
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[MCP] Status: {response.status_code}"))
             
             if response.status_code == 200:
                 return response.json()
@@ -975,11 +948,6 @@ class WeatherPlugin:
     )
     def get_current_weather(self, city: str = "madrid"):
         """Obtiene el clima actual de una ciudad española"""
-        # Verificar permisos
-        permission_error = self._check_permission("View Weather", "consultar el clima")
-        if permission_error:
-            return permission_error
-        
         result = self._call_mcp("get_current_weather", {"city": city.lower()})
         
         if "error" in result:
@@ -993,11 +961,6 @@ class WeatherPlugin:
     )
     def get_weather_forecast(self, city: str = "madrid", days: int = 5):
         """Obtiene el pronóstico del clima para los próximos días"""
-        # Verificar permisos
-        permission_error = self._check_permission("View Weather", "consultar pronósticos del clima")
-        if permission_error:
-            return permission_error
-        
         result = self._call_mcp("get_weather_forecast", {"city": city.lower(), "days": min(days, 7)})
         
         if "error" in result:
@@ -1011,11 +974,6 @@ class WeatherPlugin:
     )
     def get_retail_weather_insights(self, city: str = "madrid", days: int = 3):
         """Obtiene insights de clima para decisiones de retail"""
-        # Verificar permisos
-        permission_error = self._check_permission("View Weather", "consultar insights de retail")
-        if permission_error:
-            return permission_error
-        
         result = self._call_mcp("get_retail_weather_insights", {"city": city.lower(), "days": min(days, 7)})
         
         if "error" in result:
