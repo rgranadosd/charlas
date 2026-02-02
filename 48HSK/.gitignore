@@ -227,3 +227,12 @@ logs/
 *.tmp
 *.temp
 
+# Ignorar la carpeta de backups de bases de datos
+AGENT/backups/db/
+
+# Ignorar deployment.toml (contiene configuraciones sensibles)
+deployment.toml
+
+# Ignorar archivos de backup
+*.backup_*
+

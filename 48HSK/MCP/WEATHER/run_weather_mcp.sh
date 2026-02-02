@@ -40,7 +40,7 @@ EOL
 elif [ "$MODE" == "serve" ]; then
     # --- MODO SERVIDOR (Para WSO2) ---
     echo "🚀 Lanzando Servidor MCP HTTP Stream (Para WSO2)..."
-    echo "📡 URL para WSO2: http://$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1):8080/mcp"
+    echo "📡 URL para WSO2: http://localhost:8080/mcp"
     
     if lsof -i :8080 > /dev/null 2>&1; then
         echo "⚠️  El puerto 8080 está en uso. Matando el proceso..."

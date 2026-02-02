@@ -544,11 +544,18 @@ async def get_current_weather(params: Optional[GetCurrentWeatherInput] = None) -
     """
     try:
         logger.info(f"🔍 get_current_weather called with params: {params}")
+        logger.info(f"🔍 Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
             params = GetCurrentWeatherInput(city=SpanishCity.MADRID, response_format=ResponseFormat.MARKDOWN)
         
+        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
+        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
+        
+        # Verificar que el parámetro city se respeta correctamente
+        logger.info(f"🔍 Ciudad recibida: {params.city.value}")
+        logger.info(f"🔍 Coordenadas utilizadas: {coords}")
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -605,11 +612,14 @@ async def get_weather_forecast(params: Optional[GetForecastInput] = None) -> str
     """
     try:
         logger.info(f"🔍 get_weather_forecast called with params: {params}")
+        logger.info(f"🔍 Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
             params = GetForecastInput(city=SpanishCity.MADRID, days=5, response_format=ResponseFormat.MARKDOWN)
         
+        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
+        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -675,11 +685,14 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
     """
     try:
         logger.info(f"🔍 get_retail_weather_insights called with params: {params}")
+        logger.info(f"🔍 Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
-            params = GetRetailInsightsInput(city=SpanishCity.MADRID, days=5)
+            params = GetRetailInsightsInput(city=SpanishCity.MADRID, days=3)
         
+        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
+        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
         
         # Get forecast data
         async with httpx.AsyncClient() as client:
