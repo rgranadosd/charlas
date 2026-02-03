@@ -2238,14 +2238,15 @@ TAREA: Basándote EXCLUSIVAMENTE en el clima previsto (temperatura, lluvia, vien
 
 REGLAS DE RAZONAMIENTO ESTRICTAS:
 - Si hace calor (>22°C) y sol: priorizar ropa ligera, camisetas manga corta, vestidos, sandalias
-- Si hace frío (<15°C): priorizar SOLO abrigos, jerseys, sudaderas, pantalones largos. PROHIBIDO camisetas de manga corta.
+- Si hace frío (<15°C): priorizar SOLO abrigos, jerseys, sudaderas, pantalones largos. PROHIBIDO ABSOLUTAMENTE camisetas de manga corta.
 - Si está templado (15-22°C): chaquetas ligeras, jerseys finos, pantalones, camisas manga larga
 - Si llueve de forma SIGNIFICATIVA (>2mm/día): paraguas, chubasqueros, botas
 - Si NO llueve o la lluvia es mínima (<0.5mm): NO recomendar paraguas ni chubasqueros
 - NUNCA recomendes abrigos pesados si hace más de 18°C
-- NUNCA recomendes camisetas de manga corta si la temperatura máxima es menor de 18°C
+- NUNCA JAMÁS recomendes camisetas de manga corta si la temperatura máxima es MENOR DE 18°C
 - NUNCA recomendes ropa de verano ligera (camisetas, vestidos ligeros, sandalias) si hace menos de 18°C
 - Las camisetas SOLO son apropiadas para clima cálido (>20°C) o como complemento bajo un jersey/abrigo
+- Si el pronóstico tiene lluvia SIGNIFICATIVA (>5mm/día), NUNCA recomendes ropa ligera o de tela fina
 
 Devuelve un JSON con este formato EXACTO:
 {{
@@ -2390,6 +2391,7 @@ RESPUESTA JSON:"""
                                     f"CANDIDATOS PARA COMPLETAR (elige hasta {needed}):\n{', '.join(candidates)}\n\n"
                                     "TAREA: Selecciona productos que tengan sentido para el clima basándote en el resumen (temperatura, lluvia, viento). "
                                     "Evita productos claramente incoherentes con ese clima. Razona por sentido común, sin reglas fijas. "
+                                    "REGLA CRÍTICA: Si hace frío (temperatura máxima < 15°C), NUNCA recomiendes camisetas, vestidos ligeros o sandalias.\n"
                                     "Debes completar hasta el objetivo de 8 productos en Home Page.\n"
                                     "Devuelve SOLO los nombres EXACTOS separados por coma. Si ninguno, devuelve NINGUNO.\n"
                                     "RESPUESTA:"
@@ -2425,7 +2427,41 @@ RESPUESTA JSON:"""
                             if len(final_targets) >= target_count:
                                 break
 
-                        # PASO 3: Sincronizar Home Page con la lista final (8 productos)
+                        # PASO 3: Validación estricta de productos según clima
+                        # Extraer temperatura máxima del pronóstico (buscar varios formatos)
+                        temp_match = re.search(r"temperatura[:\s]*([0-9.]+).*?-.*?([0-9.]+).*?°?C", self._last_weather_summary, re.IGNORECASE | re.DOTALL)
+                        if temp_match:
+                            # Tomar la temperatura más alta (segundo grupo si hay rango)
+                            max_temp = float(temp_match.group(2)) if temp_match.group(2) else float(temp_match.group(1))
+                        else:
+                            # Fallback: buscar cualquier número seguido de °C o grados
+                            temps = re.findall(r"([0-9.]+)°?C", self._last_weather_summary)
+                            max_temp = max([float(t) for t in temps]) if temps else 20
+                        
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[DEBUG] Temperatura máxima detectada: {max_temp}°C"))
+                        
+                        final_targets_validated = []
+                        for p in final_targets:
+                            p_lower = p.lower()
+                            # Si hace MUCHO frío (<13°C), rechazar camisetas y ropa de verano
+                            if max_temp < 13:
+                                if any(s in p_lower for s in ["camiseta", "t-shirt"]):
+                                    if DEBUG_MODE:
+                                        print(Colors.yellow(f"[DEBUG] RECHAZADA '{p}': Camiseta con temp {max_temp}°C (demasiado frío)"))
+                                    continue
+                                if any(s in p_lower for s in ["vestido ligero", "vestido sin mangas", "sandalias"]):
+                                    if DEBUG_MODE:
+                                        print(Colors.yellow(f"[DEBUG] RECHAZADA '{p}': Ropa de verano con temp {max_temp}°C"))
+                                    continue
+                            final_targets_validated.append(p)
+                        
+                        final_targets = final_targets_validated[:target_count]
+                        
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[DEBUG] Productos validados tras clima check: {', '.join(final_targets)}"))
+
+                        # PASO 4: Sincronizar Home Page con la lista final (8 productos)
                         actuales = self.shopify_plugin._get_homepage_products()
                         actuales = actuales or []
 
