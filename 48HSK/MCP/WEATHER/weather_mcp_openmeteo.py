@@ -14,6 +14,7 @@ Author: Demo for Fashion Retail Agent
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
@@ -120,18 +121,18 @@ class ASGIAcceptHeaderWrapper:
         self.app = app
     
     async def __call__(self, scope, receive, send):
-        logger.info(f"🎯 ASGI Wrapper ejecutándose: type={scope.get('type')}, path={scope.get('path')}")
+        logger.info(f"ASGI Wrapper ejecutándose: type={scope.get('type')}, path={scope.get('path')}")
         
         if scope["type"] == "http" and scope["path"] == "/mcp":
             # Obtener headers actuales
             headers = dict(scope.get("headers", []))
             accept_header = headers.get(b"accept", b"").decode("latin1")
             
-            logger.info(f"🔍 Accept header original: '{accept_header}'")
+            logger.info(f"Accept header original: '{accept_header}'")
             
             # Si no tiene ambos tipos requeridos, inyectar el correcto
             if "application/json" not in accept_header or "text/event-stream" not in accept_header:
-                logger.warning(f"🔧 ASGI Wrapper: Accept header incorrecto: '{accept_header}' - Inyectando el correcto")
+                logger.warning(f"ASGI Wrapper: Accept header incorrecto: '{accept_header}' - Inyectando el correcto")
                 
                 # Modificar headers en scope ANTES de pasar a la app
                 new_headers = []
@@ -143,7 +144,7 @@ class ASGIAcceptHeaderWrapper:
                 new_headers.append((b"accept", b"application/json, text/event-stream"))
                 scope["headers"] = new_headers
                 
-                logger.info(f"✅ Accept header inyectado correctamente")
+                logger.info("Accept header inyectado correctamente")
         
         # Pasar el scope modificado a la aplicación original
         await self.app(scope, receive, send)
@@ -155,8 +156,8 @@ app_instance = ASGIAcceptHeaderWrapper(original_app)
 asgi_app = app_instance
 
 # Verificar que el wrapper está en su lugar
-print(f"✅ ASGI app configurada: {type(asgi_app).__name__}")
-print(f"✅ Wrapper activo: {isinstance(asgi_app, ASGIAcceptHeaderWrapper)}")
+print(f"ASGI app configurada: {type(asgi_app).__name__}")
+print(f"Wrapper activo: {isinstance(asgi_app, ASGIAcceptHeaderWrapper)}")
 
 # Open-Meteo API Configuration
 BASE_URL = "https://api.open-meteo.com/v1/forecast"
@@ -297,6 +298,10 @@ class GetRetailInsightsInput(BaseModel):
         ge=1,
         le=7
     )
+    products: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of ecommerce product names to tailor insights"
+    )
 
 
 # ============================================================================
@@ -319,24 +324,8 @@ def _handle_api_error(e: Exception) -> str:
 
 
 def _get_weather_emoji(wmo_code: int) -> str:
-    """Get emoji representation of weather condition from WMO code."""
-    if wmo_code == 0 or wmo_code == 1:
-        return "☀️"
-    elif wmo_code == 2 or wmo_code == 3:
-        return "☁️"
-    elif 45 <= wmo_code <= 48:
-        return "🌫️"
-    elif 51 <= wmo_code <= 67:
-        return "🌧️"
-    elif 71 <= wmo_code <= 77:
-        return "❄️"
-    elif 80 <= wmo_code <= 82:
-        return "🌦️"
-    elif 85 <= wmo_code <= 86:
-        return "🌨️"
-    elif wmo_code >= 95:
-        return "⛈️"
-    return "🌤️"
+    """Get weather marker (no emojis)."""
+    return ""
 
 
 def _wmo_to_condition(wmo_code: int) -> str:
@@ -450,6 +439,56 @@ def _analyze_retail_impact(temp: float, wmo_code: int, precipitation: float) -> 
     return recommendations
 
 
+_CATEGORY_KEYWORDS = {
+    "Abrigos de invierno": ["abrigo", "parka", "chaqueta", "cazadora", "anorak"],
+    "Bufandas y guantes": ["bufanda", "guante", "gorro"],
+    "Jerseys gruesos": ["jersey", "sueter", "sudadera", "sweater"],
+    "Chaquetas ligeras": ["chaqueta", "cazadora", "americana"],
+    "Jerseys finos": ["jersey", "sueter", "cardigan"],
+    "Pantalones largos": ["pantalon", "vaquero", "jean", "chino"],
+    "Camisetas de manga corta": ["camiseta", "t-shirt", "polo"],
+    "Pantalones cortos": ["short", "bermuda"],
+    "Vestidos ligeros": ["vestido"],
+    "Sandalias": ["sandalia", "chancla"],
+    "Impermeables y chubasqueros": ["impermeable", "chubasquero", "raincoat"],
+    "Botas de agua": ["bota", "botas", "agua"],
+    "Paraguas": ["paraguas", "umbrella"]
+}
+
+
+def _normalize_for_match(text: str) -> str:
+    return re.sub(r"[^a-z0-9áéíóúñü]+", " ", text.lower()).strip()
+
+
+def _extract_keywords_from_label(label: str) -> List[str]:
+    cleaned = _normalize_for_match(label)
+    parts = [p for p in cleaned.split() if p not in {"de", "y", "la", "el", "los", "las"}]
+    return parts
+
+
+def _match_products_to_suggestions(products: Optional[List[str]], suggested_labels: List[str]) -> List[str]:
+    if not products:
+        return []
+
+    normalized_products = []
+    for name in products:
+        if isinstance(name, str) and name.strip():
+            normalized_products.append((name.strip(), _normalize_for_match(name)))
+
+    matched = []
+    seen = set()
+    for label in suggested_labels:
+        keywords = _CATEGORY_KEYWORDS.get(label, _extract_keywords_from_label(label))
+        if not keywords:
+            continue
+        for original, norm in normalized_products:
+            if any(k in norm for k in keywords):
+                if original not in seen:
+                    matched.append(original)
+                    seen.add(original)
+    return matched
+
+
 def _format_current_weather_markdown(city: str, data: Dict[str, Any]) -> str:
     """Format current weather data as markdown."""
     current = data.get("current", {})
@@ -461,9 +500,7 @@ def _format_current_weather_markdown(city: str, data: Dict[str, Any]) -> str:
     wmo_code = current.get("weather_code", 0)
     
     condition = _wmo_to_condition(wmo_code)
-    emoji = _get_weather_emoji(wmo_code)
-    
-    output = f"""# Tiempo Actual en {city} {emoji}
+    output = f"""# Tiempo Actual en {city}
 
 ## Condiciones
 - **Estado**: {condition}
@@ -498,10 +535,9 @@ def _format_forecast_markdown(city: str, data: Dict[str, Any], days: int) -> str
         wmo = wmo_codes[i] if i < len(wmo_codes) else 0
         
         condition = _wmo_to_condition(wmo)
-        emoji = _get_weather_emoji(wmo)
         avg_temp = round((t_max + t_min) / 2, 1)
         
-        output += f"## {date} {emoji}\n"
+        output += f"## {date}\n"
         output += f"- **Condición predominante**: {condition}\n"
         output += f"- **Temperatura**: {t_min}°C - {t_max}°C (media: {avg_temp}°C)\n"
         
@@ -543,19 +579,19 @@ async def get_current_weather(params: Optional[GetCurrentWeatherInput] = None) -
         str: Datos del tiempo actual en el formato solicitado
     """
     try:
-        logger.info(f"🔍 get_current_weather called with params: {params}")
-        logger.info(f"🔍 Type of params: {type(params)}")
+        logger.info(f"get_current_weather called with params: {params}")
+        logger.info(f"Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
             params = GetCurrentWeatherInput(city=SpanishCity.MADRID, response_format=ResponseFormat.MARKDOWN)
         
-        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
+        logger.info(f"Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
-        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
+        logger.info(f"Coordenadas para {params.city.value}: {coords}")
         
         # Verificar que el parámetro city se respeta correctamente
-        logger.info(f"🔍 Ciudad recibida: {params.city.value}")
-        logger.info(f"🔍 Coordenadas utilizadas: {coords}")
+        logger.info(f"Ciudad recibida: {params.city.value}")
+        logger.info(f"Coordenadas utilizadas: {coords}")
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -611,15 +647,15 @@ async def get_weather_forecast(params: Optional[GetForecastInput] = None) -> str
             - Precipitación esperada
     """
     try:
-        logger.info(f"🔍 get_weather_forecast called with params: {params}")
-        logger.info(f"🔍 Type of params: {type(params)}")
+        logger.info(f"get_weather_forecast called with params: {params}")
+        logger.info(f"Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
             params = GetForecastInput(city=SpanishCity.MADRID, days=5, response_format=ResponseFormat.MARKDOWN)
         
-        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
+        logger.info(f"Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
-        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
+        logger.info(f"Coordenadas para {params.city.value}: {coords}")
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -684,15 +720,15 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
             - Desglose día por día
     """
     try:
-        logger.info(f"🔍 get_retail_weather_insights called with params: {params}")
-        logger.info(f"🔍 Type of params: {type(params)}")
+        logger.info(f"get_retail_weather_insights called with params: {params}")
+        logger.info(f"Type of params: {type(params)}")
         # Provide defaults if params is None
         if params is None:
             params = GetRetailInsightsInput(city=SpanishCity.MADRID, days=3)
         
-        logger.info(f"🔍 Ciudad solicitada: {params.city.value}")
+        logger.info(f"Ciudad solicitada: {params.city.value}")
         coords = SPANISH_CITIES[params.city.value]
-        logger.info(f"🔍 Coordenadas para {params.city.value}: {coords}")
+        logger.info(f"Coordenadas para {params.city.value}: {coords}")
         
         # Get forecast data
         async with httpx.AsyncClient() as client:
@@ -720,23 +756,29 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
         wmo_codes = daily.get("weather_code", [])[:params.days]
         
         daily_insights = []
+        use_catalog = bool(params.products)
         for i in range(min(params.days, len(dates))):
             avg_temp = round((temp_max[i] + temp_min[i]) / 2, 1) if i < len(temp_max) and i < len(temp_min) else 15
             precip = precipitation[i] if i < len(precipitation) else 0
             wmo = wmo_codes[i] if i < len(wmo_codes) else 0
             
             insights = _analyze_retail_impact(avg_temp, wmo, precip)
+            matched_products = _match_products_to_suggestions(params.products, insights["suggested_products"]) if use_catalog else []
             daily_insights.append({
                 "date": dates[i] if i < len(dates) else "Unknown",
                 "insights": insights,
+                "matched_products": matched_products,
                 "avg_temp": avg_temp,
                 "precipitation": precip
             })
         
         # Format output
         city = params.city.value
-        output = f"# 🛍️ Análisis de Retail para {city}\n\n"
+        output = f"# Análisis de Retail para {city}\n\n"
         output += f"## Resumen Ejecutivo\n\n"
+        if use_catalog:
+            catalog_count = len([p for p in (params.products or []) if isinstance(p, str) and p.strip()])
+            output += f"Catálogo recibido: {catalog_count} productos\n\n"
         
         # Aggregate recommendations
         all_products = set()
@@ -747,38 +789,46 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
         
         for day in daily_insights:
             insights = day["insights"]
-            all_products.update(insights["suggested_products"])
+            if use_catalog:
+                all_products.update(day["matched_products"])
+            else:
+                all_products.update(insights["suggested_products"])
             all_pricing.update(insights["pricing_opportunities"])
             all_marketing.update(insights["marketing_angles"])
             all_inventory.update(insights["inventory_actions"])
             all_logistics.update(insights["logistics_optimization"])
         
-        output += f"### 📦 Productos a Destacar\n"
-        for product in all_products:
-            output += f"- {product}\n"
+        output += f"### Productos a Destacar\n"
+        if all_products:
+            for product in all_products:
+                output += f"- {product}\n"
+        elif use_catalog:
+            output += "- No se encontraron productos del catálogo para estas condiciones\n"
+        else:
+            output += "- Stock general\n"
         
-        output += f"\n### 💰 Oportunidades de Pricing\n"
+        output += f"\n### Oportunidades de Pricing\n"
         if all_pricing:
             for opportunity in all_pricing:
                 output += f"- {opportunity}\n"
         else:
             output += "- Mantener precios actuales (condiciones estables)\n"
         
-        output += f"\n### 🏭 Gestión de Inventario\n"
+        output += f"\n### Gestión de Inventario\n"
         if all_inventory:
             for action in all_inventory:
                 output += f"- {action}\n"
         else:
             output += "- Mantener distribución actual de stock\n"
         
-        output += f"\n### 🚚 Optimización Logística\n"
+        output += f"\n### Optimización Logística\n"
         if all_logistics:
             for action in all_logistics:
                 output += f"- {action}\n"
         else:
             output += "- No se requieren movimientos de stock entre ubicaciones\n"
         
-        output += f"\n### 📢 Estrategias de Marketing\n"
+        output += f"\n### Estrategias de Marketing\n"
         if all_marketing:
             for strategy in all_marketing:
                 output += f"- {strategy}\n"
@@ -789,15 +839,22 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
         output += f"\n## Desglose por Día\n\n"
         for day in daily_insights:
             wmo_for_day = wmo_codes[daily_insights.index(day)] if daily_insights.index(day) < len(wmo_codes) else 0
-            emoji = _get_weather_emoji(wmo_for_day)
-            precip_emoji = " ⚠️" if day["precipitation"] > 0 else ""
+            precip_note = " (precipitación)" if day["precipitation"] > 0 else ""
             
-            output += f"### {day['date']} {emoji}{precip_emoji}\n"
+            output += f"### {day['date']}{precip_note}\n"
             output += f"- **Temperatura media**: {day['avg_temp']}°C\n"
             output += f"- **Rango**: {day['insights']['temperature_range']}\n"
             if day["insights"]["precipitation"]:
                 output += f"- **Precipitación**: Sí ({round(day['precipitation'], 1)} mm)\n"
-            output += f"\n**Productos clave**: {', '.join(day['insights']['suggested_products'][:3]) if day['insights']['suggested_products'] else 'Stock general'}\n\n"
+            if use_catalog:
+                daily_products = day["matched_products"]
+                if daily_products:
+                    product_list = ", ".join(daily_products[:3])
+                else:
+                    product_list = "Stock general (sin coincidencias en catálogo)"
+            else:
+                product_list = ", ".join(day["insights"]["suggested_products"][:3]) if day["insights"]["suggested_products"] else "Stock general"
+            output += f"\n**Productos clave**: {product_list}\n\n"
         
         return output
     
@@ -813,7 +870,7 @@ if __name__ == "__main__":
     # Modo Streamable HTTP para APIM 4.6
     # FastMCP expone automáticamente el endpoint /mcp cuando usas este transporte
     import uvicorn
-    logger.info("🚀 Starting Weather MCP Server...")
-    logger.info("📡 Health check: http://0.0.0.0:8080/health")
-    logger.info("🌤️  MCP endpoint: http://0.0.0.0:8080/mcp")
+    logger.info("Starting Weather MCP Server...")
+    logger.info("Health check: http://0.0.0.0:8080/health")
+    logger.info("MCP endpoint: http://0.0.0.0:8080/mcp")
     uvicorn.run(asgi_app, host="0.0.0.0", port=8080)

@@ -14,6 +14,7 @@ import secrets
 import hashlib
 import webbrowser
 import re
+from typing import Optional, List
 from decimal import Decimal, ROUND_HALF_UP
 from dotenv import load_dotenv
 import semantic_kernel as sk
@@ -1136,12 +1137,15 @@ class WeatherPlugin:
         name="get_retail_weather_insights",
         description="Obtiene insights de clima enfocados en retail y e-commerce para una ciudad española. Incluye recomendaciones de inventario y estrategias de marketing basadas en el pronóstico del clima."
     )
-    def get_retail_weather_insights(self, city: str = "madrid", days: int = 3):
+    def get_retail_weather_insights(self, city: str = "madrid", days: int = 3, products: Optional[List[str]] = None):
         """Obtiene insights de clima para decisiones de retail"""
         city_normalized = self._normalize_city(city)
+        params = {"city": city_normalized, "days": min(days, 7)}
+        if products:
+            params["products"] = products
         result = self._call_mcp(
             "get_retail_weather_insights",
-            {"city": city_normalized, "days": min(days, 7)}
+            params
         )
         
         if "error" in result:
@@ -1341,6 +1345,19 @@ class ShopifyPlugin:
                 lines.append(f"- ID: {p['id']} - {p['title']}{price_txt}")
             return "\n".join(lines)
         return "Error al listar"
+
+    def get_product_titles(self, limit: int = 50):
+        # Verificar permisos antes de leer productos
+        permission_error = self._check_permission("View Products", "leer productos del catálogo")
+        if permission_error:
+            return {"error": permission_error}
+
+        data = self._api("GET", f"/products.json?limit={int(limit)}")
+        if "products" in data:
+            return [p.get("title") for p in data["products"] if p.get("title")]
+        if "error" in data:
+            return {"error": data["error"]}
+        return {"error": "No se pudieron obtener productos"}
 
     @kernel_function(name="update_product_price")
     def update_product_price(self, product_id, price):
@@ -1761,13 +1778,24 @@ class Agent:
                     result = Colors.red("Plugin de clima no disponible")
             
             elif intent == "insights_retail":
-                if self.weather_plugin:
-                    # Extraer ciudad del input
-                    prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
-                    city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
-                    result = self.weather_plugin.get_retail_weather_insights(city=city)
+                # Si no puede modificar precios, devolver error de permisos directamente
+                permission_error = self.shopify_plugin._check_permission("Update Prices", "dar consejos relacionados con el tiempo")
+                if permission_error:
+                    result = permission_error
                 else:
-                    result = Colors.red("Plugin de clima no disponible")
+                    if self.weather_plugin:
+                        # Extraer ciudad del input
+                        prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
+                        city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
+                        products = None
+                        view_perm = self.shopify_plugin._check_permission("View Products", "leer productos del catálogo")
+                        if not view_perm:
+                            titles = self.shopify_plugin.get_product_titles()
+                            if isinstance(titles, list) and titles:
+                                products = titles
+                        result = self.weather_plugin.get_retail_weather_insights(city=city, products=products)
+                    else:
+                        result = Colors.red("Plugin de clima no disponible")
 
             else: result = str(await self.kernel.invoke_prompt(user_input))
 

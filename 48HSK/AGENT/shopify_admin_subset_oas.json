@@ -1,0 +1,245 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Shopify Admin API (Subset for Products)",
+    "version": "1.0.0",
+    "description": "Minimal subset of the Shopify Admin REST API used by this agent.\nBase version: 2024-01. Auth via X-Shopify-Access-Token (private app token).\n"
+  },
+  "servers": [
+    {
+      "url": "https://{shop}.myshopify.com/admin/api/2024-01",
+      "description": "Shopify store admin API",
+      "variables": {
+        "shop": {
+          "default": "rafa-ecommerce",
+          "description": "Shopify store prefix (without .myshopify.com)"
+        }
+      }
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "shopifyAccessToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Shopify-Access-Token"
+      }
+    },
+    "schemas": {
+      "ProductVariant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1234567890
+          },
+          "price": {
+            "type": "string",
+            "example": "19.99"
+          },
+          "compare_at_price": {
+            "type": "string",
+            "example": "29.99",
+            "description": "Original price before discount. Set to enable sale pricing. Use null or same as price to disable sale."
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1234567890
+          },
+          "title": {
+            "type": "string",
+            "example": "Camiseta b\u00e1sica"
+          },
+          "body_html": {
+            "type": "string",
+            "example": "Descripcion del producto"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductVariant"
+            }
+          }
+        }
+      },
+      "ProductsResponse": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            }
+          }
+        }
+      },
+      "ProductResponse": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "operationId": "listProducts",
+        "summary": "List products",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 250
+            },
+            "description": "Max products to return (Shopify default 50, max 250)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (invalid Shopify token)"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/products/{product-id}": {
+      "parameters": [
+        {
+          "name": "product-id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": "Shopify product ID"
+        }
+      ],
+      "get": {
+        "operationId": "getProductById",
+        "summary": "Get product by ID",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateProduct",
+        "summary": "Update product (title/description/variants)",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "body_html": {
+                        "type": "string"
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/ProductVariant"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "shopifyAccessToken": []
+    }
+  ]
+}

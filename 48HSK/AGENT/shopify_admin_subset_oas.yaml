@@ -29,6 +29,10 @@ components:
         price:
           type: string
           example: "19.99"
+        compare_at_price:
+          type: string
+          example: "29.99"
+          description: "Original price before discount. Set to enable sale pricing. Use null or same as price to disable sale."
     Product:
       type: object
       properties:
@@ -41,7 +45,7 @@ components:
           example: Camiseta básica
         body_html:
           type: string
-          example: "<p>Descripción del producto</p>"
+          example: "Descripcion del producto"
         variants:
           type: array
           items:
@@ -59,8 +63,9 @@ components:
         product:
           $ref: '#/components/schemas/Product'
 paths:
-  /products.json:
+  /products:
     get:
+      operationId: listProducts
       summary: List products
       security:
         - shopifyAccessToken: []
@@ -83,9 +88,9 @@ paths:
           description: Unauthorized (invalid Shopify token)
         '403':
           description: Forbidden
-  /products/{product_id}.json:
+  /products/{product-id}:
     parameters:
-      - name: product_id
+      - name: product-id
         in: path
         required: true
         schema:
@@ -93,6 +98,7 @@ paths:
           format: int64
         description: Shopify product ID
     get:
+      operationId: getProductById
       summary: Get product by ID
       security:
         - shopifyAccessToken: []
@@ -108,6 +114,7 @@ paths:
         '404':
           description: Not found
     put:
+      operationId: updateProduct
       summary: Update product (title/description/variants)
       security:
         - shopifyAccessToken: []
