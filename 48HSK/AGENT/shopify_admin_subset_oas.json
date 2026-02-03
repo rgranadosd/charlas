@@ -87,6 +87,67 @@
             "$ref": "#/components/schemas/Product"
           }
         }
+      },
+      "CustomCollection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 987654321
+          },
+          "title": {
+            "type": "string",
+            "example": "Home Page"
+          }
+        }
+      },
+      "CustomCollectionsResponse": {
+        "type": "object",
+        "properties": {
+          "custom_collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomCollection"
+            }
+          }
+        }
+      },
+      "CustomCollectionResponse": {
+        "type": "object",
+        "properties": {
+          "custom_collection": {
+            "$ref": "#/components/schemas/CustomCollection"
+          }
+        }
+      },
+      "Collect": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 111222333
+          },
+          "product_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1234567890
+          },
+          "collection_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 987654321
+          }
+        }
+      },
+      "CollectResponse": {
+        "type": "object",
+        "properties": {
+          "collect": {
+            "$ref": "#/components/schemas/Collect"
+          }
+        }
       }
     }
   },
@@ -232,6 +293,228 @@
           },
           "404": {
             "description": "Not found"
+          }
+        }
+      }
+    },
+    "/custom-collections": {
+      "get": {
+        "operationId": "listCustomCollections",
+        "summary": "List custom collections",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 250
+            },
+            "description": "Max collections to return (Shopify max 250)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCollectionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCustomCollection",
+        "summary": "Create custom collection",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "custom_collection": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCollectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/collects": {
+      "get": {
+        "operationId": "listCollects",
+        "summary": "List collects",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "collection_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Collect"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCollect",
+        "summary": "Add product to collection",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "collect": {
+                    "type": "object",
+                    "properties": {
+                      "product_id": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "collection_id": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/collects/{collect-id}": {
+      "delete": {
+        "operationId": "deleteCollect",
+        "summary": "Remove product from collection",
+        "security": [
+          {
+            "shopifyAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "collect-id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }

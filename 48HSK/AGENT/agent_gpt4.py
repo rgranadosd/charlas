@@ -77,21 +77,31 @@ class Colors:
     YELLOW = '\033[33m'
     BLUE = '\033[34m'
     CYAN = '\033[36m'
+    GRAY = '\033[90m'
+    DARK_GREEN = '\033[32;2m'
     DIM = '\033[2m'
     RESET = '\033[0m'
     
     @staticmethod
     def blue(text): return f"{Colors.BLUE}{text}{Colors.RESET}"
     @staticmethod
-    def debug(text): return f"{Colors.DIM}{Colors.CYAN}[DEBUG] {text}{Colors.RESET}"
+    def debug(text): return f"{Colors.DARK_GREEN}[DEBUG] {text}{Colors.RESET}"
     @staticmethod
     def red(text): return f"{Colors.RED}[ERROR] {text}{Colors.RESET}"
     @staticmethod
     def green(text): return f"{Colors.GREEN}[OK] {text}{Colors.RESET}"
     @staticmethod
-    def cyan(text): return f"{Colors.CYAN}{text}{Colors.RESET}"
+    def cyan(text):
+        trimmed = text.lstrip()
+        if trimmed.startswith("[DEBUG]") or trimmed.startswith("[API]"):
+            return f"{Colors.DARK_GREEN}{text}{Colors.RESET}"
+        return f"{Colors.CYAN}{text}{Colors.RESET}"
     @staticmethod
     def yellow(text): return f"{Colors.YELLOW}{text}{Colors.RESET}"
+    @staticmethod
+    def gray(text): return f"{Colors.DIM}{Colors.GRAY}{text}{Colors.RESET}"
+    @staticmethod
+    def dark_green(text): return f"{Colors.DARK_GREEN}{text}{Colors.RESET}"
 
 
 APP_NAME = "Rafa’s Agent"
@@ -282,14 +292,14 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                 if token_data and token_data.get("access_token"):
                     payload = OAuthCallbackHandler.oauth_client._decode_token_payload(token_data["access_token"])
                     if DEBUG_MODE:
-                        print(f"[DEBUG] Access Token payload: {payload}")
+                        print(Colors.dark_green(f"[DEBUG] Access Token payload: {payload}"))
                     
                     # También revisar el ID token que SÍ es JWT
                     id_token_payload = {}
                     if "id_token" in token_data:
                         id_token_payload = OAuthCallbackHandler.oauth_client._decode_token_payload(token_data["id_token"])
                         if DEBUG_MODE:
-                            print(f"[DEBUG] ID Token payload: {json.dumps(id_token_payload, indent=2)}")
+                            print(Colors.dark_green(f"[DEBUG] ID Token payload: {json.dumps(id_token_payload, indent=2)}"))
                     
                     # Intentar diferentes campos para scopes
                     scopes = payload.get("scope") or payload.get("scp") or payload.get("scopes") or ""
@@ -300,10 +310,10 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                     id_scopes = id_token_payload.get("scope") or id_token_payload.get("scp") or id_token_payload.get("scopes") or ""
                     
                     if DEBUG_MODE:
-                        print(f"[DEBUG] Scopes en token response: {token_data.get('scope', 'N/A')}")
-                        print(f"[DEBUG] Scopes en access_token: {scopes}")
-                        print(f"[DEBUG] Scopes en id_token: {id_scopes}")
-                        print(f"[DEBUG] Usuario (sub): {id_token_payload.get('sub', 'N/A')}")
+                        print(Colors.dark_green(f"[DEBUG] Scopes en token response: {token_data.get('scope', 'N/A')}"))
+                        print(Colors.dark_green(f"[DEBUG] Scopes en access_token: {scopes}"))
+                        print(Colors.dark_green(f"[DEBUG] Scopes en id_token: {id_scopes}"))
+                        print(Colors.dark_green(f"[DEBUG] Usuario (sub): {id_token_payload.get('sub', 'N/A')}"))
                     
                     OAuthCallbackHandler.scopes = scopes or id_scopes
                     OAuthCallbackHandler.access_token = token_data["access_token"]
@@ -330,7 +340,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                             
                             OAuthCallbackHandler.user_permissions = user_permissions
                             if DEBUG_MODE and user_permissions:
-                                print(f"[DEBUG] Permisos específicos: {user_permissions}")
+                                print(Colors.dark_green(f"[DEBUG] Permisos específicos: {user_permissions}"))
                         except Exception as e:
                             # Restaurar salida en caso de error
                             try:
@@ -345,7 +355,7 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                             OAuthCallbackHandler.user_permissions = set()
                     
                     if DEBUG_MODE:
-                        print(f"[DEBUG] Scopes finales extraídos: {OAuthCallbackHandler.scopes}")
+                        print(Colors.dark_green(f"[DEBUG] Scopes finales extraídos: {OAuthCallbackHandler.scopes}"))
             
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -696,7 +706,7 @@ class OAuthClient:
             parts = token.split('.')
             if len(parts) != 3:
                 if DEBUG_MODE:
-                    print(Colors.red(f"Token no tiene formato JWT válido: {len(parts)} partes"))
+                    print(Colors.cyan(f"[DEBUG] Token opaco (no JWT) - usando introspección si es necesario"))
                 return {}
             
             # Decodificar payload (agregar padding si es necesario)
@@ -714,8 +724,7 @@ class OAuthClient:
             return payload_json
         except Exception as e:
             if DEBUG_MODE:
-                print(Colors.red(f"Error al decodificar token: {e}"))
-                print(Colors.red(f"Token (primeros 50 chars): {token[:50]}..."))
+                print(Colors.cyan(f"[DEBUG] Token no decodificable como JWT: {e}"))
             return {}
 
     def _exchange_code_for_token(self, code, verifier):
@@ -898,6 +907,9 @@ class WeatherPlugin:
             "burgos": "Burgos",
             "la coruna": "La Coruña",
             "coruna": "La Coruña",
+            "buenaventura": "Buenaventura",
+            "santa cruz de tenerife": "Santa Cruz de Tenerife",
+            "tenerife": "Santa Cruz de Tenerife",
         }
         return city_map.get(normalized, city.strip().title())
     
@@ -974,7 +986,7 @@ class WeatherPlugin:
                 print(Colors.red(f"[MCP] Exception en init: {str(e)}"))
             return None
     
-    def _call_mcp(self, tool_name: str, params: dict = None):
+    def _call_mcp(self, tool_name: str, params: dict = None, _retried: bool = False):
         """Llamar a una herramienta del MCP (directo o a través de APIM)"""
         # Si la URL es localhost:8080 (directo), usar el token fijo del MCP
         # Si es APIM (8253), usar OAuth2 token
@@ -1081,6 +1093,13 @@ class WeatherPlugin:
                     return self._call_mcp(tool_name, params)  # Reintentar
                 return {"error": f"Error MCP 400: {response.text[:200]}"}
             elif response.status_code == 401:
+                if not _retried:
+                    if DEBUG_MODE:
+                        print(Colors.yellow("[MCP] Token inválido/expirado, renovando..."))
+                    self._token_cache = None
+                    self._token_expires_at = 0
+                    self._mcp_session_id = None
+                    return self._call_mcp(tool_name, params, _retried=True)
                 return {"error": "Token de autenticación inválido o expirado"}
             elif response.status_code == 403:
                 return {"error": "Sin permisos para esta operación"}
@@ -1101,10 +1120,10 @@ class WeatherPlugin:
     
     @kernel_function(
         name="get_current_weather",
-        description="Obtiene el clima actual de una ciudad española. Ciudades disponibles: madrid, barcelona, valencia, sevilla, malaga, bilbao, zaragoza, murcia, palma, las_palmas, alicante, cordoba, valladolid, vigo, gijon, la_coruna, granada, vitoria, elche, oviedo, santa_cruz_tenerife, pamplona, almeria, san_sebastian, burgos, santander, castellon, albacete, logrono, badajoz, salamanca, huelva, lleida, tarragona, leon, cadiz, jaen, orense, lugo, caceres, melilla, ceuta"
+        description="Obtiene el clima actual de una ciudad (España o Colombia). Ciudades disponibles: madrid, barcelona, valencia, sevilla, malaga, bilbao, zaragoza, murcia, palma, las_palmas, alicante, cordoba, valladolid, vigo, gijon, la_coruna, granada, vitoria, elche, oviedo, santa_cruz_tenerife, pamplona, almeria, san_sebastian, burgos, santander, castellon, albacete, logrono, badajoz, salamanca, huelva, lleida, tarragona, leon, cadiz, jaen, orense, lugo, caceres, melilla, ceuta, buenaventura"
     )
     def get_current_weather(self, city: str = "madrid"):
-        """Obtiene el clima actual de una ciudad española"""
+        """Obtiene el clima actual de una ciudad"""
         city_normalized = self._normalize_city(city)
         result = self._call_mcp(
             "get_current_weather",
@@ -1118,7 +1137,7 @@ class WeatherPlugin:
     
     @kernel_function(
         name="get_weather_forecast",
-        description="Obtiene el pronóstico del clima para los próximos días en una ciudad española. Parámetros: city (nombre de la ciudad), days (número de días, máximo 7)"
+        description="Obtiene el pronóstico del clima para los próximos días en una ciudad. Parámetros: city (nombre de la ciudad), days (número de días, máximo 7)"
     )
     def get_weather_forecast(self, city: str = "madrid", days: int = 5):
         """Obtiene el pronóstico del clima para los próximos días"""
@@ -1135,7 +1154,7 @@ class WeatherPlugin:
     
     @kernel_function(
         name="get_retail_weather_insights",
-        description="Obtiene insights de clima enfocados en retail y e-commerce para una ciudad española. Incluye recomendaciones de inventario y estrategias de marketing basadas en el pronóstico del clima."
+        description="Obtiene insights de clima enfocados en retail y e-commerce para una ciudad. Incluye recomendaciones de inventario y estrategias de marketing basadas en el pronóstico del clima."
     )
     def get_retail_weather_insights(self, city: str = "madrid", days: int = 3, products: Optional[List[str]] = None):
         """Obtiene insights de clima para decisiones de retail"""
@@ -1274,8 +1293,14 @@ class ShopifyPlugin:
         try:
             if method == 'GET': 
                 r = requests.get(url, headers=headers, verify=False)
-            else: 
+            elif method == 'POST':
+                r = requests.post(url, headers=headers, json=data, verify=False)
+            elif method == 'PUT':
                 r = requests.put(url, headers=headers, json=data, verify=False)
+            elif method == 'DELETE':
+                r = requests.delete(url, headers=headers, verify=False)
+            else:
+                return {"error": f"Método no soportado: {method}"}
             
             # Manejar errores específicos de Shopify
             if r.status_code == 401:
@@ -1327,7 +1352,7 @@ class ShopifyPlugin:
         if "product" in curr:
             title = curr["product"]["title"]
             price = curr["product"]["variants"][0]["price"]
-            return f"El precio de '{title}' es ${price}"
+            return f"El precio de '{title}' es {price}€"
         return Colors.red("Producto no encontrado")
 
     @kernel_function(name="get_products_list")
@@ -1341,7 +1366,7 @@ class ShopifyPlugin:
         if "products" in data:
             lines = []
             for p in data["products"]:
-                price_txt = f" - ${p['variants'][0]['price']}" if show_price else ""
+                price_txt = f" - {p['variants'][0]['price']}€" if show_price else ""
                 lines.append(f"- ID: {p['id']} - {p['title']}{price_txt}")
             return "\n".join(lines)
         return "Error al listar"
@@ -1374,7 +1399,7 @@ class ShopifyPlugin:
         res = self._api("PUT", f"/products/{product_id}.json", payload)
         if "product" in res:
             self.memory.remember(product_id, old, price)
-            return Colors.green(f"Precio actualizado: ${old} -> ${price}")
+            return Colors.green(f"Precio actualizado: {old}€ -> {price}€")
         return Colors.red("Error al actualizar")
 
     def update_product_price_by_percent(self, product_id: str, percent: float):
@@ -1400,8 +1425,123 @@ class ShopifyPlugin:
         res = self.update_product_price(product_id, str(new))
         # Añadir contexto útil (sin ser debug)
         if res.startswith(Colors.GREEN):
-            return Colors.green(f"Precio actualizado ({percent:+g}%): ${old_str} -> ${new} ({title})")
+            return Colors.green(f"Precio actualizado ({percent:+g}%): {old_str}€ -> {new}€ ({title})")
         return res
+
+    def _get_or_create_homepage_collection_id(self) -> Optional[str]:
+        data = self._api("GET", "/custom_collections.json?limit=250")
+        if "custom_collections" in data:
+            for c in data["custom_collections"]:
+                title = (c.get("title") or "").strip().lower()
+                if title == "home page":
+                    return str(c.get("id"))
+
+        payload = {"custom_collection": {"title": "Home Page"}}
+        created = self._api("POST", "/custom_collections.json", payload)
+        if "custom_collection" in created:
+            return str(created["custom_collection"].get("id"))
+        return None
+
+    def _get_homepage_collection_id(self) -> Optional[str]:
+        data = self._api("GET", "/custom_collections.json?limit=250")
+        if "custom_collections" in data:
+            for c in data["custom_collections"]:
+                title = (c.get("title") or "").strip().lower()
+                if title == "home page":
+                    return str(c.get("id"))
+        return None
+
+    def _get_collect_id(self, product_id: str, collection_id: str) -> Optional[str]:
+        data = self._api(
+            "GET",
+            f"/collects.json?product_id={int(product_id)}&collection_id={int(collection_id)}"
+        )
+        if "collects" in data and data["collects"]:
+            return str(data["collects"][0].get("id"))
+        return None
+
+    def _get_homepage_products(self) -> List[str]:
+        """Obtiene los nombres de los productos que ya están en la colección Home Page."""
+        collection_id = self._get_homepage_collection_id()
+        if not collection_id:
+            return []
+        
+        # Obtener todos los collects de Home Page
+        data = self._api("GET", f"/collects.json?collection_id={int(collection_id)}&limit=250")
+        if "collects" not in data:
+            return []
+        
+        product_ids = [str(c.get("product_id")) for c in data["collects"]]
+        if not product_ids:
+            return []
+        
+        # Obtener nombres de productos
+        products_data = self._api("GET", "/products.json")
+        if "products" not in products_data:
+            return []
+        
+        id_to_name = {str(p.get("id")): p.get("title") for p in products_data["products"]}
+        return [id_to_name.get(pid) for pid in product_ids if pid in id_to_name]
+
+    @kernel_function(name="feature_product_homepage")
+    def feature_product_homepage(self, product_name: str):
+        permission_error = self._check_permission("Update Descriptions", "destacar productos en Home Page")
+        if permission_error:
+            return permission_error
+
+        product_id = self.find_id_by_name(product_name)
+        if not product_id:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] Producto '{product_name}' no encontrado en catalogo"))
+            return Colors.red(f"Producto '{product_name}' no encontrado")
+
+        collection_id = self._get_or_create_homepage_collection_id()
+        if not collection_id:
+            return Colors.red("No se pudo crear u obtener la coleccion 'Home Page'")
+
+        # Verificar si ya existe en la colección ANTES de intentar añadir
+        existing_collect = self._get_collect_id(product_id, collection_id)
+        if existing_collect:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] '{product_name}' ya esta en Home Page, omitiendo"))
+            return f"'{product_name}' ya estaba en Home Page"
+
+        payload = {"collect": {"product_id": int(product_id), "collection_id": int(collection_id)}}
+        res = self._api("POST", "/collects.json", payload)
+        if "collect" in res:
+            return Colors.green(f"'{product_name}' destacado en Home Page")
+        if "error" in res:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] Error al destacar '{product_name}': {res}"))
+            return Colors.red(f"No se pudo destacar '{product_name}'")
+        return Colors.red(f"No se pudo destacar '{product_name}'")
+
+    @kernel_function(name="remove_product_homepage")
+    def remove_product_homepage(self, product_name: str):
+        permission_error = self._check_permission("Update Descriptions", "quitar productos de Home Page")
+        if permission_error:
+            return permission_error
+
+        product_id = self.find_id_by_name(product_name)
+        if not product_id:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] Producto '{product_name}' no encontrado para eliminar"))
+            return Colors.red(f"Producto '{product_name}' no encontrado")
+
+        collection_id = self._get_homepage_collection_id()
+        if not collection_id:
+            return Colors.yellow("La coleccion 'Home Page' no existe")
+
+        collect_id = self._get_collect_id(product_id, collection_id)
+        if not collect_id:
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] '{product_name}' no estaba en Home Page"))
+            return f"'{product_name}' no estaba en Home Page"
+
+        res = self._api("DELETE", f"/collects/{collect_id}.json")
+        if "error" in res:
+            return Colors.red(f"No se pudo quitar '{product_name}' de Home Page")
+        return Colors.green(f"'{product_name}' eliminado de Home Page")
 
     @kernel_function(name="update_description")
     def update_description(self, product_id, text):
@@ -1466,7 +1606,7 @@ class ShopifyPlugin:
         data = self._api("GET", "/products.json")
         if "products" in data:
             prods = sorted(data["products"], key=lambda x: float(x['variants'][0]['price']), reverse=True)
-            lines = [f"- ${p['variants'][0]['price']} - {p['title']}" for p in prods]
+            lines = [f"- {p['variants'][0]['price']}€ - {p['title']}" for p in prods]
             return "Productos ordenados (Mayor a menor):\n" + "\n".join(lines)
         return "Error"
 
@@ -1479,6 +1619,229 @@ class Agent:
         self.kernel = kernel
         self.shopify_plugin = shopify_plugin
         self.weather_plugin = weather_plugin
+        self._last_recommended_products = []
+        self._last_insights_city = None
+        self._last_weather_summary = None
+        self._last_pricing_actions = []
+        self._system_prompt = (
+            "Eres un asistente de e-commerce para gestión de tiendas Shopify. "
+            "Responde siempre en español, de forma concisa y profesional. "
+            "NUNCA uses emojis, iconos ni caracteres especiales decorativos en tus respuestas. "
+            "Usa solo texto plano."
+        )
+
+    async def _invoke_with_system(self, user_prompt: str) -> str:
+        """Invoca el modelo con el system prompt configurado."""
+        full_prompt = f"[Sistema]: {self._system_prompt}\n\n[Usuario]: {user_prompt}"
+        return str(await self.kernel.invoke_prompt(full_prompt)).strip()
+
+    def _format_retail_insights_agent(self, raw_text: str) -> str:
+        if not raw_text:
+            return raw_text
+
+        text = str(raw_text)
+        if "Análisis de Retail" not in text:
+            return raw_text
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        city = "tu ciudad"
+        for line in lines:
+            if line.startswith("# Análisis de Retail para "):
+                city = line.replace("# Análisis de Retail para ", "").strip()
+                break
+
+        sections = {
+            "Productos a Destacar": [],
+            "Oportunidades de Pricing": [],
+            "Gestión de Inventario": [],
+            "Optimización Logística": [],
+            "Estrategias de Marketing": []
+        }
+        section = None
+        days = []
+        for line in lines:
+            if line.startswith("### "):
+                title = line[4:].strip()
+                if title in sections:
+                    section = title
+                    continue
+                if title[:4].isdigit():
+                    days.append(title)
+                section = None
+                continue
+            if line.startswith("- ") and section:
+                sections[section].append(line[2:].strip())
+
+        productos = sections["Productos a Destacar"]
+        self._last_recommended_products = productos[:]
+        pricing = sections["Oportunidades de Pricing"]
+        inventario = sections["Gestión de Inventario"]
+        marketing = sections["Estrategias de Marketing"]
+
+        self._last_pricing_actions = pricing[:]
+
+        resumen = []
+        resumen.append(f"Claro. Aquí tienes el plan accionable para {city} basado en tu catálogo:")
+
+        if productos:
+            resumen.append(f"• Productos a destacar ahora: {', '.join(productos[:3])}.")
+        else:
+            resumen.append("• Productos a destacar ahora: no hay coincidencias claras en catálogo.")
+
+        if pricing:
+            resumen.append(f"• Pricing recomendado: {', '.join(pricing[:2])}.")
+
+        if inventario:
+            resumen.append(f"• Inventario: {', '.join(inventario[:2])}.")
+
+        if marketing:
+            resumen.append(f"• Marketing: {marketing[0]}.")
+
+        if days:
+            resumen.append(f"• Ventana clave: {', '.join(days[:3])}.")
+
+        resumen.append("Si quieres, preparo acciones concretas (home, pricing o campañas) sobre esos productos.")
+        return "\n".join(resumen)
+
+    async def _remove_non_sense_products(self) -> str:
+        """
+        Usa el LLM para identificar y eliminar productos YA DESTACADOS que no tienen sentido
+        para el clima actual.
+        """
+        if not self._last_weather_summary:
+            return Colors.red("No tengo contexto de clima reciente. Pideme insights primero.")
+        
+        # Obtener productos que YA están en Home Page
+        productos_actuales = self.shopify_plugin._get_homepage_products()
+        
+        if DEBUG_MODE:
+            print(Colors.cyan(f"[DEBUG] Productos actualmente en Home Page: {', '.join(productos_actuales) if productos_actuales else 'ninguno'}"))
+        
+        if not productos_actuales:
+            return "La coleccion Home Page esta vacia. No hay nada que quitar."
+        
+        # Construir lista de productos recomendados
+        recomendados_str = ', '.join(self._last_recommended_products) if self._last_recommended_products else 'ninguno'
+        
+        # Usar LLM para filtrar productos que NO tienen sentido para el clima
+        filter_prompt = (
+            f"CLIMA ACTUAL en {self._last_insights_city}:\n{self._last_weather_summary}\n\n"
+            f"PRODUCTOS ACTUALMENTE en Home Page:\n{', '.join(productos_actuales)}\n\n"
+            f"PRODUCTOS RECOMENDADOS para este clima:\n{recomendados_str}\n\n"
+            "TAREA: Analiza el clima actual y razona que productos de los ACTUALMENTE en Home Page "
+            "NO tienen sentido promocionar dadas las condiciones meteorologicas.\n\n"
+            "Razona sobre cada producto: es logico destacarlo con este clima? "
+            "Por ejemplo, si llueve no tiene sentido destacar gafas de sol. "
+            "Si hace frio no tiene sentido destacar ropa de verano ligera.\n\n"
+            "IMPORTANTE: Los productos RECOMENDADOS no deben quitarse.\n\n"
+            "Devuelve SOLO los nombres EXACTOS de productos a QUITAR, separados por coma.\n"
+            "Si todos tienen sentido para el clima, devuelve NINGUNO.\n"
+            "RESPUESTA:"
+        )
+        
+        if DEBUG_MODE:
+            print(Colors.cyan(f"[DEBUG] Prompt de filtrado:\n{filter_prompt[:500]}..."))
+        
+        filter_result = str(await self.kernel.invoke_prompt(filter_prompt)).strip()
+        
+        if DEBUG_MODE:
+            print(Colors.cyan(f"[DEBUG] Respuesta LLM productos a quitar: {filter_result}"))
+        
+        if filter_result.upper() == "NINGUNO" or not filter_result:
+            return "Todos los productos destacados tienen sentido para el clima actual. No hay nada que quitar."
+        else:
+            # Parsear productos a quitar - validar que existan en los actuales
+            productos_quitar = [p.strip() for p in filter_result.split(",") if p.strip()]
+            
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] Productos parseados a quitar: {productos_quitar}"))
+            
+            # Filtrar solo los que realmente están en Home Page (búsqueda flexible)
+            productos_validados = []
+            for p in productos_quitar:
+                for act in productos_actuales:
+                    if p.lower() in act.lower() or act.lower() in p.lower():
+                        productos_validados.append(act)  # Usar el nombre exacto de Shopify
+                        break
+            
+            if DEBUG_MODE:
+                print(Colors.cyan(f"[DEBUG] Productos validados a quitar: {productos_validados}"))
+            
+            if not productos_validados:
+                return "No se encontraron productos coincidentes para quitar de Home Page."
+            
+            responses = []
+            for name in productos_validados:
+                responses.append(self.shopify_plugin.remove_product_homepage(name))
+            return "\n".join(responses)
+
+    def _parse_percent_from_action(self, action: str) -> float:
+        if not action:
+            return 0.0
+        nums = re.findall(r"\d+(?:\.\d+)?", action)
+        percent = 0.0
+        if len(nums) >= 2 and "-" in action:
+            percent = (float(nums[0]) + float(nums[1])) / 2.0
+        elif nums:
+            percent = float(nums[0])
+        if any(k in action.lower() for k in ["bajar", "reducir", "descontar", "rebajar"]):
+            percent = -abs(percent)
+        else:
+            percent = abs(percent)
+        return percent
+
+    def _select_products_for_pricing(self, action: str, titles: list[str]) -> list[str]:
+        action_l = action.lower()
+        keyword_map = {
+            "impermeable": ["impermeable", "chubasquero", "raincoat"],
+            "abrigo": ["abrigo", "plumón", "plumon", "parka", "anorak"],
+            "verano": ["camiseta", "vestido", "sandalia", "short", "bermuda", "polo"],
+            "entretiempo": ["chaqueta", "cazadora", "jersey", "cardigan"],
+        }
+        keywords = []
+        if "imperme" in action_l:
+            keywords = keyword_map["impermeable"]
+        elif "abrigo" in action_l:
+            keywords = keyword_map["abrigo"]
+        elif "verano" in action_l:
+            keywords = keyword_map["verano"]
+        elif "entretiempo" in action_l:
+            keywords = keyword_map["entretiempo"]
+        if not keywords:
+            return []
+        matched = []
+        for t in titles:
+            t_l = t.lower()
+            if any(k in t_l for k in keywords):
+                matched.append(t)
+        return matched
+
+    def _apply_pricing_actions(self) -> str:
+        if not self._last_pricing_actions:
+            return Colors.red("No tengo recomendaciones de pricing recientes. Pideme insights primero.")
+
+        titles = self.shopify_plugin.get_product_titles()
+        if not isinstance(titles, list) or not titles:
+            return Colors.red("No pude cargar el catálogo para aplicar pricing.")
+
+        responses = []
+        applied = 0
+        for action in self._last_pricing_actions:
+            percent = self._parse_percent_from_action(action)
+            if percent == 0:
+                continue
+            products = self._select_products_for_pricing(action, titles)
+            if not products:
+                continue
+            for name in products:
+                pid = self.shopify_plugin.find_id_by_name(name)
+                if pid and str(pid).isdigit():
+                    responses.append(self.shopify_plugin.update_product_price_by_percent(pid, percent))
+                    applied += 1
+        if not responses:
+            return Colors.yellow("No encontré productos compatibles con las recomendaciones de pricing.")
+        responses.append(f"Precios actualizados en {applied} productos.")
+        return "\n".join(responses)
 
     def _clean_json(self, text):
         try:
@@ -1521,6 +1884,32 @@ class Agent:
         except Exception:
             return None
 
+    def _normalize_city_name(self, city: str) -> str:
+        if not city:
+            return "Madrid"
+        raw = city.strip().lower()
+        city_map = {
+            "madrid": "Madrid",
+            "barcelona": "Barcelona",
+            "valencia": "Valencia",
+            "sevilla": "Sevilla",
+            "zaragoza": "Zaragoza",
+            "malaga": "Málaga",
+            "málaga": "Málaga",
+            "murcia": "Murcia",
+            "bilbao": "Bilbao",
+            "alicante": "Alicante",
+            "cordoba": "Córdoba",
+            "córdoba": "Córdoba",
+            "burgos": "Burgos",
+            "la coruna": "La Coruña",
+            "la coruña": "La Coruña",
+            "santa cruz de tenerife": "Santa Cruz de Tenerife",
+            "santa cruz": "Santa Cruz de Tenerife",
+            "buenaventura": "Buenaventura",
+        }
+        return city_map.get(raw, city.strip().title())
+
     async def _extract_json(self, function_name: str, user_input: str):
         try:
             res = await self.kernel.invoke(
@@ -1542,13 +1931,17 @@ class Agent:
         try:
             # 1. CLASIFICAR INTENCIÓN (Prompt Mejorado con Weather)
             intent_prompt = (
-                "Clasifica la intención en: ['listar', 'consultar_precio', 'actualizar_precio', 'consultar_descripcion', 'descripcion', 'actualizar_titulo', 'revertir', 'contar', 'ordenar', 'clima_actual', 'pronostico_clima', 'insights_retail', 'general']\n"
+                "Clasifica la intención en: ['listar', 'consultar_precio', 'actualizar_precio', 'consultar_descripcion', 'descripcion', 'actualizar_titulo', 'revertir', 'contar', 'ordenar', 'clima_actual', 'pronostico_clima', 'insights_retail', 'consultar_destacados', 'destacar_producto', 'quitar_destacado', 'general']\n"
                 "EJEMPLOS SHOPIFY:\n"
                 "User: 'Cuanto vale la gift card?' -> {\"category\": \"consultar_precio\"}\n"
                 "User: 'Pon la Gift Card a 50' -> {\"category\": \"actualizar_precio\"}\n"
                 "User: 'Dame la descripción de la Camiseta' -> {\"category\": \"consultar_descripcion\"}\n"
                 "User: 'Actualiza la descripcion de la Camiseta a Nueva camiseta' -> {\"category\": \"descripcion\"}\n"
                 "User: 'Cambia el nombre de la Camiseta a Camiseta Apicuriosa' -> {\"category\": \"actualizar_titulo\"}\n"
+                "User: 'Qué productos tengo en destacados?' -> {\"category\": \"consultar_destacados\"}\n"
+                "User: 'Muéstrame los productos de Home Page' -> {\"category\": \"consultar_destacados\"}\n"
+                "User: 'Destaca el producto Camiseta Barcelona Skyline en Home Page' -> {\"category\": \"destacar_producto\"}\n"
+                "User: 'Quita de Home Page la Camiseta Barcelona Skyline' -> {\"category\": \"quitar_destacado\"}\n"
                 "User: 'Cuantos productos hay?' -> {\"category\": \"contar\"}\n"
                 "User: 'Dame la lista sin precios' -> {\"category\": \"listar\"}\n"
                 "User: 'Quiero ver el catálogo con precios' -> {\"category\": \"listar\"}\n"
@@ -1583,6 +1976,28 @@ class Agent:
             if any(k in u_lower for k in ["título", "titulo", "nombre", "renombra", "renombrar"]):
                 if any(v in u_lower for v in ["actualiza", "modifica", "cambia", "pon", "actualizar", "modificar", "cambiar", "renombra", "renombrar"]):
                     intent = "actualizar_titulo"
+
+            # CONSULTAR productos destacados (debe ir ANTES de destacar_producto)
+            if any(k in u_lower for k in ["destacados", "destacado", "home page", "homepage"]):
+                if any(v in u_lower for v in ["qué", "que", "cuáles", "cuales", "muestra", "muéstrame", "ver", "tengo", "hay", "lista", "dame"]):
+                    intent = "consultar_destacados"
+
+            # Destacar producto en Home Page (acción de añadir)
+            if intent != "consultar_destacados":  # Solo si no es consulta
+                if any(k in u_lower for k in ["destaca", "destacar", "highlight"]):
+                    if any(k in u_lower for k in ["producto", "productos", "product", "estos", "esos", "los que", "recomendados"]):
+                        intent = "destacar_producto"
+
+            # Actualizar destacados (batch) -> destacar_producto
+            if intent != "consultar_destacados":
+                if any(k in u_lower for k in ["actualiza", "actualizar", "actualízame", "actualizarme"]):
+                    if any(k in u_lower for k in ["destacados", "destacado", "home page", "homepage", "home"]):
+                        intent = "destacar_producto"
+
+            # Quitar producto de Home Page (solo si menciona explícitamente home/destacados)
+            if any(k in u_lower for k in ["quita", "quitar", "remove", "elimina", "saca"]):
+                if any(k in u_lower for k in ["home page", "homepage", "home", "destacado", "destacados"]):
+                    intent = "quitar_destacado"
             
             if DEBUG_MODE:
                 indicator.stop()
@@ -1631,42 +2046,45 @@ class Agent:
                 if permission_error:
                     result = permission_error
                 else:
-                    pct = _parse_percent_adjustment(user_input)
-                    if pct is not None:
-                        # Caso: "incrementa/baja X% el precio de <producto>"
-                        pref = await self._extract_json("extract_product_ref", user_input)
-                        pname = str((pref or {}).get("product") or "").strip()
-                        if not pname:
-                            # fallback: intentar al menos extraer product desde extractor de precio
-                            d2 = await self._extract_json("extract_price_args", user_input)
-                            pname = str((d2 or {}).get("product") or "").strip()
-
-                        pid = pname
-                        if pid and not pid.isdigit():
-                            found = self.shopify_plugin.find_id_by_name(pname)
-                            pid = found if found else pid
-
-                        if pid and pid.isdigit():
-                            result = self.shopify_plugin.update_product_price_by_percent(pid, pct)
-                        else:
-                            result = Colors.red("Producto no encontrado.")
+                    if any(k in u_lower for k in ["precios", "pricing"]) and any(k in u_lower for k in ["me has dicho", "como dices", "como dijiste", "recomendado", "recomendados", "según el clima", "segun el clima", "segun clima", "según clima"]):
+                        result = self._apply_pricing_actions()
                     else:
-                        # Caso clásico: el usuario da un precio absoluto
-                        data = await self._extract_json("extract_price_args", user_input)
-                        if data and data.get("product") and data.get("price"):
-                            pname = str(data.get("product")).strip()
-                            new_price = str(data.get("price")).strip()
+                        pct = _parse_percent_adjustment(user_input)
+                        if pct is not None:
+                            # Caso: "incrementa/baja X% el precio de <producto>"
+                            pref = await self._extract_json("extract_product_ref", user_input)
+                            pname = str((pref or {}).get("product") or "").strip()
+                            if not pname:
+                                # fallback: intentar al menos extraer product desde extractor de precio
+                                d2 = await self._extract_json("extract_price_args", user_input)
+                                pname = str((d2 or {}).get("product") or "").strip()
 
                             pid = pname
-                            if not pid.isdigit():
+                            if pid and not pid.isdigit():
                                 found = self.shopify_plugin.find_id_by_name(pname)
                                 pid = found if found else pid
-                            if pid.isdigit():
-                                result = self.shopify_plugin.update_product_price(pid, new_price)
+
+                            if pid and pid.isdigit():
+                                result = self.shopify_plugin.update_product_price_by_percent(pid, pct)
                             else:
                                 result = Colors.red("Producto no encontrado.")
                         else:
-                            result = Colors.red("Datos incompletos.")
+                            # Caso clásico: el usuario da un precio absoluto
+                            data = await self._extract_json("extract_price_args", user_input)
+                            if data and data.get("product") and data.get("price"):
+                                pname = str(data.get("product")).strip()
+                                new_price = str(data.get("price")).strip()
+
+                                pid = pname
+                                if not pid.isdigit():
+                                    found = self.shopify_plugin.find_id_by_name(pname)
+                                    pid = found if found else pid
+                                if pid.isdigit():
+                                    result = self.shopify_plugin.update_product_price(pid, new_price)
+                                else:
+                                    result = Colors.red("Producto no encontrado.")
+                            else:
+                                result = Colors.red("Datos incompletos.")
 
             elif intent == "descripcion":
                 # Si no puede actualizar descripciones, devolver error de permisos directamente
@@ -1759,8 +2177,9 @@ class Agent:
             elif intent == "clima_actual":
                 if self.weather_plugin:
                     # Extraer ciudad del input
-                    prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
-                    city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
+                    prompt = f"Extrae SOLO el nombre de la ciudad mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
+                    city_raw = str(await self.kernel.invoke_prompt(prompt)).strip()
+                    city = self._normalize_city_name(city_raw)
                     result = self.weather_plugin.get_current_weather(city=city)
                 else:
                     result = Colors.red("Plugin de clima no disponible")
@@ -1768,10 +2187,11 @@ class Agent:
             elif intent == "pronostico_clima":
                 if self.weather_plugin:
                     # Extraer ciudad y días del input
-                    prompt = f"Extrae la ciudad española y número de días (si se menciona) de: '{user_input}'. Devuelve JSON con {{\"city\": \"nombre\", \"days\": numero}}. Si no hay ciudad, usa 'madrid'. Si no hay días, usa 5."
+                    prompt = f"Extrae la ciudad y número de días (si se menciona) de: '{user_input}'. Devuelve JSON con {{\"city\": \"nombre\", \"days\": numero}}. Si no hay ciudad, usa 'madrid'. Si no hay días, usa 5."
                     extraction = str(await self.kernel.invoke_prompt(prompt)).strip()
                     data = self._clean_json(extraction)
-                    city = data.get("city", "madrid").lower() if data else "madrid"
+                    city_raw = data.get("city", "madrid") if data else "madrid"
+                    city = self._normalize_city_name(city_raw)
                     days = int(data.get("days", 5)) if data and data.get("days") else 5
                     result = self.weather_plugin.get_weather_forecast(city=city, days=days)
                 else:
@@ -1785,17 +2205,275 @@ class Agent:
                 else:
                     if self.weather_plugin:
                         # Extraer ciudad del input
-                        prompt = f"Extrae SOLO el nombre de la ciudad española mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
-                        city = str(await self.kernel.invoke_prompt(prompt)).strip().lower()
-                        products = None
+                        prompt = f"Extrae SOLO el nombre de la ciudad mencionada en: '{user_input}'. Si no hay ciudad, devuelve 'madrid'. Solo la ciudad, nada más."
+                        city_raw = str(await self.kernel.invoke_prompt(prompt)).strip()
+                        city = self._normalize_city_name(city_raw)
+                        
+                        # Obtener pronóstico del clima (datos crudos)
+                        weather_forecast = self.weather_plugin.get_weather_forecast(city=city, days=5)
+                        self._last_insights_city = city
+                        self._last_weather_summary = weather_forecast[:800] if weather_forecast else None
+                        
+                        # Obtener catálogo de productos
+                        products = []
                         view_perm = self.shopify_plugin._check_permission("View Products", "leer productos del catálogo")
                         if not view_perm:
                             titles = self.shopify_plugin.get_product_titles()
                             if isinstance(titles, list) and titles:
                                 products = titles
-                        result = self.weather_plugin.get_retail_weather_insights(city=city, products=products)
+                        
+                        if not products:
+                            result = Colors.red("No hay productos en el catálogo para analizar")
+                        else:
+                            # Usar LLM para razonar qué productos tienen sentido para el clima
+                            reasoning_prompt = f"""Eres un experto en retail de moda. Analiza el pronóstico del clima y el catálogo de productos para dar recomendaciones RAZONADAS.
+
+PRONÓSTICO DEL CLIMA para {city}:
+{weather_forecast}
+
+CATÁLOGO DE PRODUCTOS DISPONIBLES:
+{', '.join(products)}
+
+TAREA: Basándote EXCLUSIVAMENTE en el clima previsto (temperatura, lluvia, viento, condiciones), selecciona los productos del catálogo que tienen MÁS SENTIDO promocionar.
+
+REGLAS DE RAZONAMIENTO ESTRICTAS:
+- Si hace calor (>22°C) y sol: priorizar ropa ligera, camisetas manga corta, vestidos, sandalias
+- Si hace frío (<15°C): priorizar SOLO abrigos, jerseys, sudaderas, pantalones largos. PROHIBIDO camisetas de manga corta.
+- Si está templado (15-22°C): chaquetas ligeras, jerseys finos, pantalones, camisas manga larga
+- Si llueve de forma SIGNIFICATIVA (>2mm/día): paraguas, chubasqueros, botas
+- Si NO llueve o la lluvia es mínima (<0.5mm): NO recomendar paraguas ni chubasqueros
+- NUNCA recomendes abrigos pesados si hace más de 18°C
+- NUNCA recomendes camisetas de manga corta si la temperatura máxima es menor de 18°C
+- NUNCA recomendes ropa de verano ligera (camisetas, vestidos ligeros, sandalias) si hace menos de 18°C
+- Las camisetas SOLO son apropiadas para clima cálido (>20°C) o como complemento bajo un jersey/abrigo
+
+Devuelve un JSON con este formato EXACTO:
+{{
+    "productos_destacar": ["producto1", "producto2", ...],
+    "razon_clima": "breve explicación del clima y por qué estos productos",
+    "acciones_pricing": ["acción1", "acción2"],
+    "acciones_marketing": ["acción1"]
+}}
+
+Usa SOLO nombres EXACTOS del catálogo. Selecciona EXACTAMENTE 8 productos a destacar.
+RESPUESTA JSON:"""
+
+                            if DEBUG_MODE:
+                                print(Colors.cyan(f"[DEBUG] Prompt de razonamiento clima:\n{reasoning_prompt[:600]}..."))
+                            
+                            llm_response = str(await self.kernel.invoke_prompt(reasoning_prompt)).strip()
+                            if DEBUG_MODE:
+                                print(Colors.cyan(f"[DEBUG] Respuesta LLM razonamiento: {llm_response}"))
+                            
+                            # Parsear respuesta del LLM
+                            parsed = self._clean_json(llm_response)
+                            if parsed:
+                                productos = parsed.get("productos_destacar", [])
+                                razon = parsed.get("razon_clima", "")
+                                pricing = parsed.get("acciones_pricing", [])
+                                marketing = parsed.get("acciones_marketing", [])
+                                
+                                # Validar que los productos existen en el catálogo
+                                productos_map = {p.lower(): p for p in products}
+                                productos_validados = []
+                                for p in productos:
+                                    if p.lower() in productos_map:
+                                        productos_validados.append(productos_map[p.lower()])
+                                    else:
+                                        # Buscar coincidencia parcial
+                                        for cat_p in products:
+                                            if p.lower() in cat_p.lower() or cat_p.lower() in p.lower():
+                                                if cat_p not in productos_validados:
+                                                    productos_validados.append(cat_p)
+                                                break
+                                
+                                self._last_recommended_products = productos_validados[:]
+                                self._last_pricing_actions = pricing[:]
+                                
+                                resumen = []
+                                resumen.append(f"Plan accionable para {city} basado en el clima previsto:")
+                                resumen.append(f"• Análisis: {razon}")
+                                if productos_validados:
+                                    resumen.append(f"• Productos a destacar: {', '.join(productos_validados)}.")
+                                else:
+                                    resumen.append("• Productos a destacar: no hay coincidencias claras.")
+                                if pricing:
+                                    resumen.append(f"• Pricing: {', '.join(pricing[:2])}.")
+                                if marketing:
+                                    resumen.append(f"• Marketing: {marketing[0]}.")
+                                resumen.append("Si quieres, preparo acciones concretas (actualiza destacados, pricing).")
+                                result = "\n".join(resumen)
+                            else:
+                                # Fallback al método anterior si falla el parsing
+                                raw = self.weather_plugin.get_retail_weather_insights(city=city, products=products)
+                                result = self._format_retail_insights_agent(raw)
                     else:
                         result = Colors.red("Plugin de clima no disponible")
+
+            elif intent == "consultar_destacados":
+                # Asegurar mismos privilegios que para ver listado global
+                permission_error = self.shopify_plugin._check_permission("View Products", "consultar productos destacados")
+                if permission_error:
+                    result = permission_error
+                else:
+                    # Consultar qué productos están actualmente en Home Page
+                    productos = self.shopify_plugin._get_homepage_products()
+                    if DEBUG_MODE:
+                        print(Colors.cyan(f"[DEBUG] Consultando productos en Home Page"))
+                    if not productos:
+                        result = "La colección Home Page está vacía. No hay productos destacados actualmente."
+                    else:
+                        result = f"Productos destacados en Home Page ({len(productos)}):\n- " + "\n- ".join(productos)
+
+            elif intent == "destacar_producto":
+                u_lower = user_input.lower()
+                # Detectar referencia a productos previos (estos/esos/los productos/recomendados)
+                referencias_batch = [
+                    "estos productos", "esos productos", "estos", "esos", 
+                    "los productos", "esos que", "los que me", 
+                    "que me recomiendas", "que recomiendas", "recomendados",
+                    "los recomendados", "productos recomendados", "que me has dicho",
+                    "que has dicho", "que dijiste", "como dices", "como dijiste",
+                    "haz las acciones", "haz las acciones de destacar", "haz acciones de destacar",
+                    "haz las acciones de destacar productos", "haz acciones de destacar productos"
+                ]
+                es_batch = any(ref in u_lower for ref in referencias_batch)
+                if not es_batch:
+                    if any(k in u_lower for k in ["destacados", "destacado", "home page", "homepage", "home"]):
+                        if self._last_recommended_products:
+                            es_batch = True
+                
+                if DEBUG_MODE and es_batch:
+                    print(Colors.cyan(f"[DEBUG] Detectado comando batch"))
+                
+                if es_batch:
+                    if not self._last_recommended_products:
+                        result = Colors.red("No tengo productos recientes para destacar. Pideme insights primero.")
+                    elif not self._last_weather_summary:
+                        result = Colors.red("No tengo contexto de clima. Pideme insights primero.")
+                    else:
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[DEBUG] Productos a destacar: {', '.join(self._last_recommended_products)}"))
+                        responses = []
+                        target_count = 8
+                        recommended = []
+                        for p in self._last_recommended_products:
+                            if p not in recommended:
+                                recommended.append(p)
+                        
+                        # PASO 1: SIEMPRE limpiar productos que no tienen sentido para el clima
+                        if DEBUG_MODE:
+                            print(Colors.cyan("[DEBUG] Ejecutando limpieza de productos sin sentido para el clima..."))
+                        remove_result = await self._remove_non_sense_products()
+                        responses.append("--- ELIMINADOS DE HOME PAGE ---")
+                        responses.append(remove_result)
+                        responses.append("")
+                        responses.append("--- DESTACADOS EN HOME PAGE ---")
+
+                        # PASO 2: Preparar lista final de 8 productos
+                        if len(recommended) > target_count:
+                            recommended = recommended[:target_count]
+
+                        complement = []
+                        needed = target_count - len(recommended)
+                        if needed > 0:
+                            titles = self.shopify_plugin.get_product_titles()
+                            if isinstance(titles, list) and titles:
+                                candidates = [t for t in titles if t not in recommended]
+                            else:
+                                candidates = []
+
+                            if candidates:
+                                complement_prompt = (
+                                    f"CLIMA ACTUAL en {self._last_insights_city}:\n{self._last_weather_summary}\n\n"
+                                    f"PRODUCTOS RECOMENDADOS (prioridad):\n{', '.join(recommended)}\n\n"
+                                    f"CANDIDATOS PARA COMPLETAR (elige hasta {needed}):\n{', '.join(candidates)}\n\n"
+                                    "TAREA: Selecciona productos que tengan sentido para el clima basándote en el resumen (temperatura, lluvia, viento). "
+                                    "Evita productos claramente incoherentes con ese clima. Razona por sentido común, sin reglas fijas. "
+                                    "Debes completar hasta el objetivo de 8 productos en Home Page.\n"
+                                    "Devuelve SOLO los nombres EXACTOS separados por coma. Si ninguno, devuelve NINGUNO.\n"
+                                    "RESPUESTA:"
+                                )
+                                if DEBUG_MODE:
+                                    print(Colors.cyan(f"[DEBUG] Prompt de complementos:\n{complement_prompt[:500]}..."))
+                                complement_raw = str(await self.kernel.invoke_prompt(complement_prompt)).strip()
+                                if DEBUG_MODE:
+                                    print(Colors.cyan(f"[DEBUG] Respuesta LLM complementos: {complement_raw}"))
+
+                                if complement_raw and complement_raw.upper() != "NINGUNO":
+                                    parsed = [p.strip() for p in complement_raw.split(",") if p.strip()]
+                                    candidates_map = {c.lower(): c for c in candidates}
+                                    for item in parsed:
+                                        key = item.lower()
+                                        selected = None
+                                        if key in candidates_map:
+                                            selected = candidates_map[key]
+                                        else:
+                                            for c in candidates:
+                                                if key in c.lower() or c.lower() in key:
+                                                    selected = c
+                                                    break
+                                        if selected and selected not in complement and selected not in recommended:
+                                            complement.append(selected)
+                                        if len(complement) >= needed:
+                                            break
+
+                        final_targets = []
+                        for p in recommended + complement:
+                            if p not in final_targets:
+                                final_targets.append(p)
+                            if len(final_targets) >= target_count:
+                                break
+
+                        # PASO 3: Sincronizar Home Page con la lista final (8 productos)
+                        actuales = self.shopify_plugin._get_homepage_products()
+                        actuales = actuales or []
+
+                        # Quitar los que sobran
+                        for name in actuales:
+                            if name not in final_targets:
+                                responses.append(self.shopify_plugin.remove_product_homepage(name))
+
+                        # Añadir los que faltan
+                        for name in final_targets:
+                            responses.append(self.shopify_plugin.feature_product_homepage(name))
+
+                        responses.append("")
+                        responses.append(f"Objetivo: {target_count} productos. Final: {len(final_targets)}")
+                        result = "\n".join(responses)
+                else:
+                    prompt = (
+                        f"Extrae SOLO el nombre del producto a destacar en Home Page de: '{user_input}'. "
+                        "Devuelve solo el nombre del producto, nada más."
+                    )
+                    product_name = str(await self.kernel.invoke_prompt(prompt)).strip()
+                    if not product_name:
+                        result = Colors.red("No pude identificar el producto a destacar")
+                    else:
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[DEBUG] Producto a destacar: {product_name}"))
+                        result = self.shopify_plugin.feature_product_homepage(product_name)
+
+            elif intent == "quitar_destacado":
+                u_lower = user_input.lower()
+                # Detectar si pide quitar "los que no tengan sentido" (filtrado inteligente)
+                filtro_inteligente = any(k in u_lower for k in ["no tengan sentido", "no tiene sentido", "no encajan", "no encajen", "no correspondan", "sobran", "sobren"])
+                
+                if filtro_inteligente:
+                    result = await self._remove_non_sense_products()
+                else:
+                    # Caso normal: extraer nombre específico del producto
+                    prompt = (
+                        f"Extrae SOLO el nombre del producto a quitar de Home Page de: '{user_input}'. "
+                        "Devuelve solo el nombre del producto, nada más."
+                    )
+                    product_name = str(await self.kernel.invoke_prompt(prompt)).strip()
+                    if not product_name:
+                        result = Colors.red("No pude identificar el producto a quitar")
+                    else:
+                        if DEBUG_MODE:
+                            print(Colors.cyan(f"[DEBUG] Producto a quitar: {product_name}"))
+                        result = self.shopify_plugin.remove_product_homepage(product_name)
 
             else: result = str(await self.kernel.invoke_prompt(user_input))
 

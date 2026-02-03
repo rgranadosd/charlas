@@ -176,10 +176,12 @@ SPANISH_CITIES = {
     "Córdoba": {"lat": 37.8882, "lon": -4.7794},
     "Burgos": {"lat": 42.3439, "lon": -3.6969},
     "La Coruña": {"lat": 43.3623, "lon": -8.4115},
+    "Santa Cruz de Tenerife": {"lat": 28.4636, "lon": -16.2518},
+    "Buenaventura": {"lat": 3.8770, "lon": -77.0270},
 }
 
 # WMO Weather interpretation codes
-# https://open-meteo.com/en/docs
+# https://open-meteo.com/en/docsAge
 WMO_CODES = {
     0: "Clear",
     1: "Mainly Clear",
@@ -232,6 +234,8 @@ class SpanishCity(str, Enum):
     CORDOBA = "Córdoba"
     BURGOS = "Burgos"
     LA_CORUNA = "La Coruña"
+    SANTA_CRUZ_TENERIFE = "Santa Cruz de Tenerife"
+    BUENAVENTURA = "Buenaventura"
 
 
 # ============================================================================
@@ -339,6 +343,15 @@ def _is_rainy_condition(wmo_code: int) -> bool:
     return (51 <= wmo_code <= 67) or (80 <= wmo_code <= 82) or (wmo_code >= 95)
 
 
+# Minimum daily precipitation (mm) to consider it meaningfully rainy
+PRECIPITATION_THRESHOLD_MM = 0.5
+
+
+def _has_meaningful_precipitation(precipitation: float, wmo_code: int) -> bool:
+    """Determine whether precipitation is significant enough for rain recommendations."""
+    return precipitation >= PRECIPITATION_THRESHOLD_MM or _is_rainy_condition(wmo_code)
+
+
 def _analyze_retail_impact(temp: float, wmo_code: int, precipitation: float) -> Dict[str, Any]:
     """
     Analyze weather data to provide fashion retail insights.
@@ -353,7 +366,7 @@ def _analyze_retail_impact(temp: float, wmo_code: int, precipitation: float) -> 
     
     recommendations = {
         "temperature_range": "cold" if temp < 15 else "moderate" if temp < 25 else "hot",
-        "precipitation": precipitation > 0 or _is_rainy_condition(wmo_code),
+        "precipitation": _has_meaningful_precipitation(precipitation, wmo_code),
         "suggested_products": [],
         "pricing_opportunities": [],
         "marketing_angles": [],
@@ -408,7 +421,7 @@ def _analyze_retail_impact(temp: float, wmo_code: int, precipitation: float) -> 
         ])
     
     # Precipitation-based recommendations
-    if _is_rainy_condition(wmo_code) or precipitation > 0:
+    if _has_meaningful_precipitation(precipitation, wmo_code):
         recommendations["suggested_products"].extend([
             "Impermeables y chubasqueros",
             "Botas de agua",
@@ -451,7 +464,7 @@ _CATEGORY_KEYWORDS = {
     "Vestidos ligeros": ["vestido"],
     "Sandalias": ["sandalia", "chancla"],
     "Impermeables y chubasqueros": ["impermeable", "chubasquero", "raincoat"],
-    "Botas de agua": ["bota", "botas", "agua"],
+    "Botas de agua": ["bota", "botas", "bota de agua", "botas de agua", "rain boot", "rain boots"],
     "Paraguas": ["paraguas", "umbrella"]
 }
 
@@ -487,6 +500,59 @@ def _match_products_to_suggestions(products: Optional[List[str]], suggested_labe
                     matched.append(original)
                     seen.add(original)
     return matched
+
+
+def _matched_categories_for_suggestions(products: Optional[List[str]], suggested_labels: List[str]) -> List[str]:
+    if not products:
+        return []
+
+    normalized_products = []
+    for name in products:
+        if isinstance(name, str) and name.strip():
+            normalized_products.append(_normalize_for_match(name))
+
+    matched_labels = []
+    for label in suggested_labels:
+        keywords = _CATEGORY_KEYWORDS.get(label, _extract_keywords_from_label(label))
+        if not keywords:
+            continue
+        if any(k in norm for norm in normalized_products for k in keywords):
+            matched_labels.append(label)
+
+    return matched_labels
+
+
+def _filter_actions_by_catalog(actions: List[str], active_labels: List[str]) -> List[str]:
+    if not actions:
+        return []
+
+    active_set = set(active_labels)
+    if not active_set:
+        # No catálogo compatible con las categorías sugeridas; dejar solo acciones generales
+        filtered = []
+        for action in actions:
+            action_norm = _normalize_for_match(action)
+            mentions_category = False
+            for keywords in _CATEGORY_KEYWORDS.values():
+                if any(k in action_norm for k in keywords):
+                    mentions_category = True
+                    break
+            if not mentions_category:
+                filtered.append(action)
+        return filtered
+
+    filtered = []
+    for action in actions:
+        action_norm = _normalize_for_match(action)
+        mentioned_labels = set()
+        for label, keywords in _CATEGORY_KEYWORDS.items():
+            if any(k in action_norm for k in keywords):
+                mentioned_labels.add(label)
+
+        if not mentioned_labels or mentioned_labels.intersection(active_set):
+            filtered.append(action)
+
+    return filtered
 
 
 def _format_current_weather_markdown(city: str, data: Dict[str, Any]) -> str:
@@ -763,13 +829,27 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
             wmo = wmo_codes[i] if i < len(wmo_codes) else 0
             
             insights = _analyze_retail_impact(avg_temp, wmo, precip)
-            matched_products = _match_products_to_suggestions(params.products, insights["suggested_products"]) if use_catalog else []
+            if use_catalog:
+                active_labels = _matched_categories_for_suggestions(params.products, insights["suggested_products"])
+                filtered_suggestions = [label for label in insights["suggested_products"] if label in active_labels]
+                matched_products = _match_products_to_suggestions(params.products, filtered_suggestions)
+                insights = {
+                    **insights,
+                    "suggested_products": filtered_suggestions,
+                    "pricing_opportunities": _filter_actions_by_catalog(insights["pricing_opportunities"], active_labels),
+                    "inventory_actions": _filter_actions_by_catalog(insights["inventory_actions"], active_labels),
+                    "marketing_angles": _filter_actions_by_catalog(insights["marketing_angles"], active_labels),
+                    "logistics_optimization": _filter_actions_by_catalog(insights["logistics_optimization"], active_labels),
+                }
+            else:
+                matched_products = []
             daily_insights.append({
                 "date": dates[i] if i < len(dates) else "Unknown",
                 "insights": insights,
                 "matched_products": matched_products,
                 "avg_temp": avg_temp,
-                "precipitation": precip
+                "precipitation_mm": precip,
+                "has_precipitation": _has_meaningful_precipitation(precip, wmo)
             })
         
         # Format output
@@ -779,6 +859,13 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
         if use_catalog:
             catalog_count = len([p for p in (params.products or []) if isinstance(p, str) and p.strip()])
             output += f"Catálogo recibido: {catalog_count} productos\n\n"
+        output += f"Horizonte analizado: próximos {params.days} días\n\n"
+        if daily_insights:
+            avg_values = [day["avg_temp"] for day in daily_insights if isinstance(day.get("avg_temp"), (int, float))]
+            if avg_values:
+                temp_min = round(min(avg_values), 1)
+                temp_max = round(max(avg_values), 1)
+                output += f"Temperatura media prevista: {temp_min}°C - {temp_max}°C\n\n"
         
         # Aggregate recommendations
         all_products = set()
@@ -806,6 +893,9 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
             output += "- No se encontraron productos del catálogo para estas condiciones\n"
         else:
             output += "- Stock general\n"
+
+        if any(day["has_precipitation"] for day in daily_insights):
+            output += "\nNota: Se esperan episodios de precipitación en el horizonte analizado.\n"
         
         output += f"\n### Oportunidades de Pricing\n"
         if all_pricing:
@@ -839,13 +929,13 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
         output += f"\n## Desglose por Día\n\n"
         for day in daily_insights:
             wmo_for_day = wmo_codes[daily_insights.index(day)] if daily_insights.index(day) < len(wmo_codes) else 0
-            precip_note = " (precipitación)" if day["precipitation"] > 0 else ""
+            precip_note = " (precipitación)" if day["has_precipitation"] else ""
             
             output += f"### {day['date']}{precip_note}\n"
             output += f"- **Temperatura media**: {day['avg_temp']}°C\n"
             output += f"- **Rango**: {day['insights']['temperature_range']}\n"
             if day["insights"]["precipitation"]:
-                output += f"- **Precipitación**: Sí ({round(day['precipitation'], 1)} mm)\n"
+                output += f"- **Precipitación**: Sí ({round(day['precipitation_mm'], 1)} mm)\n"
             if use_catalog:
                 daily_products = day["matched_products"]
                 if daily_products:

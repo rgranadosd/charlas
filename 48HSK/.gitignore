@@ -236,3 +236,6 @@ deployment.toml
 # Ignorar archivos de backup
 *.backup_*
 
+48HSK_backup_*/
+**/backups/env/
+**/.env*
