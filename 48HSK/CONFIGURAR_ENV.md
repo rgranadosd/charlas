@@ -10,16 +10,19 @@ Esta guía te ayudará a recrear los archivos `.env` que necesitas para cada com
 
 **Variables necesarias:**
 ```bash
-# WSO2 API Manager
-WSO2_TOKEN_ENDPOINT=https://localhost:8243/token
-WSO2_CONSUMER_KEY=your_consumer_key_here
-WSO2_CONSUMER_SECRET=your_consumer_secret_here
+# WSO2 API Manager - Endpoints
+WSO2_TOKEN_ENDPOINT=https://localhost:9453/oauth2/token
+APIM_GATEWAY_URL=https://localhost:8253
 WSO2_GW_URL=https://localhost:8243
 
-# Shopify
+# WSO2 API Manager - Credenciales Cliente (Client Credentials)
+WSO2_CONSUMER_KEY=your_consumer_key_here
+WSO2_CONSUMER_SECRET=your_consumer_secret_here
+
+# Shopify (solo token, conexión va a través de APIM)
 SHOPIFY_API_TOKEN=your_shopify_api_token_here
 
-# OpenAI
+# OpenAI (accedido a través de APIM Gateway)
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 

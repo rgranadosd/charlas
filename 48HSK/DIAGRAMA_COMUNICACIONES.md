@@ -149,35 +149,40 @@ sequenceDiagram
 
 ---
 
-## 4. Flujo Shopify GraphQL
+## 4. Flujo Shopify GraphQL (vía APIM)
 
 ```mermaid
 sequenceDiagram
     participant Agent as 🤖 Agent
-    participant Cache as 💾 token_cache.json
+    participant APIM as 🌐 APIM Gateway<br/>:8253
     participant Shopify as 🛍️ Shopify Admin API
     
-    Agent->>Cache: 1. Lee access_token
-    activate Cache
-    Cache->>Agent: 2. Token de usuario
-    deactivate Cache
+    Agent->>Agent: 1. Construye GraphQL query<br/>query { products(first: 10) }
     
-    Note over Agent: 3. Construye GraphQL query<br/>query { products(first: 10) }
+    Agent->>APIM: 2. POST /shopify-admin/graphql.json<br/>Authorization: Bearer TOKEN<br/>Content-Type: application/json<br/>{query: "...", variables: {...}}
+    activate APIM
     
-    Agent->>Shopify: 4. POST /graphql.json<br/>Authorization: Bearer TOKEN<br/>X-Shopify-Access-Token: TOKEN<br/>Content-Type: application/json<br/>{query: "...", variables: {...}}
+    APIM->>APIM: 3. Valida Bearer token<br/>(OAuth2 Client Credentials)
+    APIM->>APIM: 4. Rate limit check
+    APIM->>APIM: 5. Analytics & Logging
+    
+    APIM->>Shopify: 6. POST /admin/api/2024-01/graphql.json<br/>X-Shopify-Access-Token: SHOPIFY_TOKEN<br/>{query: "...", variables: {...}}
     activate Shopify
     
-    Shopify->>Shopify: 5. Parse & Validate
-    Shopify->>Shopify: 6. Execute query
-    Shopify->>Shopify: 7. Aplica scopes:<br/>read_products<br/>write_products<br/>write_price<br/>update_descriptions
+    Shopify->>Shopify: 7. Parse & Validate
+    Shopify->>Shopify: 8. Execute query
+    Shopify->>Shopify: 9. Aplica scopes:<br/>read_products<br/>write_products<br/>update_descriptions
     
-    Shopify->>Agent: 8. {data: {products: [...]}}
+    Shopify->>APIM: 10. {data: {products: [...]}}
     deactivate Shopify
     
-    Agent->>Agent: 9. Parse response
-    Agent->>Agent: 10. Actualiza recomendaciones
+    APIM->>Agent: 11. Response<br/>(con headers de APIM)
+    deactivate APIM
     
-    Note over Shopify: ✅ Productos cargados
+    Agent->>Agent: 12. Parse response
+    Agent->>Agent: 13. Actualiza recomendaciones
+    
+    Note over Shopify,Agent: ✅ Productos cargados a través de APIM
 ```
 
 ---
@@ -285,11 +290,11 @@ graph LR
     Agent -->|OAuth2 PKCE<br/>:9443| IS
     Agent -->|Client Credentials<br/>:9453| APIM
     Agent -->|Bearer Token<br/>:8253| APIM
-    Agent -->|GraphQL + Token<br/>Direct| Shopify
     Agent -->|stdio/SSE| OBS_MCP
     
     APIM -->|Proxy| OpenAI
     APIM -->|Proxy| Weather
+    APIM -->|Proxy| Shopify
     
     Weather -->|HTTP GET| OpenMeteo
     
@@ -351,24 +356,44 @@ sequenceDiagram
     Note over Weather: ✅ Forecast: 25°C,<br/>0mm rain, nublado
     deactivate Weather
     
-    CLI->>Shopify: 4. GraphQL query<br/>products(first: 50)
+    CLI->>CLI: 4. Obtiene token APIM<br/>(Client Credentials)
+    
+    CLI->>APIM: 5. GraphQL query<br/>POST /shopify-admin/graphql.json
+    activate APIM
+    APIM->>Shopify: Forward request
     activate Shopify
     Note over Shopify: ✅ 50 productos
+    Shopify->>APIM: Response
     deactivate Shopify
+    APIM->>CLI: Response
+    deactivate APIM
     
-    CLI->>SK: 5. create_plan<br/>(weather, products)
+    CLI->>SK: 7. create_plan<br/>(weather, products)
     activate SK
     
-    SK->>OpenAI: 6. POST /chat/completions<br/>model: gpt-4o-mini<br/>prompt: "Con clima 25°C...<br/>recomienda 8 productos"
+    SK->>APIM: 8. POST /openaiapi/2.3.0/chat/completions<br/>model: gpt-4o-mini<br/>Bearer: TOKEN<br/>prompt: "Con clima 25°C...<br/>recomienda 8 productos"
+    activate APIM
+    
+    APIM->>OpenAI: Forward to OpenAI
     activate OpenAI
     
-    Note over OpenAI: 7. Reasoning:<br/>- Temp 25°C → ropa ligera<br/>- Sin lluvia → sin paraguas<br/>- Nublado → protección UV
+    Note over OpenAI: 9. Reasoning:<br/>- Temp 25°C → ropa ligera<br/>- Sin lluvia → sin paraguas<br/>- Nublado → protección UV
     
-    OpenAI->>SK: 8. {productos: [<br/>{nombre: "T-Shirt",<br/>razon: "Temp 25°C..."},<br/>...]}<br/>
+    OpenAI->>APIM: 10. {choices: [...]}<br/>
     deactivate OpenAI
     
-    SK->>CLI: 9. Plan completado
+    APIM->>SK: 11. Response
+    deactivate APIM
+    
+    SK->>CLI: 12. Plan completado
     deactivate SK
+    
+    CLI->>OBS: 13. setObsText<br/>cada producto
+    activate OBS
+    Note over OBS: ✅ Rótulo actualizado
+    deactivate OBS
+    
+    CLI->>U: 14SK
     
     CLI->>OBS: 10. setObsText<br/>cada producto
     activate OBS
