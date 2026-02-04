@@ -913,13 +913,12 @@ class WeatherPlugin:
         }
         return city_map.get(normalized, city.strip().title())
     
-    def _get_apim_token(self, force_refresh=False):
+    def _get_apim_token(self):
         """Obtener token OAuth2 usando Client Credentials (mismo método que el Gateway)"""
-        # Reusar token si todavía es válido (a menos que force_refresh sea True)
-        if not force_refresh:
-            now = time.time()
-            if self._token_cache and now < (self._token_expires_at - 30):
-                return self._token_cache
+        # Reusar token si todavía es válido
+        now = time.time()
+        if self._token_cache and now < (self._token_expires_at - 30):
+            return self._token_cache
         
         # Obtener nuevo token
         try:
@@ -1270,26 +1269,26 @@ class ShopifyPlugin:
         return None
 
     def _api(self, method, path, data=None):
-        # Las llamadas a Shopify van a través de APIM Gateway como proxy
-        # Esto permite: validación, rate limiting, logging centralizado, seguridad
+        # Nota: OAuth solo se usa para permisos. Las llamadas a Shopify NO deben disparar OAuth.
+        # Los permisos se validan en los métodos (vía _check_permission).
         
-        # Obtener token APIM (Client Credentials)
-        apim_token = self._get_apim_token()
-        if not apim_token:
-            return {"error": "No se pudo obtener token de APIM"}
+        # Verificar que el token de Shopify esté configurado
+        shopify_token = os.getenv("SHOPIFY_API_TOKEN")
+        if not shopify_token:
+            return {"error": "SHOPIFY_API_TOKEN no configurado en el archivo .env"}
         
-        # URL del APIM Gateway para Shopify
-        apim_gateway = os.getenv("APIM_GATEWAY_URL", "https://localhost:8253")
-        url = f"{apim_gateway}/shopify-admin{path}"
+        # Usar Shopify directamente
+        shopify_store = os.getenv("SHOPIFY_STORE_URL", "https://rafa-ecommerce.myshopify.com")
+        url = f"{shopify_store}/admin/api/2024-01{path}"
         
         headers = {
-            "Authorization": f"Bearer {apim_token}",
+            "X-Shopify-Access-Token": shopify_token,
             "Content-Type": "application/json"
         }
         
         if DEBUG_MODE:
-            print(Colors.cyan(f"[APIM PROXY] {method} {url}"))
-            print(Colors.cyan(f"[DEBUG] Token APIM configurado: {apim_token[:10]}..."))
+            print(Colors.cyan(f"[API] {method} {url}"))
+            print(Colors.cyan(f"[DEBUG] Token Shopify configurado: {shopify_token[:10]}..."))
         
         try:
             if method == 'GET': 
@@ -1303,38 +1302,26 @@ class ShopifyPlugin:
             else:
                 return {"error": f"Método no soportado: {method}"}
             
-            # Manejar errores específicos
+            # Manejar errores específicos de Shopify
             if r.status_code == 401:
-                error_msg = "Token de APIM inválido o expirado. Re-autenticando..."
-                print(Colors.yellow(f"[APIM ERROR 401] {error_msg}"))
-                # Limpiar token y reintentar
-                self._apim_token = None
-                apim_token = self._get_apim_token(force_refresh=True)
-                if apim_token:
-                    headers["Authorization"] = f"Bearer {apim_token}"
-                    if method == 'GET': 
-                        r = requests.get(url, headers=headers, verify=False)
-                    elif method == 'POST':
-                        r = requests.post(url, headers=headers, json=data, verify=False)
-                    elif method == 'PUT':
-                        r = requests.put(url, headers=headers, json=data, verify=False)
-                    elif method == 'DELETE':
-                        r = requests.delete(url, headers=headers, verify=False)
-                else:
-                    return {"error": "No se pudo re-autenticar con APIM"}
+                error_msg = "Token de Shopify inválido o expirado. Verifica SHOPIFY_API_TOKEN en .env"
+                print(Colors.red(f"[SHOPIFY ERROR 401] {error_msg}"))
+                if DEBUG_MODE:
+                    print(Colors.red(f"Response: {r.text}"))
+                return {"error": error_msg}
             elif r.status_code == 403:
-                error_msg = "Sin permisos en APIM. Verifica scopes del token de cliente."
-                print(Colors.red(f"[APIM ERROR 403] {error_msg}"))
+                error_msg = "Sin permisos para esta operación en Shopify. Verifica los scopes del token."
+                print(Colors.red(f"[SHOPIFY ERROR 403] {error_msg}"))
                 return {"error": error_msg}
             elif r.status_code not in [200, 201]:
                 if DEBUG_MODE:
                     print(Colors.red(f"API Error {r.status_code}: {r.text}"))
-                return {"error": f"APIM Gateway Error {r.status_code}: {r.text[:200]}"}
+                return {"error": f"Shopify API Error {r.status_code}: {r.text[:200]}"}
             
             return r.json() if r.content else {}
             
         except requests.exceptions.ConnectionError as e:
-            error_msg = f"No se pudo conectar a APIM Gateway: {apim_gateway}"
+            error_msg = f"No se pudo conectar a Shopify. Verifica SHOPIFY_STORE_URL: {shopify_store}"
             print(Colors.red(f"[CONNECTION ERROR] {error_msg}"))
             return {"error": error_msg}
         except Exception as e: 
