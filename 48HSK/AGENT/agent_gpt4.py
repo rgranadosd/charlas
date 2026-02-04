@@ -1620,6 +1620,7 @@ class Agent:
         self.shopify_plugin = shopify_plugin
         self.weather_plugin = weather_plugin
         self._last_recommended_products = []
+        self._last_product_reasons = {}  # Razones por producto
         self._last_insights_city = None
         self._last_weather_summary = None
         self._last_pricing_actions = []
@@ -1883,6 +1884,38 @@ class Agent:
             return None
         except Exception:
             return None
+
+    def _extract_weather_signals(self, text: Optional[str]):
+        if not text:
+            return {"max_temp": None, "min_temp": None, "max_rain": None}
+
+        def _to_float(val: str):
+            try:
+                return float(val.replace(",", "."))
+            except Exception:
+                return None
+
+        max_temps = []
+        min_temps = []
+        for m in re.findall(r"Temperatura:\s*([\-\d\.,]+)°C\s*-\s*([\-\d\.,]+)°C", text):
+            lo = _to_float(m[0])
+            hi = _to_float(m[1])
+            if lo is not None:
+                min_temps.append(lo)
+            if hi is not None:
+                max_temps.append(hi)
+
+        rains = []
+        for m in re.findall(r"Lluvia esperada:\s*([\-\d\.,]+)\s*mm", text):
+            val = _to_float(m)
+            if val is not None:
+                rains.append(val)
+
+        return {
+            "max_temp": max(max_temps) if max_temps else None,
+            "min_temp": min(min_temps) if min_temps else None,
+            "max_rain": max(rains) if rains else None,
+        }
 
     def _normalize_city_name(self, city: str) -> str:
         if not city:
@@ -2226,7 +2259,7 @@ class Agent:
                             result = Colors.red("No hay productos en el catálogo para analizar")
                         else:
                             # Usar LLM para razonar qué productos tienen sentido para el clima
-                            reasoning_prompt = f"""Eres un experto en retail de moda. Analiza el pronóstico del clima y el catálogo de productos para dar recomendaciones RAZONADAS.
+                            reasoning_prompt = f"""Eres un experto en retail de moda con sentido común.
 
 PRONÓSTICO DEL CLIMA para {city}:
 {weather_forecast}
@@ -2234,29 +2267,30 @@ PRONÓSTICO DEL CLIMA para {city}:
 CATÁLOGO DE PRODUCTOS DISPONIBLES:
 {', '.join(products)}
 
-TAREA: Basándote EXCLUSIVAMENTE en el clima previsto (temperatura, lluvia, viento, condiciones), selecciona los productos del catálogo que tienen MÁS SENTIDO promocionar.
+TAREA: Selecciona EXACTAMENTE 8 productos que tengan sentido para el clima previsto.
 
-REGLAS DE RAZONAMIENTO ESTRICTAS:
-- Si hace calor (>22°C) y sol: priorizar ropa ligera, camisetas manga corta, vestidos, sandalias
-- Si hace frío (<15°C): priorizar SOLO abrigos, jerseys, sudaderas, pantalones largos. PROHIBIDO ABSOLUTAMENTE camisetas de manga corta.
-- Si está templado (15-22°C): chaquetas ligeras, jerseys finos, pantalones, camisas manga larga
-- Si llueve de forma SIGNIFICATIVA (>2mm/día): paraguas, chubasqueros, botas
-- Si NO llueve o la lluvia es mínima (<0.5mm): NO recomendar paraguas ni chubasqueros
-- NUNCA recomendes abrigos pesados si hace más de 18°C
-- NUNCA JAMÁS recomendes camisetas de manga corta si la temperatura máxima es MENOR DE 18°C
-- NUNCA recomendes ropa de verano ligera (camisetas, vestidos ligeros, sandalias) si hace menos de 18°C
-- Las camisetas SOLO son apropiadas para clima cálido (>20°C) o como complemento bajo un jersey/abrigo
-- Si el pronóstico tiene lluvia SIGNIFICATIVA (>5mm/día), NUNCA recomendes ropa ligera o de tela fina
+REGLAS ESTRICTAS DE RAZONAMIENTO:
+1. SOLO recomienda paraguas/chubasqueros si hay LLUVIA PREVISTA (>0mm). "Nublado" NO significa lluvia.
+2. SOLO recomienda abrigos pesados si la temperatura es BAJA (<15°C).
+3. Con temperaturas 15-25°C: ropa ligera, camisetas, vestidos son apropiados.
+4. Con temperaturas >25°C: ropa muy ligera, shorts, sandalias.
+5. NO INVENTES condiciones que no están en el pronóstico.
+
+Para cada producto, da una razón BASADA EN LOS DATOS REALES del pronóstico.
 
 Devuelve un JSON con este formato EXACTO:
 {{
-    "productos_destacar": ["producto1", "producto2", ...],
-    "razon_clima": "breve explicación del clima y por qué estos productos",
+    "productos_destacar": [
+        {{"nombre": "producto1", "razon": "razón basada en datos reales del pronóstico"}},
+        {{"nombre": "producto2", "razon": "razón basada en datos reales"}},
+        ...
+    ],
+    "razon_clima": "resumen del clima REAL y estrategia",
     "acciones_pricing": ["acción1", "acción2"],
     "acciones_marketing": ["acción1"]
 }}
 
-Usa SOLO nombres EXACTOS del catálogo. Selecciona EXACTAMENTE 8 productos a destacar.
+Usa SOLO nombres EXACTOS del catálogo. EXACTAMENTE 8 productos.
 RESPUESTA JSON:"""
 
                             if DEBUG_MODE:
@@ -2269,33 +2303,54 @@ RESPUESTA JSON:"""
                             # Parsear respuesta del LLM
                             parsed = self._clean_json(llm_response)
                             if parsed:
-                                productos = parsed.get("productos_destacar", [])
+                                productos_raw = parsed.get("productos_destacar", [])
                                 razon = parsed.get("razon_clima", "")
                                 pricing = parsed.get("acciones_pricing", [])
                                 marketing = parsed.get("acciones_marketing", [])
                                 
-                                # Validar que los productos existen en el catálogo
+                                # Extraer nombres y razones de cada producto
                                 productos_map = {p.lower(): p for p in products}
                                 productos_validados = []
-                                for p in productos:
-                                    if p.lower() in productos_map:
-                                        productos_validados.append(productos_map[p.lower()])
+                                razones_productos = {}  # Guardar razón por producto
+                                
+                                for item in productos_raw:
+                                    if isinstance(item, dict):
+                                        nombre = item.get("nombre", "")
+                                        razon_prod = item.get("razon", "")
+                                    else:
+                                        nombre = str(item)
+                                        razon_prod = ""
+                                    
+                                    # Validar que existe en catálogo
+                                    if nombre.lower() in productos_map:
+                                        prod_real = productos_map[nombre.lower()]
+                                        if prod_real not in productos_validados:
+                                            productos_validados.append(prod_real)
+                                            razones_productos[prod_real] = razon_prod
                                     else:
                                         # Buscar coincidencia parcial
                                         for cat_p in products:
-                                            if p.lower() in cat_p.lower() or cat_p.lower() in p.lower():
+                                            if nombre.lower() in cat_p.lower() or cat_p.lower() in nombre.lower():
                                                 if cat_p not in productos_validados:
                                                     productos_validados.append(cat_p)
+                                                    razones_productos[cat_p] = razon_prod
                                                 break
                                 
                                 self._last_recommended_products = productos_validados[:]
+                                self._last_product_reasons = razones_productos.copy()  # Guardar razones
                                 self._last_pricing_actions = pricing[:]
                                 
                                 resumen = []
                                 resumen.append(f"Plan accionable para {city} basado en el clima previsto:")
                                 resumen.append(f"• Análisis: {razon}")
                                 if productos_validados:
-                                    resumen.append(f"• Productos a destacar: {', '.join(productos_validados)}.")
+                                    resumen.append(f"• Productos a destacar:")
+                                    for prod in productos_validados:
+                                        razon_p = razones_productos.get(prod, "")
+                                        if razon_p:
+                                            resumen.append(f"  - {prod}: {razon_p}")
+                                        else:
+                                            resumen.append(f"  - {prod}")
                                 else:
                                     resumen.append("• Productos a destacar: no hay coincidencias claras.")
                                 if pricing:
@@ -2357,125 +2412,44 @@ RESPUESTA JSON:"""
                             print(Colors.cyan(f"[DEBUG] Productos a destacar: {', '.join(self._last_recommended_products)}"))
                         responses = []
                         target_count = 8
-                        recommended = []
-                        for p in self._last_recommended_products:
-                            if p not in recommended:
-                                recommended.append(p)
                         
-                        # PASO 1: SIEMPRE limpiar productos que no tienen sentido para el clima
-                        if DEBUG_MODE:
-                            print(Colors.cyan("[DEBUG] Ejecutando limpieza de productos sin sentido para el clima..."))
-                        remove_result = await self._remove_non_sense_products()
-                        responses.append("--- ELIMINADOS DE HOME PAGE ---")
-                        responses.append(remove_result)
-                        responses.append("")
-                        responses.append("--- DESTACADOS EN HOME PAGE ---")
-
-                        # PASO 2: Preparar lista final de 8 productos
-                        if len(recommended) > target_count:
-                            recommended = recommended[:target_count]
-
-                        complement = []
-                        needed = target_count - len(recommended)
-                        if needed > 0:
-                            titles = self.shopify_plugin.get_product_titles()
-                            if isinstance(titles, list) and titles:
-                                candidates = [t for t in titles if t not in recommended]
-                            else:
-                                candidates = []
-
-                            if candidates:
-                                complement_prompt = (
-                                    f"CLIMA ACTUAL en {self._last_insights_city}:\n{self._last_weather_summary}\n\n"
-                                    f"PRODUCTOS RECOMENDADOS (prioridad):\n{', '.join(recommended)}\n\n"
-                                    f"CANDIDATOS PARA COMPLETAR (elige hasta {needed}):\n{', '.join(candidates)}\n\n"
-                                    "TAREA: Selecciona productos que tengan sentido para el clima basándote en el resumen (temperatura, lluvia, viento). "
-                                    "Evita productos claramente incoherentes con ese clima. Razona por sentido común, sin reglas fijas. "
-                                    "REGLA CRÍTICA: Si hace frío (temperatura máxima < 15°C), NUNCA recomiendes camisetas, vestidos ligeros o sandalias.\n"
-                                    "Debes completar hasta el objetivo de 8 productos en Home Page.\n"
-                                    "Devuelve SOLO los nombres EXACTOS separados por coma. Si ninguno, devuelve NINGUNO.\n"
-                                    "RESPUESTA:"
-                                )
-                                if DEBUG_MODE:
-                                    print(Colors.cyan(f"[DEBUG] Prompt de complementos:\n{complement_prompt[:500]}..."))
-                                complement_raw = str(await self.kernel.invoke_prompt(complement_prompt)).strip()
-                                if DEBUG_MODE:
-                                    print(Colors.cyan(f"[DEBUG] Respuesta LLM complementos: {complement_raw}"))
-
-                                if complement_raw and complement_raw.upper() != "NINGUNO":
-                                    parsed = [p.strip() for p in complement_raw.split(",") if p.strip()]
-                                    candidates_map = {c.lower(): c for c in candidates}
-                                    for item in parsed:
-                                        key = item.lower()
-                                        selected = None
-                                        if key in candidates_map:
-                                            selected = candidates_map[key]
-                                        else:
-                                            for c in candidates:
-                                                if key in c.lower() or c.lower() in key:
-                                                    selected = c
-                                                    break
-                                        if selected and selected not in complement and selected not in recommended:
-                                            complement.append(selected)
-                                        if len(complement) >= needed:
-                                            break
-
-                        final_targets = []
-                        for p in recommended + complement:
-                            if p not in final_targets:
-                                final_targets.append(p)
-                            if len(final_targets) >= target_count:
-                                break
-
-                        # PASO 3: Validación estricta de productos según clima
-                        # Extraer temperatura máxima del pronóstico (buscar varios formatos)
-                        temp_match = re.search(r"temperatura[:\s]*([0-9.]+).*?-.*?([0-9.]+).*?°?C", self._last_weather_summary, re.IGNORECASE | re.DOTALL)
-                        if temp_match:
-                            # Tomar la temperatura más alta (segundo grupo si hay rango)
-                            max_temp = float(temp_match.group(2)) if temp_match.group(2) else float(temp_match.group(1))
-                        else:
-                            # Fallback: buscar cualquier número seguido de °C o grados
-                            temps = re.findall(r"([0-9.]+)°?C", self._last_weather_summary)
-                            max_temp = max([float(t) for t in temps]) if temps else 20
+                        # USAR DIRECTAMENTE los productos del plan (ya fueron razonados por el LLM)
+                        final_targets = self._last_recommended_products[:target_count]
                         
                         if DEBUG_MODE:
-                            print(Colors.cyan(f"[DEBUG] Temperatura máxima detectada: {max_temp}°C"))
-                        
-                        final_targets_validated = []
-                        for p in final_targets:
-                            p_lower = p.lower()
-                            # Si hace MUCHO frío (<13°C), rechazar camisetas y ropa de verano
-                            if max_temp < 13:
-                                if any(s in p_lower for s in ["camiseta", "t-shirt"]):
-                                    if DEBUG_MODE:
-                                        print(Colors.yellow(f"[DEBUG] RECHAZADA '{p}': Camiseta con temp {max_temp}°C (demasiado frío)"))
-                                    continue
-                                if any(s in p_lower for s in ["vestido ligero", "vestido sin mangas", "sandalias"]):
-                                    if DEBUG_MODE:
-                                        print(Colors.yellow(f"[DEBUG] RECHAZADA '{p}': Ropa de verano con temp {max_temp}°C"))
-                                    continue
-                            final_targets_validated.append(p)
-                        
-                        final_targets = final_targets_validated[:target_count]
-                        
-                        if DEBUG_MODE:
-                            print(Colors.cyan(f"[DEBUG] Productos validados tras clima check: {', '.join(final_targets)}"))
+                            print(Colors.cyan(f"[DEBUG] Productos finales ({len(final_targets)}): {', '.join(final_targets)}"))
 
-                        # PASO 4: Sincronizar Home Page con la lista final (8 productos)
+                        # Sincronizar Home Page con la lista final
                         actuales = self.shopify_plugin._get_homepage_products()
                         actuales = actuales or []
 
-                        # Quitar los que sobran
+                        # Quitar los que sobran (no están en la lista final)
+                        responses.append("--- CAMBIOS EN HOME PAGE ---")
                         for name in actuales:
                             if name not in final_targets:
                                 responses.append(self.shopify_plugin.remove_product_homepage(name))
 
-                        # Añadir los que faltan
+                        # Añadir los que faltan (con razonamiento)
+                        responses.append("")
+                        responses.append("--- PRODUCTOS AÑADIDOS ---")
                         for name in final_targets:
-                            responses.append(self.shopify_plugin.feature_product_homepage(name))
+                            razon = self._last_product_reasons.get(name, "")
+                            if name not in actuales:
+                                add_result = self.shopify_plugin.feature_product_homepage(name)
+                                if razon:
+                                    responses.append(f"{add_result}")
+                                    responses.append(f"   Razón: {razon}")
+                                else:
+                                    responses.append(add_result)
+                            else:
+                                if razon:
+                                    responses.append(f"'{name}' ya estaba en Home Page")
+                                    responses.append(f"   Razón: {razon}")
+                                else:
+                                    responses.append(f"'{name}' ya estaba en Home Page")
 
                         responses.append("")
-                        responses.append(f"Objetivo: {target_count} productos. Final: {len(final_targets)}")
+                        responses.append(f"Home Page actualizado con {len(final_targets)} productos.")
                         result = "\n".join(responses)
                 else:
                     prompt = (
