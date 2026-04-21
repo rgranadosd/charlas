@@ -607,11 +607,30 @@ prompt_options = [prompt['name'] for prompt in prompts_config['prompts']]
 selected_prompt = st.selectbox(t('select_prompt'), prompt_options, index=0, key="prompt_select", on_change=clear_last_response)
 
 # Get the text for the selected prompt
-selected_prompt_text = ""
-for prompt in prompts_config['prompts']:
-    if prompt['name'] == selected_prompt:
-        selected_prompt_text = prompt['text']
-        break
+selected_prompt_config = next(
+    (prompt for prompt in prompts_config['prompts'] if prompt['name'] == selected_prompt),
+    {}
+)
+selected_prompt_text = selected_prompt_config.get('text', '')
+selected_prompt_variants = selected_prompt_config.get('variants', [])
+
+if selected_prompt_variants:
+    prompt_variant_options = [variant['name'] for variant in selected_prompt_variants]
+    selected_prompt_variant = st.selectbox(
+        t('select_prompt_variant'),
+        prompt_variant_options,
+        index=0,
+        key="prompt_variant_select",
+        on_change=clear_last_response,
+    )
+    selected_prompt_text = next(
+        (
+            variant['text']
+            for variant in selected_prompt_variants
+            if variant['name'] == selected_prompt_variant
+        ),
+        selected_prompt_text,
+    )
 
 # Use selected prompt text or fallback to default
 if selected_prompt_text:
