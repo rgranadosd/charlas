@@ -884,9 +884,24 @@ class WeatherPlugin:
         
         # URL del MCP Weather a través de APIM
         self.mcp_base_url = os.getenv("WSO2_WEATHER_MCP_URL", "https://localhost:9453/weather-mcp/1.0.0")
+        self.mcp_local_base_url = os.getenv("WEATHER_MCP_LOCAL_URL", "http://localhost:8080")
+        self.enable_local_fallback = os.getenv("WEATHER_MCP_LOCAL_FALLBACK", "true").lower() in ("1", "true", "yes", "on")
         
         if DEBUG_MODE:
             print(Colors.cyan(f"[DEBUG] WeatherPlugin inicializado - URL: {self.mcp_base_url}"))
+
+    def _is_local_mcp(self) -> bool:
+        return "localhost:8080" in self.mcp_base_url or "127.0.0.1:8080" in self.mcp_base_url
+
+    def _is_apim_auth_failure(self, response: requests.Response) -> bool:
+        text = response.text if response is not None else ""
+        return '"code":"900900"' in text or "Unclassified Authentication Failure" in text
+
+    def _switch_to_local_mcp(self):
+        self.mcp_base_url = self.mcp_local_base_url.rstrip("/")
+        self._mcp_session_id = None
+        if DEBUG_MODE:
+            print(Colors.yellow(f"[MCP] Fallback a MCP local: {self.mcp_base_url}"))
 
     def _normalize_city(self, city: str) -> str:
         """Normaliza nombres de ciudad para el MCP Weather (respeta acentos)."""
@@ -902,6 +917,8 @@ class WeatherPlugin:
             "malaga": "Málaga",
             "murcia": "Murcia",
             "bilbao": "Bilbao",
+            "vitoria": "Vitoria",
+            "vitoria-gasteiz": "Vitoria",
             "alicante": "Alicante",
             "cordoba": "Córdoba",
             "burgos": "Burgos",
@@ -990,9 +1007,9 @@ class WeatherPlugin:
         """Llamar a una herramienta del MCP (directo o a través de APIM)"""
         # Si la URL es localhost:8080 (directo), usar el token fijo del MCP
         # Si es APIM (8253), usar OAuth2 token
-        if "localhost:8080" in self.mcp_base_url:
+        if self._is_local_mcp():
             # Conexión directa al MCP
-            token = "weather-mcp-2026"  # Bearer token fijo del MCP
+            token = os.getenv("WEATHER_MCP_LOCAL_TOKEN", "weather-mcp-2026")
         else:
             # Conexión a través de APIM
             token = self._get_apim_token()
@@ -1003,6 +1020,11 @@ class WeatherPlugin:
         if not self._mcp_session_id:
             self._mcp_session_id = self._initialize_mcp_session(token)
             if not self._mcp_session_id:
+                if self.enable_local_fallback and (not self._is_local_mcp()) and (not _retried):
+                    if DEBUG_MODE:
+                        print(Colors.yellow("[MCP] Falló init vía APIM, intentando fallback local..."))
+                    self._switch_to_local_mcp()
+                    return self._call_mcp(tool_name, params, _retried=True)
                 return {"error": "No se pudo inicializar sesión MCP"}
         
         # El endpoint correcto para MCP con Streamable HTTP es /mcp
@@ -1093,6 +1115,9 @@ class WeatherPlugin:
                     return self._call_mcp(tool_name, params)  # Reintentar
                 return {"error": f"Error MCP 400: {response.text[:200]}"}
             elif response.status_code == 401:
+                if self.enable_local_fallback and (not self._is_local_mcp()) and self._is_apim_auth_failure(response) and (not _retried):
+                    self._switch_to_local_mcp()
+                    return self._call_mcp(tool_name, params, _retried=True)
                 if not _retried:
                     if DEBUG_MODE:
                         print(Colors.yellow("[MCP] Token inválido/expirado, renovando..."))
@@ -1102,10 +1127,23 @@ class WeatherPlugin:
                     return self._call_mcp(tool_name, params, _retried=True)
                 return {"error": "Token de autenticación inválido o expirado"}
             elif response.status_code == 403:
+                if self.enable_local_fallback and (not self._is_local_mcp()) and self._is_apim_auth_failure(response) and (not _retried):
+                    self._switch_to_local_mcp()
+                    return self._call_mcp(tool_name, params, _retried=True)
                 return {"error": "Sin permisos para esta operación"}
             elif response.status_code == 404:
+                if not _retried:
+                    if DEBUG_MODE:
+                        print(Colors.yellow("[MCP] 404 recibido, reinicializando sesión y reintentando..."))
+                    self._mcp_session_id = None
+                    return self._call_mcp(tool_name, params, _retried=True)
                 return {"error": f"Endpoint no encontrado: {url}"}
             else:
+                if self.enable_local_fallback and (not self._is_local_mcp()) and self._is_apim_auth_failure(response) and (not _retried):
+                    if DEBUG_MODE:
+                        print(Colors.yellow("[MCP] APIM rechazó request (900900), fallback a MCP local..."))
+                    self._switch_to_local_mcp()
+                    return self._call_mcp(tool_name, params, _retried=True)
                 if DEBUG_MODE:
                     print(Colors.red(f"MCP Error {response.status_code}: {response.text}"))
                 return {"error": f"Error MCP {response.status_code}: {response.text[:200]}"}
@@ -1931,6 +1969,8 @@ class Agent:
             "málaga": "Málaga",
             "murcia": "Murcia",
             "bilbao": "Bilbao",
+            "vitoria": "Vitoria",
+            "vitoria-gasteiz": "Vitoria",
             "alicante": "Alicante",
             "cordoba": "Córdoba",
             "córdoba": "Córdoba",

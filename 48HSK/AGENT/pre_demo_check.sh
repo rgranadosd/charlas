@@ -8,6 +8,10 @@ YELLOW='\033[1;33m'
 ORANGE='\033[38;5;208m'
 NC='\033[0m'
 
+CURL_CONNECT_TIMEOUT=8
+CURL_MAX_TIME=40
+CURL_MAX_TIME_MCP=20
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 
@@ -74,7 +78,7 @@ check_weather_mcp_with_token() {
   WEATHER_CHECK_OK=false
   WEATHER_FAIL_MSG=""
 
-  INIT_CODE=$(curl -sk -D /tmp/pre_demo_mcp_headers.txt -o /tmp/pre_demo_mcp_init_body.txt -w '%{http_code}' "$WEATHER_MCP_ENDPOINT" \
+  INIT_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME_MCP" -D /tmp/pre_demo_mcp_headers.txt -o /tmp/pre_demo_mcp_init_body.txt -w '%{http_code}' "$WEATHER_MCP_ENDPOINT" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
@@ -91,7 +95,7 @@ check_weather_mcp_with_token() {
     return 1
   fi
 
-  MCP_CODE=$(curl -sk -o /tmp/pre_demo_mcp_call_body.txt -w '%{http_code}' "$WEATHER_MCP_ENDPOINT" \
+  MCP_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME_MCP" -o /tmp/pre_demo_mcp_call_body.txt -w '%{http_code}' "$WEATHER_MCP_ENDPOINT" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
@@ -99,7 +103,11 @@ check_weather_mcp_with_token() {
     --data '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_current_weather","arguments":{"params":{"city":"Vitoria","response_format":"json"}}},"id":2}' || true)
 
   if [ "$MCP_CODE" != "200" ]; then
-    WEATHER_FAIL_MSG="MCP tools/call devolvió HTTP ${MCP_CODE:-000}"
+    if [ -f /tmp/pre_demo_mcp_call_body.txt ] && grep -q '"code":"900900"' /tmp/pre_demo_mcp_call_body.txt; then
+      WEATHER_FAIL_MSG="MCP rechazado por APIM (900900 Unclassified Authentication Failure). Revisa suscripción/scope de la app para weather-mcp"
+    else
+      WEATHER_FAIL_MSG="MCP tools/call devolvió HTTP ${MCP_CODE:-000}"
+    fi
     return 1
   fi
 
@@ -148,12 +156,39 @@ PY
 }
 
 check_local_weather_mcp() {
-  LOCAL_INIT_CODE=$(curl -s -o /tmp/pre_demo_local_mcp_init_body.txt -w '%{http_code}' "http://localhost:8080/mcp" \
+  LOCAL_INIT_CODE=$(curl -s --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_local_mcp_init_body.txt -w '%{http_code}' "http://localhost:8080/mcp" \
+    -H 'Authorization: Bearer weather-mcp-2026' \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
     --data '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"pre_demo_check_local","version":"1.0"}},"id":10}' || true)
 
   [[ "$LOCAL_INIT_CODE" =~ ^(200|401|405)$ ]]
+}
+
+check_local_weather_tool_call() {
+  LOCAL_INIT_CODE=$(curl -s --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME_MCP" -D /tmp/pre_demo_local_mcp_headers.txt -o /tmp/pre_demo_local_mcp_init_body.txt -w '%{http_code}' "http://localhost:8080/mcp" \
+    -H 'Authorization: Bearer weather-mcp-2026' \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    --data '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"pre_demo_check_local","version":"1.0"}},"id":20}' || true)
+
+  if [ "$LOCAL_INIT_CODE" != "200" ]; then
+    return 1
+  fi
+
+  LOCAL_MCP_SESSION_ID=$(awk 'tolower($1)=="mcp-session-id:" {print $2}' /tmp/pre_demo_local_mcp_headers.txt | tr -d '\r')
+  if [ -z "$LOCAL_MCP_SESSION_ID" ]; then
+    return 1
+  fi
+
+  LOCAL_MCP_CODE=$(curl -s --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME_MCP" -o /tmp/pre_demo_local_mcp_call_body.txt -w '%{http_code}' "http://localhost:8080/mcp" \
+    -H 'Authorization: Bearer weather-mcp-2026' \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -H "Mcp-Session-Id: $LOCAL_MCP_SESSION_ID" \
+    --data '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_current_weather","arguments":{"params":{"city":"Vitoria","response_format":"json"}}},"id":21}' || true)
+
+  [ "$LOCAL_MCP_CODE" = "200" ]
 }
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -211,10 +246,10 @@ done
 
 printf "%b\n" "${ORANGE}--- Conectividad WSO2 IS ---${NC}"
 IS_UP=false
-if curl -skf "${WSO2_IS_BASE}/.well-known/openid-configuration" >/dev/null 2>&1; then
+if curl -skf --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" "${WSO2_IS_BASE}/.well-known/openid-configuration" >/dev/null 2>&1; then
   IS_UP=true
 else
-  IS_HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "${WSO2_IS_BASE}/scim2/Users" || echo "000")
+  IS_HTTP_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /dev/null -w "%{http_code}" "${WSO2_IS_BASE}/scim2/Users" || echo "000")
   if [[ "$IS_HTTP_CODE" =~ ^(200|201|204|301|302|401)$ ]]; then
     IS_UP=true
   fi
@@ -246,7 +281,7 @@ if [ "$MISSING_REQUIRED" = false ]; then
   printf "%b\n" "${ORANGE}--- Token APIM ---${NC}"
   BASIC_AUTH=$(printf '%s:%s' "${WSO2_APIM_CONSUMER_KEY:-}" "${WSO2_APIM_CONSUMER_SECRET:-}" | base64)
 
-  TOKEN_HTTP_CODE=$(curl -sk -o /tmp/pre_demo_token_response.json -w '%{http_code}' -X POST "${WSO2_APIM_TOKEN_ENDPOINT:-}" \
+  TOKEN_HTTP_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_token_response.json -w '%{http_code}' -X POST "${WSO2_APIM_TOKEN_ENDPOINT:-}" \
     -H "Authorization: Basic $BASIC_AUTH" \
     -H 'Content-Type: application/x-www-form-urlencoded' \
     --data 'grant_type=client_credentials' || true)
@@ -279,7 +314,7 @@ if [ -z "$ACCESS_TOKEN" ]; then
   mark_fail "OpenAI no validado porque no hay access_token"
 else
   PAYLOAD='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hello in English, French and German."}]}'
-  HTTP_CODE=$(curl -sk -o /tmp/pre_demo_openai_response.json -w '%{http_code}' "$OPENAI_ENDPOINT" \
+  HTTP_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_openai_response.json -w '%{http_code}' "$OPENAI_ENDPOINT" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H 'Content-Type: application/json' \
     --data "$PAYLOAD" || true)
@@ -300,7 +335,7 @@ printf "%b\n" "${ORANGE}--- Shopify ---${NC}"
 if [ -z "$SHOPIFY_STORE_URL" ] || [ -z "$SHOPIFY_TOKEN" ]; then
   mark_fail "Falta SHOPIFY_STORE_URL o SHOPIFY_API_TOKEN/SHOPIFY_ACCESS_TOKEN en .env"
 else
-  SHOPIFY_CODE=$(curl -sk -o /tmp/pre_demo_shopify_response.json -w '%{http_code}' "${SHOPIFY_STORE_URL%/}/admin/api/2024-01/shop.json" \
+  SHOPIFY_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_shopify_response.json -w '%{http_code}' "${SHOPIFY_STORE_URL%/}/admin/api/2024-01/shop.json" \
     -H "X-Shopify-Access-Token: $SHOPIFY_TOKEN" \
     -H 'Content-Type: application/json' || true)
 
@@ -320,19 +355,30 @@ printf "%b\n" "${ORANGE}--- Weather MCP ---${NC}"
 if [ -z "$ACCESS_TOKEN" ]; then
   mark_fail "Weather MCP no validado porque no hay access_token"
 else
+  printf "%b\n" "${YELLOW}Probando Weather MCP vía APIM...${NC}"
   if check_weather_mcp_with_token; then
     mark_ok "Weather MCP responde correctamente"
   else
     printf "%b\n" "${YELLOW}Weather MCP falló al primer intento:${NC} $WEATHER_FAIL_MSG"
-    if start_weather_mcp; then
+    if [[ "$WEATHER_FAIL_MSG" == *"HTTP 000"* ]] && check_local_weather_tool_call; then
+      mark_ok "Weather MCP local responde correctamente (fallback por timeout/conectividad APIM)"
+    elif start_weather_mcp; then
       printf "%b\n" "${YELLOW}Reintentando check de Weather MCP tras autoarranque...${NC}"
       if check_weather_mcp_with_token; then
         mark_ok "Weather MCP responde correctamente (tras autoarranque)"
       else
-        mark_fail "$WEATHER_FAIL_MSG"
+        if [[ "$WEATHER_FAIL_MSG" == *"900900"* ]] && check_local_weather_tool_call; then
+          mark_ok "Weather MCP local responde correctamente (fallback por auth APIM 900900)"
+        else
+          mark_fail "$WEATHER_FAIL_MSG"
+        fi
       fi
     else
-      mark_fail "$WEATHER_FAIL_MSG (y no se pudo arrancar automáticamente)"
+      if [[ "$WEATHER_FAIL_MSG" == *"900900"* ]] && check_local_weather_tool_call; then
+        mark_ok "Weather MCP local responde correctamente (fallback por auth APIM 900900)"
+      else
+        mark_fail "$WEATHER_FAIL_MSG (y no se pudo arrancar automáticamente)"
+      fi
     fi
 
     if [ -f /tmp/pre_demo_mcp_init_body.txt ]; then

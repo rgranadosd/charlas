@@ -21,7 +21,7 @@ cat > inspector_config.json <<EOL
     "mcpServers": {
         "weather": {
             "command": "./venv/bin/python",
-            "args": ["weather_mcp_openmeteo.py"],
+            "args": ["weather_mcp_openmeteo.py", "--stdio"],
             "env": {}
         }
     }

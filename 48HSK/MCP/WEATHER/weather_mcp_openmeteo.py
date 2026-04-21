@@ -155,9 +155,10 @@ app_instance = ASGIAcceptHeaderWrapper(original_app)
 # Export for uvicorn
 asgi_app = app_instance
 
-# Verificar que el wrapper está en su lugar
-print(f"ASGI app configurada: {type(asgi_app).__name__}")
-print(f"Wrapper activo: {isinstance(asgi_app, ASGIAcceptHeaderWrapper)}")
+# Verificar que el wrapper está en su lugar (usar logger, NO print,
+# porque print→stdout rompe el transporte STDIO del MCP Inspector)
+logger.info(f"ASGI app configurada: {type(asgi_app).__name__}")
+logger.info(f"Wrapper activo: {isinstance(asgi_app, ASGIAcceptHeaderWrapper)}")
 
 # Open-Meteo API Configuration
 BASE_URL = "https://api.open-meteo.com/v1/forecast"
@@ -172,6 +173,7 @@ SPANISH_CITIES = {
     "Málaga": {"lat": 36.7213, "lon": -4.4213},
     "Murcia": {"lat": 37.9922, "lon": -1.1307},
     "Bilbao": {"lat": 43.2627, "lon": -2.9253},
+    "Vitoria": {"lat": 42.8467, "lon": -2.6716},
     "Alicante": {"lat": 38.3452, "lon": -0.4810},
     "Córdoba": {"lat": 37.8882, "lon": -4.7794},
     "Burgos": {"lat": 42.3439, "lon": -3.6969},
@@ -230,6 +232,7 @@ class SpanishCity(str, Enum):
     MALAGA = "Málaga"
     MURCIA = "Murcia"
     BILBAO = "Bilbao"
+    VITORIA = "Vitoria"
     ALICANTE = "Alicante"
     CORDOBA = "Córdoba"
     BURGOS = "Burgos"
@@ -957,10 +960,17 @@ async def get_retail_weather_insights(params: Optional[GetRetailInsightsInput] =
 # ============================================================================
 
 if __name__ == "__main__":
-    # Modo Streamable HTTP para APIM 4.6
-    # FastMCP expone automáticamente el endpoint /mcp cuando usas este transporte
-    import uvicorn
-    logger.info("Starting Weather MCP Server...")
-    logger.info("Health check: http://0.0.0.0:8080/health")
-    logger.info("MCP endpoint: http://0.0.0.0:8080/mcp")
-    uvicorn.run(asgi_app, host="0.0.0.0", port=8080)
+    import sys
+
+    # Detectar modo de transporte:
+    #   --stdio  → El MCP Inspector (u otro cliente) nos lanza por STDIO
+    #   default  → Servidor HTTP Streamable para WSO2 APIM 4.6
+    if "--stdio" in sys.argv:
+        logger.info("Starting Weather MCP Server in STDIO mode (for Inspector)...")
+        mcp.run(transport="stdio")
+    else:
+        import uvicorn
+        logger.info("Starting Weather MCP Server in HTTP mode...")
+        logger.info("Health check: http://0.0.0.0:8080/health")
+        logger.info("MCP endpoint: http://0.0.0.0:8080/mcp")
+        uvicorn.run(asgi_app, host="0.0.0.0", port=8080)

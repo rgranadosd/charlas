@@ -28,7 +28,7 @@ if [ "$MODE" == "inspect" ]; then
     "mcpServers": {
         "weather": {
             "command": "$(pwd)/venv/bin/python",
-            "args": ["$(pwd)/weather_mcp_openmeteo.py"],
+            "args": ["$(pwd)/weather_mcp_openmeteo.py", "--stdio"],
             "env": { "PYTHONUNBUFFERED": "1" }
         }
     }
