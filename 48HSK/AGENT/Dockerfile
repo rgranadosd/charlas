@@ -5,7 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RUN_MODE=service \
     AGENT_ENV_PROFILE=service \
     SERVICE_HOST=0.0.0.0 \
-    SERVICE_PORT=8010
+    SERVICE_PORT=8010 \
+    OTEL_SERVICE_NAME=rafa-agent \
+    OTEL_RESOURCE_ATTRIBUTES=service.name=rafa-agent,deployment.environment=dev,agent.type=external \
+    OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 
 WORKDIR /app
 

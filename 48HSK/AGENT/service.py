@@ -80,7 +80,7 @@ class InvokeResponse(BaseModel):
 
 
 app = FastAPI(title="Rafa Agent Service", version="0.2.0", description=APP_DESCRIPTION)
-bootstrap_fastapi_observability(app, service_name=os.getenv("OTEL_SERVICE_NAME", "rafa-agent-service"))
+bootstrap_fastapi_observability(app, service_name=os.getenv("OTEL_SERVICE_NAME", "rafa-agent"))
 
 agent = RafaAgent(
     force_auth=False,
