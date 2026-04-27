@@ -3,7 +3,7 @@
 import sys
 sys.path.insert(0, '/Users/rafagranados/Develop/charlas/48HSK/AGENT')
 
-from agent_gpt4 import WeatherPlugin
+from plugins.weather import WeatherPlugin
 
 def test_weather():
     print("Inicializando WeatherPlugin...")

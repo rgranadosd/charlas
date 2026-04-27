@@ -11,14 +11,15 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from agent_core import RafaAgent
+from observability import bootstrap_fastapi_observability, get_current_trace_id
 
 
 class InvokeRequest(BaseModel):
     message: str = Field(..., min_length=1)
     session_id: Optional[str] = None
     user_id: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
-    auth_mode: Optional[str] = "service"
+    metadata: Optional[Dict[str, Any]] = None
+    allow_interactive_auth: bool = False
 
 
 class InvokeResponse(BaseModel):
@@ -26,15 +27,37 @@ class InvokeResponse(BaseModel):
     session_id: str
     model: str
     trace_id: Optional[str] = None
+    status: str
 
 
 app = FastAPI(title="Rafa Agent Service", version="0.1.0")
+bootstrap_fastapi_observability(app, service_name=os.getenv("OTEL_SERVICE_NAME", "rafa-agent-service"))
+
 agent = RafaAgent(
     force_auth=False,
     debug_mode=os.getenv("DEBUG", "false").lower() in {"1", "true", "yes", "on"},
     env_profile=os.getenv("AGENT_ENV_PROFILE", "service"),
     model_id=os.getenv("AGENT_MODEL_ID", "gpt-4o-mini"),
 )
+
+
+def _extract_trace_id_from_request(request: Request) -> Optional[str]:
+    current_trace_id = get_current_trace_id()
+    if current_trace_id:
+        return current_trace_id
+
+    explicit_trace_id = request.headers.get("x-trace-id") or request.headers.get("x-correlation-id")
+    if explicit_trace_id:
+        return explicit_trace_id
+
+    traceparent = request.headers.get("traceparent")
+    if not traceparent:
+        return None
+
+    parts = traceparent.split("-")
+    if len(parts) >= 4 and len(parts[1]) == 32:
+        return parts[1]
+    return traceparent
 
 
 @app.on_event("startup")
@@ -65,24 +88,15 @@ async def ready() -> Dict[str, str]:
 @app.post("/invoke", response_model=InvokeResponse)
 async def invoke(payload: InvokeRequest, request: Request) -> InvokeResponse:
     try:
-        allow_interactive_auth = str(payload.auth_mode or "service").strip().lower() in {
-            "interactive",
-            "user",
-            "user-pkce",
-        }
         answer = await agent.ask(
             payload.message,
             silent=True,
-            allow_interactive_auth=allow_interactive_auth,
+            allow_interactive_auth=payload.allow_interactive_auth,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    trace_id = (
-        request.headers.get("x-trace-id")
-        or request.headers.get("x-correlation-id")
-        or request.headers.get("traceparent")
-    )
+    trace_id = _extract_trace_id_from_request(request)
     session_id = payload.session_id or f"session-{uuid.uuid4().hex[:12]}"
 
     return InvokeResponse(
@@ -90,6 +104,7 @@ async def invoke(payload: InvokeRequest, request: Request) -> InvokeResponse:
         session_id=session_id,
         model=agent.model_id,
         trace_id=trace_id,
+        status="ok",
     )
 
 

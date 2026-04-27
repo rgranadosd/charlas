@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Set
 
-from agent_gpt4 import OAuthCallbackHandler, OAuthClient, TokenStore
+from oauth_session import OAuthCallbackHandler, OAuthClient, TokenStore
 
 
 @dataclass
