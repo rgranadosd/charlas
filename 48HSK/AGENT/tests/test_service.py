@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -58,7 +59,10 @@ class ServiceContractTests(unittest.TestCase):
                         "user_id": "user-1",
                         "metadata": {"channel": "test"},
                     },
-                    headers={"x-trace-id": "trace-123"},
+                    headers={
+                        "Authorization": "Bearer caller-token",
+                        "x-trace-id": "trace-123",
+                    },
                 )
 
         self.assertEqual(response.status_code, 200)
@@ -78,6 +82,45 @@ class ServiceContractTests(unittest.TestCase):
             allow_interactive_auth=False,
         )
 
+    def test_invoke_propagates_caller_identity_from_bearer_header(self) -> None:
+        fake_agent = make_agent(answer="respuesta")
+        with patch.object(service, "agent", fake_agent):
+            with patch.object(service, "use_caller_identity", return_value=nullcontext()) as use_identity:
+                with TestClient(service.app) as client:
+                    response = client.post(
+                        "/invoke",
+                        json={
+                            "message": "hola",
+                            "user_id": "user-1",
+                            "metadata": {"channel": "test"},
+                        },
+                        headers={"Authorization": "Bearer caller-token"},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        use_identity.assert_called_once()
+        identity = use_identity.call_args.args[0]
+        self.assertIsInstance(identity, service.CallerIdentity)
+        self.assertEqual(identity.access_token, "caller-token")
+        self.assertEqual(identity.user_id, "user-1")
+        self.assertEqual(identity.metadata, {"channel": "test"})
+
+    def test_invoke_requires_bearer_token(self) -> None:
+        fake_agent = make_agent(answer="respuesta")
+        with patch.object(service, "agent", fake_agent):
+            with TestClient(service.app) as client:
+                response = client.post(
+                    "/invoke",
+                    json={
+                        "message": "hola",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"detail": "Missing caller bearer token"})
+        self.assertEqual(response.headers["www-authenticate"], "Bearer")
+        fake_agent.ask.assert_not_awaited()
+
     def test_invoke_can_enable_interactive_auth(self) -> None:
         fake_agent = make_agent(answer="interactive")
         with patch.object(service, "agent", fake_agent):
@@ -88,6 +131,7 @@ class ServiceContractTests(unittest.TestCase):
                         "message": "login",
                         "allow_interactive_auth": True,
                     },
+                    headers={"Authorization": "Bearer caller-token"},
                 )
 
         self.assertEqual(response.status_code, 200)

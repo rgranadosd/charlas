@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from agent_core import RafaAgent
 from observability import bootstrap_fastapi_observability, get_current_trace_id
+from request_identity import CallerIdentity, use_caller_identity
 
 
 class InvokeRequest(BaseModel):
@@ -60,6 +61,30 @@ def _extract_trace_id_from_request(request: Request) -> Optional[str]:
     return traceparent
 
 
+def _extract_caller_access_token(request: Request) -> Optional[str]:
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        return None
+
+    scheme, _, credentials = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not credentials.strip():
+        return None
+
+    return credentials.strip()
+
+
+def _require_caller_access_token(request: Request) -> str:
+    access_token = _extract_caller_access_token(request)
+    if access_token:
+        return access_token
+
+    raise HTTPException(
+        status_code=401,
+        detail="Missing caller bearer token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     # Lazy failures are still handled in /invoke, but startup warms config/kernel paths.
@@ -87,12 +112,19 @@ async def ready() -> Dict[str, str]:
 
 @app.post("/invoke", response_model=InvokeResponse)
 async def invoke(payload: InvokeRequest, request: Request) -> InvokeResponse:
+    caller_identity = CallerIdentity(
+        access_token=_require_caller_access_token(request),
+        user_id=payload.user_id,
+        metadata=payload.metadata,
+    )
+
     try:
-        answer = await agent.ask(
-            payload.message,
-            silent=True,
-            allow_interactive_auth=payload.allow_interactive_auth,
-        )
+        with use_caller_identity(caller_identity):
+            answer = await agent.ask(
+                payload.message,
+                silent=True,
+                allow_interactive_auth=payload.allow_interactive_auth,
+            )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

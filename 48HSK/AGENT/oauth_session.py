@@ -18,6 +18,7 @@ from typing import Optional
 import requests
 
 from config import TOKEN_CACHE_FILE, _auth_trace_enabled, get_debug_mode
+from request_identity import get_caller_identity
 from ui_console import Colors
 
 
@@ -267,6 +268,20 @@ class OAuthClient:
             OAuthCallbackHandler.access_token = None
             OAuthCallbackHandler.id_token_payload = None
             OAuthCallbackHandler.user_permissions = None
+
+    def _apply_caller_identity(self, access_token: str, user_id: Optional[str] = None) -> None:
+        payload = self._decode_token_payload(access_token)
+        scopes = payload.get("scope") or payload.get("scp") or payload.get("scopes") or ""
+
+        OAuthCallbackHandler.scopes = scopes
+        OAuthCallbackHandler.access_token = access_token
+        OAuthCallbackHandler.id_token_payload = payload or None
+
+        user_ref = user_id or payload or None
+        if user_ref:
+            OAuthCallbackHandler.user_permissions = self._check_user_permissions(user_ref)
+        else:
+            OAuthCallbackHandler.user_permissions = set()
 
     def _now(self):
         return int(time.time())
@@ -591,6 +606,13 @@ class OAuthClient:
     def ensure_token(self):
         if get_debug_mode():
             print(Colors.cyan("[DEBUG] ensure_token() llamado"))
+
+        caller_identity = get_caller_identity()
+        if caller_identity and caller_identity.access_token:
+            if get_debug_mode():
+                print(Colors.cyan("[DEBUG] Usando token del caller actual"))
+            self._apply_caller_identity(caller_identity.access_token, caller_identity.user_id)
+            return caller_identity.access_token
 
         tokens = self.store.load()
         if self._token_valid(tokens):
