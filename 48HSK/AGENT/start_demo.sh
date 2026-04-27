@@ -29,9 +29,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_FILE="$SCRIPT_DIR/agent_gpt4.py"
 ENV_FILE="$SCRIPT_DIR/.env"
 PRECHECK_FILE="$SCRIPT_DIR/pre_demo_check.sh"
+CONFIG_FILE="$SCRIPT_DIR/start_demo.conf"
+
+if [ -f "$CONFIG_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+    set +a
+fi
+
 MILVUS_SCRIPT_DEFAULT="$SCRIPT_DIR/milvus-deployment/milvus.sh"
 MILVUS_SCRIPT="${MILVUS_DEPLOYMENT_SCRIPT:-$MILVUS_SCRIPT_DEFAULT}"
-APIM_SCRIPT_DEFAULT="/Users/rafagranados/Develop/wso2/wso2am-4.6.0/bin/api-manager.sh"
+WSO2_ROOT_DEFAULT="/Users/rafagranados/Develop/wso2"
+WSO2_ROOT="${WSO2_HOME_ROOT:-$WSO2_ROOT_DEFAULT}"
+IS_SCRIPT_DEFAULT="$WSO2_ROOT/wso2is-7.2.0/bin/wso2server.sh"
+APIM_SCRIPT_DEFAULT="$WSO2_ROOT/wso2am-4.6.0/bin/api-manager.sh"
+IS_SCRIPT="${WSO2_IS_START_SCRIPT:-$IS_SCRIPT_DEFAULT}"
 APIM_SCRIPT="${WSO2_APIM_START_SCRIPT:-$APIM_SCRIPT_DEFAULT}"
 
 PURGE_SESSION=false
@@ -73,6 +86,59 @@ warn() {
     printf "%b\n" "$1"
 }
 
+dedupe_paths() {
+    awk '!seen[$0]++'
+}
+
+discover_latest_executable() {
+    local pattern
+    local matches=()
+
+    for pattern in "$@"; do
+        while IFS= read -r match; do
+            if [ -x "$match" ]; then
+                matches+=("$match")
+            fi
+        done < <(compgen -G "$pattern" || true)
+    done
+
+    if [ ${#matches[@]} -eq 0 ]; then
+        return 1
+    fi
+
+    printf '%s\n' "${matches[@]}" | dedupe_paths | LC_ALL=C sort | tail -n 1
+}
+
+resolve_wso2_is_script() {
+    if [ -n "${WSO2_IS_START_SCRIPT:-}" ] && [ -x "$WSO2_IS_START_SCRIPT" ]; then
+        printf '%s\n' "$WSO2_IS_START_SCRIPT"
+        return 0
+    fi
+
+    if [ -x "$IS_SCRIPT" ]; then
+        printf '%s\n' "$IS_SCRIPT"
+        return 0
+    fi
+
+    discover_latest_executable \
+        "$WSO2_ROOT/wso2is-*/bin/wso2server.sh" \
+        "$WSO2_ROOT/wso2is-*/bin/adaptive.sh"
+}
+
+resolve_wso2_apim_script() {
+    if [ -n "${WSO2_APIM_START_SCRIPT:-}" ] && [ -x "$WSO2_APIM_START_SCRIPT" ]; then
+        printf '%s\n' "$WSO2_APIM_START_SCRIPT"
+        return 0
+    fi
+
+    if [ -x "$APIM_SCRIPT" ]; then
+        printf '%s\n' "$APIM_SCRIPT"
+        return 0
+    fi
+
+    discover_latest_executable "$WSO2_ROOT/wso2am-*/bin/api-manager.sh"
+}
+
 is_wso2_available() {
     local base_url="$1"
     if curl -skf "${base_url}/.well-known/openid-configuration" >/dev/null 2>&1; then
@@ -90,54 +156,99 @@ is_apim_token_available() {
     [[ "$status" =~ ^(200|400|401|405)$ ]]
 }
 
-cleanup_stale_apim_processes() {
-    local apim_pids
-    apim_pids=$(pgrep -f 'org.wso2.carbon.bootstrap.Bootstrap' 2>/dev/null || true)
-    if [ -z "$apim_pids" ]; then
+cleanup_stale_wso2_processes() {
+    local script_path="$1"
+    local label="$2"
+    local product_home
+    local wso2_pids
+
+    product_home="$(cd "$(dirname "$script_path")/.." && pwd)"
+    wso2_pids=$(pgrep -f "$product_home" 2>/dev/null || true)
+
+    if [ -z "$wso2_pids" ]; then
         return 0
     fi
 
-    warn "${YELLOW}Detectados procesos APIM previos no saludables (PIDs: $apim_pids). Limpiando para evitar lock H2...${NC}"
-    kill -TERM $apim_pids 2>/dev/null || true
+    warn "${YELLOW}Detectados procesos previos de ${label} (PIDs: $wso2_pids). Limpiando antes del autoarranque...${NC}"
+    kill -TERM $wso2_pids 2>/dev/null || true
     sleep 8
 
     local still_running
-    still_running=$(pgrep -f 'org.wso2.carbon.bootstrap.Bootstrap' 2>/dev/null || true)
+    still_running=$(pgrep -f "$product_home" 2>/dev/null || true)
     if [ -n "$still_running" ]; then
-        warn "${YELLOW}Forzando cierre de procesos APIM bloqueados (PIDs: $still_running)...${NC}"
+        warn "${YELLOW}Forzando cierre de procesos bloqueados de ${label} (PIDs: $still_running)...${NC}"
         kill -KILL $still_running 2>/dev/null || true
         sleep 2
     fi
 }
 
-ensure_apim_running() {
+ensure_wso2_is_running() {
     local base_url="$1"
+    local is_script
 
-    if is_wso2_available "$base_url" || is_apim_token_available; then
-        log "${GREEN}✓ WSO2/APIM ya estaba disponible${NC}"
+    if is_wso2_available "$base_url"; then
+        log "${GREEN}✓ WSO2 IS ya estaba disponible${NC}"
         return 0
     fi
 
-    if [ ! -x "$APIM_SCRIPT" ]; then
-        warn "${RED}ERROR: WSO2/APIM no está disponible y no se encontró script ejecutable en:${NC} $APIM_SCRIPT"
-        warn "${YELLOW}Define WSO2_APIM_START_SCRIPT o corrige la ruta en start_demo.sh${NC}"
+    is_script="$(resolve_wso2_is_script || true)"
+    if [ -z "$is_script" ] || [ ! -x "$is_script" ]; then
+        warn "${RED}ERROR: WSO2 IS no está disponible y no se encontró script ejecutable.${NC}"
+        warn "${YELLOW}Buscado en:${NC} $WSO2_ROOT/wso2is-*/bin/{wso2server.sh,adaptive.sh}"
+        warn "${YELLOW}Define WSO2_IS_START_SCRIPT si quieres fijar la ruta manualmente.${NC}"
         return 1
     fi
 
-    cleanup_stale_apim_processes
+    cleanup_stale_wso2_processes "$is_script" "WSO2 IS"
 
-    warn "${ORANGE}WSO2/APIM no disponible. Intentando arranque automático...${NC}"
-    nohup "$APIM_SCRIPT" >/tmp/apim_autostart.log 2>&1 &
+    warn "${ORANGE}WSO2 IS no disponible. Intentando arranque automático con:${NC} $is_script"
+    nohup "$is_script" >/tmp/wso2is_autostart.log 2>&1 &
 
     for _ in {1..45}; do
-        if is_wso2_available "$base_url" || is_apim_token_available; then
-            log "${GREEN}✓ WSO2/APIM arrancado automáticamente${NC}"
+        if is_wso2_available "$base_url"; then
+            IS_SCRIPT="$is_script"
+            log "${GREEN}✓ WSO2 IS arrancado automáticamente${NC}"
             return 0
         fi
         sleep 4
     done
 
-    warn "${RED}ERROR: WSO2/APIM no respondió tras autoarranque${NC}"
+    warn "${RED}ERROR: WSO2 IS no respondió tras autoarranque${NC}"
+    warn "${YELLOW}Revisa log:${NC} /tmp/wso2is_autostart.log"
+    return 1
+}
+
+ensure_apim_running() {
+    local apim_script
+
+    if is_apim_token_available; then
+        log "${GREEN}✓ WSO2 APIM ya estaba disponible${NC}"
+        return 0
+    fi
+
+    apim_script="$(resolve_wso2_apim_script || true)"
+    if [ -z "$apim_script" ] || [ ! -x "$apim_script" ]; then
+        warn "${RED}ERROR: WSO2 APIM no está disponible y no se encontró script ejecutable.${NC}"
+        warn "${YELLOW}Buscado en:${NC} $WSO2_ROOT/wso2am-*/bin/api-manager.sh"
+        warn "${YELLOW}Define WSO2_APIM_START_SCRIPT si quieres fijar la ruta manualmente.${NC}"
+        return 1
+    fi
+
+    cleanup_stale_wso2_processes "$apim_script" "WSO2 APIM"
+
+    warn "${ORANGE}WSO2 APIM no disponible. Intentando arranque automático con:${NC} $apim_script"
+    nohup "$apim_script" >/tmp/apim_autostart.log 2>&1 &
+
+    for _ in {1..45}; do
+        if is_apim_token_available; then
+            APIM_SCRIPT="$apim_script"
+            log "${GREEN}✓ WSO2 APIM arrancado automáticamente${NC}"
+            return 0
+        fi
+        sleep 4
+    done
+
+    warn "${RED}ERROR: WSO2 APIM no respondió tras autoarranque${NC}"
     warn "${YELLOW}Revisa log:${NC} /tmp/apim_autostart.log"
     return 1
 }
@@ -312,12 +423,19 @@ log ""
 
 # Comprobación: WSO2 Identity Server
 WSO2_BASE="${WSO2_IS_BASE:-https://localhost:9443}"
-if ! ensure_apim_running "$WSO2_BASE"; then
+if ! ensure_wso2_is_running "$WSO2_BASE"; then
     warn "${RED}ERROR: No se pudo verificar que WSO2 IS esté disponible.${NC}"
     warn "${YELLOW}Asegúrate de que WSO2 IS esté arrancado y accesible en ${WSO2_BASE}.${NC}"
     exit 1
 fi
 log "${GREEN}✓ WSO2 IS detectado correctamente${NC}"
+
+if ! ensure_apim_running; then
+    warn "${RED}ERROR: No se pudo verificar que WSO2 APIM esté disponible.${NC}"
+    warn "${YELLOW}Asegúrate de que WSO2 APIM esté arrancado y accesible en ${WSO2_APIM_TOKEN_ENDPOINT:-https://localhost:9453/oauth2/token}.${NC}"
+    exit 1
+fi
+log "${GREEN}✓ WSO2 APIM detectado correctamente${NC}"
 
 if [ "$PURGE_SESSION" = true ]; then
     FINAL_ARGS=(--force-auth)
