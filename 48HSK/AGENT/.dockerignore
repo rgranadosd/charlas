@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.env
+.env.*
+backups/
+__pycache__/
+token_cache.json
+.git/
+.gitignore
+.DS_Store
+agent_gpt4_backup_*.py
+agent_gpt4 copy.py

@@ -7,16 +7,12 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import semantic_kernel as sk
 import urllib3
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 
-from config import load_profile
+from config import load_profile, set_debug_mode
 from oauth2_apim import create_openai_client_with_gateway
-
-# Reuse the proven implementation while moving orchestration out of the CLI script.
-import agent_gpt4 as legacy
+from oauth_session import OAuthClient
+from ui_console import Colors
 
 
 @dataclass
@@ -27,7 +23,7 @@ class InvokeResult:
 
 
 class RafaAgent:
-    """Shared façade around the existing agent implementation."""
+    """Shared façade around the agent runtime for CLI and service modes."""
 
     def __init__(
         self,
@@ -42,10 +38,10 @@ class RafaAgent:
         self.env_profile = env_profile
         self.model_id = model_id
 
-        self.kernel: Optional[sk.Kernel] = None
-        self.agent: Optional[legacy.Agent] = None
+        self.kernel: Optional[Any] = None
+        self.agent: Optional[Any] = None
         self._initialized = False
-        self._original_interactive_auth = legacy.OAuthClient._interactive_auth
+        self._original_interactive_auth = OAuthClient._interactive_auth
         self._interactive_auth_patched = False
 
     @property
@@ -57,7 +53,7 @@ class RafaAgent:
             return
 
         load_profile(self.env_profile)
-        legacy.DEBUG_MODE = self.debug_mode
+        set_debug_mode(self.debug_mode)
         urllib3.disable_warnings()
 
         if self.env_profile == "service":
@@ -71,16 +67,19 @@ class RafaAgent:
 
         self.kernel = self._build_kernel()
 
-        shopify_plugin = legacy.ShopifyPlugin(force_auth=self.force_auth)
+        from orchestration import AgentRunner
+        from plugins import ShopifyPlugin, WeatherPlugin
+
+        shopify_plugin = ShopifyPlugin(force_auth=self.force_auth)
         weather_plugin = None
         if os.getenv("WSO2_WEATHER_MCP_URL") or os.getenv("WSO2_APIM_CONSUMER_KEY"):
             try:
-                weather_plugin = legacy.WeatherPlugin(force_auth=self.force_auth)
+                weather_plugin = WeatherPlugin(force_auth=self.force_auth)
             except Exception:
                 if self.debug_mode:
                     traceback.print_exc()
 
-        self.agent = legacy.Agent(self.kernel, shopify_plugin, weather_plugin)
+        self.agent = AgentRunner(self.kernel, shopify_plugin, weather_plugin)
         self._initialized = True
 
     async def ask(
@@ -104,20 +103,24 @@ class RafaAgent:
 
     def _set_interactive_auth(self, *, enabled: bool) -> None:
         if enabled and self._interactive_auth_patched:
-            legacy.OAuthClient._interactive_auth = self._original_interactive_auth
+            OAuthClient._interactive_auth = self._original_interactive_auth
             self._interactive_auth_patched = False
             return
 
         if (not enabled) and (not self._interactive_auth_patched):
             def _disabled_interactive_auth(_self):
-                if legacy.DEBUG_MODE:
-                    print(legacy.Colors.yellow("OAuth interactivo deshabilitado en modo servicio"))
+                if self.debug_mode:
+                    print(Colors.yellow("OAuth interactivo deshabilitado en modo servicio"))
                 return None
 
-            legacy.OAuthClient._interactive_auth = _disabled_interactive_auth
+            OAuthClient._interactive_auth = _disabled_interactive_auth
             self._interactive_auth_patched = True
 
-    def _build_kernel(self) -> sk.Kernel:
+    def _build_kernel(self) -> Any:
+        import semantic_kernel as sk
+        from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+        from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+
         kernel = sk.Kernel()
 
         use_gateway_env = os.getenv("USE_WSO2_GATEWAY")
@@ -131,7 +134,7 @@ class RafaAgent:
         if prefer_gateway:
             gateway_client = create_openai_client_with_gateway()
             if self.debug_mode and not gateway_client:
-                print(legacy.Colors.yellow("No se pudo crear cliente Gateway; usando OpenAI directo"))
+                print(Colors.yellow("No se pudo crear cliente Gateway; usando OpenAI directo"))
 
         if gateway_client:
             kernel.add_service(
