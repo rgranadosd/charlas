@@ -57,13 +57,7 @@ class RafaAgent:
         urllib3.disable_warnings()
 
         if self.env_profile == "service":
-            allow_interactive = os.getenv("ALLOW_INTERACTIVE_AUTH_IN_SERVICE", "false").lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
-            self._set_interactive_auth(enabled=allow_interactive)
+            self._set_interactive_auth(enabled=False)
 
         self.kernel = self._build_kernel()
 
@@ -92,7 +86,11 @@ class RafaAgent:
         if not message or not message.strip():
             raise ValueError("message is required")
 
-        if self.env_profile == "service" and allow_interactive_auth is not None:
+        if self.env_profile == "service":
+            self._set_interactive_auth(enabled=False)
+            if allow_interactive_auth and self.debug_mode:
+                print(Colors.yellow("Ignorando allow_interactive_auth en modo servicio"))
+        elif allow_interactive_auth is not None:
             self._set_interactive_auth(enabled=allow_interactive_auth)
 
         if not self._initialized:

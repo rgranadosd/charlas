@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -38,6 +39,16 @@ class ServiceContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
+    def test_openapi_contains_stable_contract_endpoints(self) -> None:
+        schema = service.app.openapi()
+
+        self.assertIn("/health", schema["paths"])
+        self.assertIn("get", schema["paths"]["/health"])
+        self.assertIn("/ready", schema["paths"])
+        self.assertIn("get", schema["paths"]["/ready"])
+        self.assertIn("/invoke", schema["paths"])
+        self.assertIn("post", schema["paths"]["/invoke"])
+
     def test_ready_reflects_agent_state(self) -> None:
         fake_agent = make_agent(ready=False)
         with patch.object(service, "agent", fake_agent):
@@ -66,16 +77,13 @@ class ServiceContractTests(unittest.TestCase):
                 )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {
-                "answer": "respuesta",
-                "session_id": "session-123",
-                "model": "gpt-4o-mini",
-                "trace_id": "trace-123",
-                "status": "ok",
-            },
-        )
+        body = response.json()
+        self.assertEqual(body["answer"], "respuesta")
+        self.assertEqual(body["session_id"], "session-123")
+        self.assertEqual(body["model"], "gpt-4o-mini")
+        self.assertEqual(body["status"], "ok")
+        self.assertIsInstance(body["trace_id"], str)
+        self.assertTrue(body["trace_id"])
         fake_agent.ask.assert_awaited_once_with(
             "hola",
             silent=True,
@@ -103,7 +111,7 @@ class ServiceContractTests(unittest.TestCase):
         self.assertIsInstance(identity, service.CallerIdentity)
         self.assertEqual(identity.access_token, "caller-token")
         self.assertEqual(identity.user_id, "user-1")
-        self.assertEqual(identity.metadata, {"channel": "test"})
+        self.assertEqual(identity.metadata, {"channel": "test", "auth_source": "caller_token"})
 
     def test_invoke_requires_bearer_token(self) -> None:
         fake_agent = make_agent(answer="respuesta")
@@ -121,7 +129,7 @@ class ServiceContractTests(unittest.TestCase):
         self.assertEqual(response.headers["www-authenticate"], "Bearer")
         fake_agent.ask.assert_not_awaited()
 
-    def test_invoke_can_enable_interactive_auth(self) -> None:
+    def test_invoke_ignores_interactive_auth_flag_in_service_mode(self) -> None:
         fake_agent = make_agent(answer="interactive")
         with patch.object(service, "agent", fake_agent):
             with TestClient(service.app) as client:
@@ -139,8 +147,35 @@ class ServiceContractTests(unittest.TestCase):
         fake_agent.ask.assert_awaited_once_with(
             "login",
             silent=True,
-            allow_interactive_auth=True,
+            allow_interactive_auth=False,
         )
+
+    def test_invoke_can_fallback_to_service_token(self) -> None:
+        fake_agent = make_agent(answer="service-token")
+        with patch.dict(
+            os.environ,
+            {
+                "SERVICE_AUTH_MODE": "service-token",
+                "WSO2_SERVICE_ACCESS_TOKEN": "backend-token",
+                "WSO2_SERVICE_USER_ID": "svc-user",
+            },
+            clear=False,
+        ):
+            with patch.object(service, "agent", fake_agent):
+                with patch.object(service, "use_caller_identity", return_value=nullcontext()) as use_identity:
+                    with TestClient(service.app) as client:
+                        response = client.post(
+                            "/invoke",
+                            json={
+                                "message": "hola",
+                            },
+                        )
+
+        self.assertEqual(response.status_code, 200)
+        identity = use_identity.call_args.args[0]
+        self.assertEqual(identity.access_token, "backend-token")
+        self.assertEqual(identity.user_id, "svc-user")
+        self.assertEqual(identity.metadata, {"auth_source": "service_token"})
 
 
 if __name__ == "__main__":
