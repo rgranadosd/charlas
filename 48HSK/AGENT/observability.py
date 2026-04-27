@@ -13,6 +13,19 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _should_enable_otlp_export() -> bool:
+    traces_exporter = (os.getenv("OTEL_TRACES_EXPORTER") or "otlp").strip().lower()
+    if traces_exporter in {"", "none"}:
+        return False
+    if traces_exporter != "otlp":
+        return False
+
+    return bool(
+        (os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or "").strip()
+        or (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    )
+
+
 def bootstrap_fastapi_observability(app, service_name: str) -> bool:
     """Instrument FastAPI and common HTTP clients when OTel dependencies are available."""
     if _bool_env("OTEL_SDK_DISABLED", False):
@@ -42,7 +55,8 @@ def bootstrap_fastapi_observability(app, service_name: str) -> bool:
             }
         )
         provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        if _should_enable_otlp_export():
+            provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
         trace.set_tracer_provider(provider)
 
     excluded_urls = os.getenv("OTEL_FASTAPI_EXCLUDED_URLS", "/health,/ready")
