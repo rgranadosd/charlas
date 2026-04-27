@@ -11,9 +11,25 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 
+ensure_python_pip() {
+    if python3 -m pip --version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "🛠️  pip no está disponible. Intentando bootstrap con ensurepip..."
+    python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
+
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        echo "❌ No se pudo inicializar pip en el entorno virtual"
+        exit 1
+    fi
+}
+
+ensure_python_pip
+
 # 2. Instalación de dependencias
 echo "📥 Instalando dependencias..."
-pip install "mcp[cli]" uvicorn fastapi httpx
+python3 -m pip install "mcp[cli]" uvicorn fastapi httpx
 
 # 3. Modos de Ejecución
 MODE="${1:-serve}" # Por defecto 'serve' si no se pasa argumento

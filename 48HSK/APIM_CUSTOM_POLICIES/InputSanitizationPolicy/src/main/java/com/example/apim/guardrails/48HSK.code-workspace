@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../../../.."
+		},
+		{
+			"path": "../../../../../../../../../../../wso2/wso2is-7.2.0"
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^git status --short && echo '---' && git branch --show-current && echo '---' && git remote -v$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}

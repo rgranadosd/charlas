@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_FILE="$SCRIPT_DIR/agent_gpt4.py"
 ENV_FILE="$SCRIPT_DIR/.env"
 PRECHECK_FILE="$SCRIPT_DIR/pre_demo_check.sh"
-MILVUS_SCRIPT_DEFAULT="/Users/rafagranados/Develop/wso2/milvus-deployment/milvus.sh"
+MILVUS_SCRIPT_DEFAULT="$SCRIPT_DIR/milvus-deployment/milvus.sh"
 MILVUS_SCRIPT="${MILVUS_DEPLOYMENT_SCRIPT:-$MILVUS_SCRIPT_DEFAULT}"
 APIM_SCRIPT_DEFAULT="/Users/rafagranados/Develop/wso2/wso2am-4.6.0/bin/api-manager.sh"
 APIM_SCRIPT="${WSO2_APIM_START_SCRIPT:-$APIM_SCRIPT_DEFAULT}"
@@ -187,6 +187,19 @@ else
     exit 1
 fi
 
+VENV_PY=""
+for py_candidate in "$VENV_DIR/bin/python3" "$VENV_DIR/bin/python"; do
+    if [ -x "$py_candidate" ]; then
+        VENV_PY="$py_candidate"
+        break
+    fi
+done
+
+if [ -z "$VENV_PY" ]; then
+    warn "${RED}ERROR: No se encontró un intérprete Python ejecutable dentro de $VENV_DIR/bin${NC}"
+    exit 1
+fi
+
 # Matar instancias previas
 log "${ORANGE}🔪 Matando instancias previas del agente...${NC}"
 AGENT_PIDS=$(pgrep -f "python.*agent_gpt4.py" 2>/dev/null || true)
@@ -221,14 +234,34 @@ if [ "$PURGE_SESSION" = true ]; then
     sleep 1
 fi
 
-source "$VENV_DIR/bin/activate"
-
-if [ -z "${VIRTUAL_ENV:-}" ]; then
-    warn "${RED}ERROR: El entorno virtual no se activó correctamente${NC}"
-    exit 1
+if [ -f "$VENV_DIR/bin/activate" ]; then
+    # Intentamos activar para arrastrar variables del entorno, pero el arranque
+    # usa siempre el binario del venv para evitar activate scripts rotos.
+    # shellcheck disable=SC1090
+    source "$VENV_DIR/bin/activate" || true
 fi
 
-if ! python3 - <<'PY' 2>/dev/null
+export VIRTUAL_ENV="$VENV_DIR"
+export PATH="$VENV_DIR/bin:$PATH"
+hash -r 2>/dev/null || true
+
+ensure_python_pip() {
+    if "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "${YELLOW}pip no está disponible en el entorno; intentando bootstrap con ensurepip...${NC}"
+    "$VENV_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+
+    if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+        warn "${RED}ERROR: No se pudo inicializar pip en el entorno virtual${NC}"
+        exit 1
+    fi
+}
+
+ensure_python_pip
+
+if ! "$VENV_PY" - <<'PY' 2>/dev/null
 import importlib.metadata as md
 
 def major(version: str) -> int:
@@ -263,15 +296,15 @@ then
     log "${GREEN}✓ Dependencias compatibles detectadas${NC}"
 else
     log "${YELLOW}Instalando/ajustando dependencias compatibles...${NC}"
-    pip install -q -U pip
-    pip install -q "${PY_DEPS[@]}"
+    "$VENV_PY" -m pip install -q -U pip
+    "$VENV_PY" -m pip install -q "${PY_DEPS[@]}"
 fi
 
 log "${GREEN}✓ Virtual environment activated successfully${NC}"
 log "${GREEN}✓ Dependencies verified${NC}"
 log "${ORANGE}Virtual environment: $VIRTUAL_ENV${NC}"
-log "${ORANGE}Python version: $(python3 --version)${NC}"
-log "${ORANGE}Python path: $(which python3)${NC}"
+log "${ORANGE}Python version: $($VENV_PY --version)${NC}"
+log "${ORANGE}Python path: $VENV_PY${NC}"
 log "${ORANGE}Working directory: $(pwd)${NC}"
 log "${ORANGE}Agent file: $AGENT_FILE${NC}"
 log "${ORANGE}Venv directory: $VENV_DIR${NC}"
@@ -297,7 +330,7 @@ if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
     FINAL_ARGS+=("${EXTRA_ARGS[@]}")
 fi
 
-log "${ORANGE}Comando: python3 $AGENT_FILE ${FINAL_ARGS[*]-}${NC}"
+log "${ORANGE}Comando: $VENV_PY $AGENT_FILE ${FINAL_ARGS[*]-}${NC}"
 log ""
 
 if [ "$SKIP_PRECHECK" != true ] && [ -f "$PRECHECK_FILE" ]; then
@@ -311,9 +344,9 @@ if [ "$SKIP_PRECHECK" != true ] && [ -f "$PRECHECK_FILE" ]; then
 fi
 
 if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
-    python3 "$AGENT_FILE" "${FINAL_ARGS[@]}"
+    "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
 else
-    python3 "$AGENT_FILE"
+    "$VENV_PY" "$AGENT_FILE"
 fi
 
 log "${ORANGE}============================================${NC}"

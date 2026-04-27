@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 import os
 import sys
+import time
 import numpy as np
 from typing import List
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
-from groq import Groq
+from openai import OpenAI
+import httpx
+import requests
+import base64
+import urllib3
+urllib3.disable_warnings()
 
 # Color stderr wrapper for warnings - colors huggingface/tokenizers warnings and related lines
 class ColoredStderr:
@@ -95,35 +101,121 @@ def blue(msg: str) -> str:
     return f"{BLUE}{msg}{RESET}"
 
 
+def get_embedding_model_name() -> str:
+    return os.getenv('RAG_EMBEDDING_MODEL', 'intfloat/multilingual-e5-small')
+
+
+def _normalize_openai_base_url(url: str | None) -> str:
+    """Normaliza base_url para que NO termine en /chat/completions."""
+    if not url:
+        return "https://api.openai.com/v1"
+    cleaned = url.strip().rstrip("/")
+    if cleaned.endswith("/chat/completions"):
+        cleaned = cleaned.rsplit("/chat/completions", 1)[0]
+    return cleaned
+
+
+def _fetch_wso2_token() -> tuple[str, int]:
+    """Obtiene un token OAuth2 del gateway WSO2 APIM (client_credentials).
+    Mismo patrón que oauth2_apim.py en el directorio AGENT."""
+    token_endpoint = os.getenv('WSO2_APIM_TOKEN_ENDPOINT', 'https://localhost:9453/oauth2/token')
+    consumer_key    = os.getenv('WSO2_APIM_CONSUMER_KEY', '')
+    consumer_secret = os.getenv('WSO2_APIM_CONSUMER_SECRET', '')
+
+    if not consumer_key or not consumer_secret:
+        raise RuntimeError("Faltan WSO2_APIM_CONSUMER_KEY / WSO2_APIM_CONSUMER_SECRET en .env")
+
+    creds = f"{consumer_key}:{consumer_secret}"
+    basic_auth = base64.b64encode(creds.encode()).decode()
+
+    resp = requests.post(
+        token_endpoint,
+        headers={
+            "Authorization": f"Basic {basic_auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data="grant_type=client_credentials",
+        verify=False,
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Error obteniendo token WSO2: {resp.status_code} - {resp.text}")
+
+    payload = resp.json()
+    token = payload.get("access_token")
+    if not token:
+        raise RuntimeError("No se recibió access_token en la respuesta WSO2")
+    expires_in = int(payload.get("expires_in", 3600) or 3600)
+    return token, expires_in
+
+
 class RAGInteractivaDemo:
     def __init__(self):
         load_dotenv()
         
-        # 1. Retrieve your Groq API key
-        self.groq_api_key = os.getenv('GROQ-TOKEN')
-        
-        print(green("Loading local Mistral E5 model (embeddings)..."))
-        # 2. Load free local embeddings model
-        self.embedding_model = SentenceTransformer('intfloat/multilingual-e5-large')
-        print(green("Embedding model loaded successfully."))
-        
-        # 3. Initialize Groq client
-        if self.groq_api_key:
-            self.groq_client = Groq(api_key=self.groq_api_key)
-            print(green("Groq client initialized successfully."))
-        else:
-            self.groq_client = None
-            print(orange("\nWARNING: 'GROQ-TOKEN' was not found in the .env file"))
+        # 1. Retrieve OpenAI / WSO2 APIM Gateway credentials
+        raw_base_url = os.getenv('OPENAI_BASE_URL') or os.getenv('WSO2_OPENAI_API_URL')
+        self.openai_base_url = _normalize_openai_base_url(raw_base_url)
+        self.embedding_model_name = get_embedding_model_name()
+        self.embedding_model = None
+        self.http_client = httpx.Client(verify=False, timeout=45.0)
+        self.gateway_token = None
+        self.gateway_token_expires_at = 0.0
+
+        # 3. Fetch OAuth2 token from WSO2 APIM (same as AGENT/oauth2_apim.py)
+        #    and initialize OpenAI client pointing to the gateway
+        try:
+            token, expires_in = _fetch_wso2_token()
+            self.gateway_token = token
+            self.gateway_token_expires_at = time.time() + max(60, expires_in - 60)
+            print(green("WSO2 OAuth2 token obtained successfully."))
+        except Exception as e:
+            token = os.getenv('OPENAI_API_KEY', 'unused')
+            print(orange(f"\nWARNING: Could not fetch WSO2 token ({e})"))
+            print(orange("  Falling back to OPENAI_API_KEY value from .env\n"))
+
+        # 4. Initialize OpenAI client (allow self-signed certs on localhost)
+        try:
+            client_kwargs: dict = dict(
+                api_key=token,
+                http_client=self.http_client,
+            )
+            if self.openai_base_url:
+                client_kwargs['base_url'] = self.openai_base_url
+            self.openai_client = OpenAI(**client_kwargs)
+            print(green("OpenAI client initialized successfully."))
+            if self.openai_base_url:
+                print(green(f"  Gateway URL: {self.openai_base_url}"))
+        except Exception as e:
+            self.openai_client = None
+            print(orange(f"\nWARNING: Could not initialize OpenAI client: {e}"))
             print(orange("   (The final response generation step will not work)\n"))
             
         self.chunks = []
         self.embeddings = []
+
+    def get_gateway_token(self, force_refresh: bool = False) -> str:
+        if not force_refresh and self.gateway_token and time.time() < self.gateway_token_expires_at:
+            return self.gateway_token
+
+        token, expires_in = _fetch_wso2_token()
+        self.gateway_token = token
+        self.gateway_token_expires_at = time.time() + max(60, expires_in - 60)
+        return token
+
+    def ensure_embedding_model(self):
+        if self.embedding_model is None:
+            print(green(f"Loading local embedding model: {self.embedding_model_name}..."))
+            print(orange("First use may download the model from Hugging Face and can take several minutes."))
+            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            print(green("Embedding model loaded successfully."))
     
     def mostrar_banner(self):
         print("\n" + cyan("="*80))
         print(cyan(" " * 20 + "INTERACTIVE RAG DEMO (FREE)"))
         print(cyan("="*80))
-        print(blue("Technology: Mistral E5 (Local) + Llama 3 (Groq Cloud)"))
+        print(blue("Technology: Mistral E5 (Local) + GPT-4o-mini (OpenAI / WSO2 APIM Gateway)"))
+        print(blue(f"Embedding model: {self.embedding_model_name}"))
         print(blue("\nThis demo will show you step by step how RAG works\n"))
     
     def cargar_texto(self):
@@ -207,6 +299,7 @@ class RAGInteractivaDemo:
     
     def crear_embeddings(self, chunks: List[str]) -> List[np.ndarray]:
         if not chunks: return []
+        self.ensure_embedding_model()
         print("\n" + yellow("-"*80))
         print(yellow("STEP 3: CREATE EMBEDDINGS (NUMERIC VECTORS)"))
         print(yellow("-"*80))
@@ -222,6 +315,7 @@ class RAGInteractivaDemo:
         return embeddings
     
     def buscar_similares(self, pregunta: str, top_k: int = 3):
+        self.ensure_embedding_model()
         print("\n" + yellow("-"*80))
         print(yellow("STEP 4: FIND RELEVANT CHUNKS"))
         print(yellow("-"*80))
@@ -255,39 +349,71 @@ class RAGInteractivaDemo:
     
     def generar_respuesta(self, pregunta: str, contextos: List[tuple]):
         print("\n" + yellow("-"*80))
-        print(yellow("STEP 5: GENERATE ANSWER WITH GROQ (Llama 3)"))
+        print(yellow("STEP 5: GENERATE ANSWER WITH OPENAI (gpt-4o-mini)"))
         print(yellow("-"*80))
-        
+
         contexto = "\n\n".join([chunk for chunk, _, _ in contextos])
-        
-        print(yellow("\nSending to Groq Cloud..."))
+
+        base_url = _normalize_openai_base_url(self.openai_base_url)
+        endpoint = f"{base_url}/chat/completions"
+
+        print(yellow(f"\nSending to OpenAI ({base_url})..."))
         print(blue(f"  - Context length: {len(contexto)} characters"))
         print(blue(f"  - Question: {pregunta}"))
         print(yellow("\nGenerating answer..."))
-        
-        if not self.groq_client:
-            return "Error: No connection to Groq (missing token)."
 
         try:
-            chat_completion = self.groq_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are a helpful assistant. Use the provided context to answer the question accurately and concisely in English."
-                    },
-                    {
-                        "role": "user", 
-                        "content": f"Context:\n{contexto}\n\nQuestion: {pregunta}\n\nAnswer:"
-                    }
-                ],
-                model="llama-3.3-70b-versatile",
-            )
-            
-            respuesta = chat_completion.choices[0].message.content
-            return respuesta
-            
+            token = self.get_gateway_token()
         except Exception as e:
-            return f"Error calling Groq: {e}"
+            token = os.getenv('OPENAI_API_KEY', 'unused')
+            print(orange(f"  WARNING: using fallback token ({e})"))
+
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Responde siempre en castellano. Usa solo el contexto proporcionado. Sé directo, preciso y breve. Si el contexto no basta, dilo claramente en castellano sin inventar datos."
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{contexto}\n\nQuestion: {pregunta}\n\nAnswer:"
+                }
+            ],
+            "temperature": 0.2,
+            "max_tokens": 180,
+        }
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+
+            resp = None
+            for attempt in range(3):
+                resp = self.http_client.post(endpoint, headers=headers, json=payload)
+                if resp.status_code in (200, 201):
+                    break
+                if resp.status_code == 401 and attempt == 0:
+                    token = self.get_gateway_token(force_refresh=True)
+                    headers["Authorization"] = f"Bearer {token}"
+                    continue
+                if resp.status_code == 202 and attempt < 2:
+                    print(yellow("Gateway devolvió 202 Accepted. Reintentando en breve..."))
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                return f"Error calling OpenAI: HTTP {resp.status_code} — {resp.text}"
+
+            if resp is None or resp.status_code not in (200, 201):
+                return f"Error calling OpenAI: HTTP {resp.status_code if resp else '000'} — {resp.text if resp else ''}"
+
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        except Exception as e:
+            return f"Error calling OpenAI: {e}"
     
     def ejecutar_demo(self):
         self.mostrar_banner()

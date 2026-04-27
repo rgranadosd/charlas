@@ -553,6 +553,15 @@ class OAuthClient:
         except Exception:
             pass
 
+    def _print_redirect_uri_help(self):
+        # Helpful hints when upstream IdP (e.g., Google) blocks login with redirect_uri_mismatch.
+        is_base = os.getenv("WSO2_IS_BASE", "https://localhost:9443").rstrip("/")
+        wso2_federated_callback = f"{is_base}/commonauth"
+        print(Colors.yellow("Si ves 'Error 400: redirect_uri_mismatch', revisa estas URIs exactas:"))
+        print(Colors.yellow(f"  1) App OAuth en WSO2 (Authorization Code + PKCE): {self.redirect_uri}"))
+        print(Colors.yellow(f"  2) OAuth Client en Google (federación con WSO2): {wso2_federated_callback}"))
+        print(Colors.yellow("  3) Deben coincidir al 100% (schema, host, puerto, path y slash final)."))
+
     def _generate_pkce(self):
         verifier = secrets.token_urlsafe(64)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
@@ -787,6 +796,7 @@ class OAuthClient:
         url = f"{self.auth_endpoint}?{urllib.parse.urlencode(params)}"
         print(Colors.yellow("Abre este URL para autorizar (PKCE/OBO):"))
         print(url)
+        self._print_redirect_uri_help()
         try:
             webbrowser.open(url)
         except Exception:
@@ -2743,5 +2753,11 @@ if __name__ == "__main__":
                 if u.strip(): await agent.run(u)
             except KeyboardInterrupt: break
     
-    try: asyncio.run(main())
-    except: pass
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as exc:
+        print(Colors.red(f"Fallo al arrancar el agente: {exc}"))
+        traceback.print_exc()
+        raise SystemExit(1)

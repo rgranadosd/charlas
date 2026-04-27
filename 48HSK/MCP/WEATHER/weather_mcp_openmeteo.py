@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -68,47 +69,51 @@ original_app.add_middleware(
 )
 
 # Add logging middleware to debug incoming requests
-@original_app.middleware("http")
-async def log_requests(request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
-    logger.info(f"Headers: {dict(request.headers)}")  # Log all headers for debugging
-    response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
-    return response
+class LogRequestsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        logger.info(f"Incoming request: {request.method} {request.url}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        response = await call_next(request)
+        logger.info(f"Response status: {response.status_code}")
+        return response
+
+original_app.add_middleware(LogRequestsMiddleware)
 
 # Add health check endpoint to the app
-@original_app.route("/health", methods=["GET"])
 async def health_check(request):
     """Health check endpoint for WSO2."""
     from starlette.responses import JSONResponse
     return JSONResponse({"status": "ok", "service": "weather_mcp"})
 
+original_app.add_route("/health", health_check, methods=["GET"])
+
 # Bearer Token para WSO2 MCP Playground
 MCP_BEARER_TOKEN = "weather-mcp-2026"
 
 # Bearer Token middleware - placed AFTER CORS to allow preflight requests
-@original_app.middleware("http")
-async def verify_bearer_token(request, call_next):
+class BearerTokenMiddleware(BaseHTTPMiddleware):
     """Middleware Bearer Token para WSO2"""
-    # Skip token verification for OPTIONS requests (CORS preflight)
-    if request.method == "OPTIONS":
-        return await call_next(request)
-    
-    # Skip token verification for health endpoint
-    if request.url.path == "/health":
-        return await call_next(request)
-    
-    auth = request.headers.get("authorization")
-    
-    # Aceptar CUALQUIER Bearer token (APIM ya validó la autenticación)
-    # Esto permite que APIM envíe su propio token OAuth2/JWT
-    if auth and auth.startswith("Bearer "):
-        return await call_next(request)
-    
-    return JSONResponse(
-        {"error": "Bearer token required"},
-        status_code=401
-    )
+    async def dispatch(self, request, call_next):
+        # Skip token verification for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # Skip token verification for health endpoint
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        auth = request.headers.get("authorization")
+
+        # Aceptar CUALQUIER Bearer token (APIM ya validó la autenticación)
+        if auth and auth.startswith("Bearer "):
+            return await call_next(request)
+
+        return JSONResponse(
+            {"error": "Bearer token required"},
+            status_code=401
+        )
+
+original_app.add_middleware(BearerTokenMiddleware)
 
 # ASGI Middleware Wrapper para inyectar Accept header ANTES de que FastMCP lo valide
 # Esto intercepta a nivel ASGI antes de que Starlette procese el request

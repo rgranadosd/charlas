@@ -5,6 +5,38 @@ set -euo pipefail
 APP_DIR="/Users/rafagranados/Develop/charlas/48HSK/AI GATEWAY/aigateway-demo"
 PORT=8502
 
+find_working_python() {
+    local candidate
+    for candidate in python3.13 python3.12 python3.11 python3.10 /usr/bin/python3 python3; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" --version >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+venv_is_healthy() {
+    local py_exec
+    local py_version
+
+    [ -f .venv/bin/python ] || return 1
+    py_exec="$(.venv/bin/python -c 'import sys; print(sys.executable)' 2>/dev/null || true)"
+    py_version="$(.venv/bin/python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+
+    [ -n "$py_exec" ] && [ -n "$py_version" ]
+}
+
+venv_matches_base_python() {
+    local base_version
+    local venv_version
+
+    base_version="$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+    venv_version="$(.venv/bin/python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+
+    [ -n "$base_version" ] && [ "$base_version" = "$venv_version" ]
+}
+
 cd "$APP_DIR"
 
 echo "[run_demo] Directorio: $(pwd)"
@@ -105,16 +137,29 @@ echo ""
 
 # Configurar entorno virtual
 echo "[run_demo] Verificando entorno virtual..."
-if [ -d .venv ] && [ -f .venv/bin/activate ]; then
+PYTHON_BIN="$(find_working_python || true)"
+if [ -z "$PYTHON_BIN" ]; then
+    echo "[run_demo] ✗ No se encontró un Python funcional en el sistema"
+    exit 1
+fi
+
+echo "[run_demo] Python base seleccionado: $PYTHON_BIN ($($PYTHON_BIN --version 2>&1))"
+
+if [ -d .venv ] && [ -f .venv/bin/activate ] && venv_is_healthy && venv_matches_base_python; then
     # shellcheck disable=SC1091
     source .venv/bin/activate
     echo "[run_demo] ✓ Entorno virtual (.venv) encontrado y activado"
     echo "[run_demo]   Python: $(python --version 2>&1)"
     echo "[run_demo]   Ubicación: $(pwd)/.venv"
 else
-    echo "[run_demo] ⚠ Entorno virtual (.venv) no existe"
-    echo "[run_demo] Creando entorno virtual..."
-    python3 -m venv .venv
+    if [ -d .venv ]; then
+        echo "[run_demo] ⚠ Entorno virtual (.venv) roto, vacío o incompatible. Recreando..."
+        rm -rf .venv
+    else
+        echo "[run_demo] ⚠ Entorno virtual (.venv) no existe"
+    fi
+    echo "[run_demo] Creando entorno virtual con $PYTHON_BIN ..."
+    "$PYTHON_BIN" -m venv .venv
     if [ $? -eq 0 ]; then
         echo "[run_demo] ✓ Entorno virtual creado exitosamente"
         # shellcheck disable=SC1091

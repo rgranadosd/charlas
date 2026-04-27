@@ -33,6 +33,35 @@ mark_fail() {
   printf "%b\n" "${RED}✗ $message${NC}"
 }
 
+extract_json_field() {
+  local json_file="$1"
+  local field_name="$2"
+
+  if [ ! -f "$json_file" ]; then
+    return 0
+  fi
+
+  python3 - "$json_file" "$field_name" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+field = sys.argv[2]
+
+try:
+    with open(path, 'r', encoding='utf-8') as handle:
+        raw = handle.read().strip()
+    if not raw:
+        print("")
+    else:
+        data = json.loads(raw)
+        value = data.get(field, "") if isinstance(data, dict) else ""
+        print(value if isinstance(value, str) else "")
+except Exception:
+    print("")
+PY
+}
+
 start_weather_mcp() {
   local weather_script=""
   local candidates=(
@@ -58,17 +87,69 @@ start_weather_mcp() {
   fi
 
   printf "%b\n" "${YELLOW}Intentando autoarranque Weather MCP:${NC} $weather_script"
-  (
-    cd "$(dirname "$weather_script")"
-    nohup ./run_weather_mcp.sh serve >/tmp/pre_demo_weather_mcp_autostart.log 2>&1 &
-  )
 
-  sleep 10
+  local mcp_dir
+  mcp_dir="$(cd "$(dirname "$weather_script")" && pwd)"
 
-  if pgrep -f "uvicorn weather_mcp_openmeteo:asgi_app" >/dev/null 2>&1; then
-    printf "%b\n" "${GREEN}✓ Weather MCP autoarrancado${NC}"
-    return 0
+  local mcp_venv_dir="$mcp_dir/venv"
+
+  # Self-heal broken/missing venvs. On some macOS setups, plain `python3 -m venv`
+  # can silently fail depending on the shim being resolved.
+  if [ ! -x "$mcp_venv_dir/bin/python3" ] && [ ! -x "$mcp_venv_dir/bin/python" ]; then
+    printf "%b\n" "${YELLOW}Venv MCP no encontrado. Intentando recrearlo...${NC}"
+    local -a py_candidates=(
+      "/opt/homebrew/bin/python3.11"
+      "/opt/homebrew/bin/python3"
+      "$(command -v python3 || true)"
+    )
+    local py_create=""
+    for py in "${py_candidates[@]}"; do
+      [ -z "$py" ] && continue
+      if [ -x "$py" ]; then
+        "$py" -m venv "$mcp_venv_dir" >/dev/null 2>&1 || true
+        if [ -x "$mcp_venv_dir/bin/python3" ] || [ -x "$mcp_venv_dir/bin/python" ]; then
+          py_create="$py"
+          break
+        fi
+      fi
+    done
+
+    if [ -n "$py_create" ]; then
+      printf "%b\n" "${GREEN}✓ Venv MCP recreado con:${NC} $py_create"
+    else
+      printf "%b\n" "${YELLOW}No se pudo recrear venv MCP automáticamente; se intentará con python3 del sistema.${NC}"
+    fi
   fi
+
+  # Prefer venv python so uvicorn & dependencies are already installed
+  local mcp_venv_py=""
+  for py_candidate in "$mcp_dir/venv/bin/python3" "$mcp_dir/venv/bin/python"; do
+    if [ -x "$py_candidate" ]; then
+      mcp_venv_py="$py_candidate"
+      break
+    fi
+  done
+  [ -z "$mcp_venv_py" ] && mcp_venv_py="$(command -v python3)"
+
+  # Install deps if uvicorn not present in the venv
+  if ! "$mcp_venv_py" -m uvicorn --version >/dev/null 2>&1; then
+    printf "%b\n" "${YELLOW}Instalando dependencias MCP...${NC}"
+    "$mcp_venv_py" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    "$mcp_venv_py" -m pip install -q "mcp[cli]" uvicorn fastapi httpx >/dev/null 2>&1 || true
+  fi
+
+  nohup "$mcp_venv_py" -m uvicorn weather_mcp_openmeteo:asgi_app \
+    --host 0.0.0.0 --port 8080 --log-level info \
+    --app-dir "$mcp_dir" \
+    >/tmp/pre_demo_weather_mcp_autostart.log 2>&1 &
+
+  for _ in $(seq 1 24); do
+    if pgrep -f "uvicorn weather_mcp_openmeteo:asgi_app" >/dev/null 2>&1 || check_local_weather_mcp; then
+      printf "%b\n" "${GREEN}✓ Weather MCP autoarrancado${NC}"
+      return 0
+    fi
+    sleep 2
+  done
 
   printf "%b\n" "${YELLOW}No se detectó uvicorn tras autoarranque. Revisa log:${NC} /tmp/pre_demo_weather_mcp_autostart.log"
   return 1
@@ -111,40 +192,12 @@ check_weather_mcp_with_token() {
     return 1
   fi
 
-  MCP_VALID=$(python3 - <<'PY'
-import json
-
-path = '/tmp/pre_demo_mcp_call_body.txt'
-try:
-  raw = open(path, 'r', encoding='utf-8').read().strip()
-except Exception:
-  print('0')
-  raise SystemExit(0)
-
-payload = raw
-if raw.startswith('event:'):
-  data_lines = [line[5:].strip() for line in raw.splitlines() if line.startswith('data:')]
-  payload = data_lines[-1] if data_lines else ''
-
-ok = False
-if payload:
-  try:
-    obj = json.loads(payload)
-    result = obj.get('result', {}) if isinstance(obj, dict) else {}
-    is_error = bool(result.get('isError')) if isinstance(result, dict) else True
-    content = result.get('content', []) if isinstance(result, dict) else []
-    text_blob = ''
-    if isinstance(content, list):
-      for item in content:
-        if isinstance(item, dict) and item.get('type') == 'text':
-          text_blob += str(item.get('text', ''))
-    ok = (not is_error) and ('temperature_2m' in text_blob or 'Temperatura' in text_blob or '"current"' in text_blob)
-  except Exception:
-    ok = False
-
-print('1' if ok else '0')
-PY
-)
+  MCP_VALID="0"
+  if [ -f /tmp/pre_demo_mcp_call_body.txt ] \
+    && grep -Eq '"isError"[[:space:]]*:[[:space:]]*false' /tmp/pre_demo_mcp_call_body.txt \
+    && grep -Eq 'temperature_2m|Temperatura|"current"|latitude|longitude' /tmp/pre_demo_mcp_call_body.txt; then
+    MCP_VALID="1"
+  fi
 
   if [ "$MCP_VALID" = "1" ]; then
     WEATHER_CHECK_OK=true
@@ -291,9 +344,10 @@ if [ "$MISSING_REQUIRED" = false ]; then
     TOKEN_RESPONSE=$(cat /tmp/pre_demo_token_response.json)
   fi
 
-  ACCESS_TOKEN=$(printf '%s' "$TOKEN_RESPONSE" | python3 -c 'import json,sys;\
-raw=sys.stdin.read().strip();\
-print(json.loads(raw).get("access_token","") if raw else "")' 2>/dev/null || true)
+  ACCESS_TOKEN="$(extract_json_field /tmp/pre_demo_token_response.json access_token)"
+  if [ -z "$ACCESS_TOKEN" ] && [ -f /tmp/pre_demo_token_response.json ]; then
+    ACCESS_TOKEN="$(sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' /tmp/pre_demo_token_response.json | head -n 1)"
+  fi
 
   if [ -n "$ACCESS_TOKEN" ]; then
     mark_ok "Token APIM obtenido"
@@ -319,8 +373,8 @@ else
     -H 'Content-Type: application/json' \
     --data "$PAYLOAD" || true)
 
-  if [ "$HTTP_CODE" = "200" ]; then
-    mark_ok "OpenAI por Gateway responde correctamente"
+  if [[ "$HTTP_CODE" =~ ^(200|201|202)$ ]]; then
+    mark_ok "OpenAI por Gateway responde correctamente (HTTP $HTTP_CODE)"
   else
     mark_fail "OpenAI endpoint devolvió HTTP ${HTTP_CODE:-000}"
     if [ -f /tmp/pre_demo_openai_response.json ]; then

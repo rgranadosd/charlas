@@ -126,7 +126,27 @@ def load_provider_env_config(provider_name):
     """Load provider configuration from environment variables"""
     return {
         "CHAT_COMPLETIONS_URL": os.getenv(f"{provider_name.upper()}_CHAT_COMPLETIONS_URL"),
+        "HOST_HEADER": os.getenv(f"{provider_name.upper()}_HOST_HEADER"),
     }
+
+def build_provider_not_found_message(provider_name, provider_config, response_text=""):
+    """Build a focused diagnostic message for 404 responses from the gateway"""
+    host_header = provider_config.get("HOST_HEADER")
+    if host_header:
+        host_hint = t('provider_host_hint_used', host=host_header)
+    else:
+        host_hint = t('provider_host_hint_missing', env_var=f"{provider_name.upper()}_HOST_HEADER")
+
+    message = t(
+        'provider_not_found',
+        provider=provider_name,
+        url=provider_config.get("CHAT_COMPLETIONS_URL", ""),
+        host_hint=host_hint
+    )
+
+    if response_text:
+        return f"{message}\n\nGateway response: {response_text}"
+    return message
 
 # Merge config.yaml with environment variables and filter enabled providers
 for provider_name in config["providers"]:
@@ -672,6 +692,9 @@ if st.button(t('send'), type="primary"):
             "Authorization": f"Bearer {access_token}",
             "User-Agent": user_agent
         }
+        host_header = provider_config.get("HOST_HEADER")
+        if host_header:
+            headers["Host"] = host_header
         payload = {
             "model": model,
             "messages": [
@@ -749,11 +772,24 @@ if st.button(t('send'), type="primary"):
                         else:
                             reason = str(error_json)
                     st.session_state[f"last_response_{selected_app}_{provider}"] = reason
+                elif api_response.status_code == 404 or str(error_json.get("code")) == "404":
+                    st.session_state[f"last_response_{selected_app}_{provider}"] = build_provider_not_found_message(
+                        provider,
+                        provider_config,
+                        api_response.text
+                    )
                 else:
                     st.session_state[f"last_response_{selected_app}_{provider}"] = api_response.text
             except Exception as ex:
                 print(f"[ERROR] Exception parsing API error JSON: {ex}")
-                st.session_state[f"last_response_{selected_app}_{provider}"] = t('unknown_error')
+                if api_response.status_code == 404:
+                    st.session_state[f"last_response_{selected_app}_{provider}"] = build_provider_not_found_message(
+                        provider,
+                        provider_config,
+                        api_response.text
+                    )
+                else:
+                    st.session_state[f"last_response_{selected_app}_{provider}"] = t('unknown_error')
             st.rerun()
     except Exception as e:
         print(f"[ERROR] Exception in main request flow: {e}")

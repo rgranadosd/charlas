@@ -136,6 +136,9 @@ MISTRAL_CHAT_COMPLETIONS_URL=https://your-wso2-server:8253/mistralaiapi/0.0.2/v1
 ANTHROPIC_CHAT_COMPLETIONS_URL=https://your-wso2-server:8253/anthropicapi/v1/messages
 ANTHROPIC_CLOUD_CHAT_COMPLETIONS_URL=https://your-wso2-server:8253/anthropicapi/v1/messages
 
+# Optional: if APIM exposes the API behind a virtual host, send the Host header expected by the gateway
+# OPENAI_HOST_HEADER=api.example.internal
+
 # Optional: Application-specific OAuth Credentials
 # If you want different OAuth credentials per application, uncomment and configure:
 # DEFAULT_CONSUMER_KEY=your_default_app_consumer_key
@@ -150,6 +153,7 @@ ANTHROPIC_CLOUD_CHAT_COMPLETIONS_URL=https://your-wso2-server:8253/anthropicapi/
   1. Application-specific credentials: `{APPLICATION_KEY}_CONSUMER_KEY`, `{APPLICATION_KEY}_CONSUMER_SECRET` (optional)
   2. Shared credentials (fallback): `WSO2_CONSUMER_KEY`, `WSO2_CONSUMER_SECRET`
 - **Token URL**: If application-specific `{APPLICATION_KEY}_TOKEN_URL` is not set, it will be constructed from `WSO2_APIM_HOST` and `WSO2_APIM_PORT`
+- **Virtual Hosts**: If an API is published in APIM with a specific virtual host, set `{PROVIDER}_HOST_HEADER` so the demo sends the expected `Host` header.
 
 ### 2. Provider Configuration (`config.yaml`)
 Defines LLM providers and global settings:

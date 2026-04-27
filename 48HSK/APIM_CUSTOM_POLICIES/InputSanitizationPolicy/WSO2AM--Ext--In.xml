@@ -1,0 +1,3 @@
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="WSO2AM--Ext--In">
+    <sequence key="InputSanitizationPolicy"/>
+</sequence>

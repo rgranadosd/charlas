@@ -93,6 +93,10 @@ def blue(msg: str) -> str:
     """Wrap a message so it is printed in blue (information/responses)."""
     return f"{BLUE}{msg}{RESET}"
 
+
+def get_embedding_model_name() -> str:
+    return os.getenv('RAG_EMBEDDING_MODEL', 'intfloat/multilingual-e5-small')
+
 class RAGDemoAutomatica:
     def __init__(self):
         # Load variables from .env file
@@ -100,11 +104,8 @@ class RAGDemoAutomatica:
         
         # Read your exact variable 'GROQ-TOKEN'
         self.groq_api_key = os.getenv('GROQ-TOKEN')
-        
-        print(green("Loading local Mistral E5 model (embeddings)..."))
-        # We use the multilingual E5 model (FREE and LOCAL)
-        self.embedding_model = SentenceTransformer('intfloat/multilingual-e5-large')
-        print(green("Embedding model loaded successfully."))
+        self.embedding_model_name = get_embedding_model_name()
+        self.embedding_model = None
         
         # Initialize Groq client with your token
         if self.groq_api_key:
@@ -115,10 +116,18 @@ class RAGDemoAutomatica:
             print(orange("\nIMPORTANT WARNING: The variable 'GROQ-TOKEN' was not found in the .env file"))
             print(orange("   The final chat part will not work without it.\n"))
 
+    def ensure_embedding_model(self):
+        if self.embedding_model is None:
+            print(green(f"Loading local embedding model: {self.embedding_model_name}..."))
+            print(orange("First use may download the model from Hugging Face and can take several minutes."))
+            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            print(green("Embedding model loaded successfully."))
+
     def ejecutar(self):
         print(cyan("="*80))
         print(cyan(" "*15 + "RAG DEMO: Mistral E5 (Local) + Llama 3 (Groq Free)"))
         print(cyan("="*80))
+        print(blue(f"Embedding model: {self.embedding_model_name}"))
         
         # STEP 1: LOAD DOCUMENT
         print("\n" + yellow("-"*80))
@@ -170,6 +179,7 @@ class RAGDemoAutomatica:
         print(yellow("STEP 3: CREATE EMBEDDINGS (VECTORS) - LOCAL MODE"))
         print(yellow("-"*80))
         print(green("\nGenerating embeddings with Mistral E5 (Local and free process)..."))
+        self.ensure_embedding_model()
         
         # The prefix "passage: " is necessary for the E5 model to work well
         chunks_con_prefijo = ["passage: " + chunk for chunk in chunks]
@@ -193,6 +203,7 @@ class RAGDemoAutomatica:
         
         print(green("\n  1. Converting question to vector..."), end=" ")
         # The prefix "query: " is necessary for questions in E5
+        self.ensure_embedding_model()
         pregunta_embedding = self.embedding_model.encode(["query: " + pregunta], normalize_embeddings=True)[0]
         print(green("Done"))
         
@@ -230,7 +241,7 @@ class RAGDemoAutomatica:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a helpful and precise assistant. Answer the question based ONLY on the provided context. Answer in English."
+                            "content": "Responde siempre en castellano. Usa solo el contexto proporcionado. Sé preciso y breve. Si el contexto no basta, dilo claramente sin inventar datos."
                         },
                         {
                             "role": "user",
