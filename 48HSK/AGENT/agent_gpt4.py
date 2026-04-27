@@ -2004,10 +2004,10 @@ class Agent:
         except Exception:
             return None
 
-    async def run(self, user_input):
+    async def run(self, user_input, silent: bool = False):
         # Instanciamos el indicador nuevo CADA VEZ para evitar errores de hilo
         indicator = ThinkingIndicator("")
-        if not DEBUG_MODE and _thinking_enabled():
+        if (not silent) and (not DEBUG_MODE) and _thinking_enabled():
             indicator.start()
         
         result = ""
@@ -2040,7 +2040,8 @@ class Agent:
             
             indicator.stop()
             indicator = ThinkingIndicator("")
-            indicator.start()
+            if (not silent) and (not DEBUG_MODE) and _thinking_enabled():
+                indicator.start()
             raw = str(await self.kernel.invoke_prompt(intent_prompt))
             data = self._clean_json(raw)
             intent = data.get("category", "general") if data else "general"
@@ -2543,8 +2544,11 @@ RESPUESTA JSON:"""
         
         finally:
             indicator.stop()
-            sys.stdout.flush()
-            print(f"\n{Colors.cyan(result)}\n")
+            if not silent:
+                sys.stdout.flush()
+                print(f"\n{Colors.cyan(result)}\n")
+
+        return result
 
 # ============================================
 # MAIN LOOP
