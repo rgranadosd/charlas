@@ -116,8 +116,10 @@ class RafaAgent:
 
     def _build_kernel(self) -> Any:
         import semantic_kernel as sk
-        from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
-        from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+        from semantic_kernel.connectors.ai.open_ai.prompt_execution_settings.open_ai_prompt_execution_settings import (
+            OpenAIChatPromptExecutionSettings,
+        )
+        from semantic_kernel.connectors.ai.open_ai.services.open_ai_chat_completion import OpenAIChatCompletion
 
         kernel = sk.Kernel()
 

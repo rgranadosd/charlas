@@ -461,10 +461,29 @@ if [ "$SKIP_PRECHECK" != true ] && [ -f "$PRECHECK_FILE" ]; then
     log "${GREEN}✓ Pre-demo check completado${NC}"
 fi
 
-if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
-    "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
+# Cargar .env para que amp-instrument vea AMP_OTEL_ENDPOINT y AMP_AGENT_API_KEY
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
+
+AMP_INSTRUMENT="$VENV_DIR/bin/amp-instrument"
+if [ -x "$AMP_INSTRUMENT" ] && [ -n "${AMP_OTEL_ENDPOINT:-}" ] && [ -n "${AMP_AGENT_API_KEY:-}" ]; then
+    log "${GREEN}✓ Lanzando agente con instrumentación AMP${NC}"
+    if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
+        "$AMP_INSTRUMENT" "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
+    else
+        "$AMP_INSTRUMENT" "$VENV_PY" "$AGENT_FILE"
+    fi
 else
-    "$VENV_PY" "$AGENT_FILE"
+    log "${YELLOW}AMP instrumentation no disponible (falta amp-instrument o AMP_OTEL_ENDPOINT/AMP_AGENT_API_KEY); ejecutando sin instrumentar${NC}"
+    if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
+        "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
+    else
+        "$VENV_PY" "$AGENT_FILE"
+    fi
 fi
 
 log "${ORANGE}============================================${NC}"
