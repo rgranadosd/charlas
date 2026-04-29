@@ -27,6 +27,9 @@ token_cache.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary scripts/files kept outside git tracking
+to_remove/
 # Banners personalizados (solo permitir default y example_client)
 banners/*.py
 !banners/__init__.py

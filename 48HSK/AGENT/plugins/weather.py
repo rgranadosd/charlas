@@ -43,6 +43,33 @@ class WeatherPlugin:
         if get_debug_mode():
             print(Colors.yellow(f"[MCP] Fallback a MCP local: {self.mcp_base_url}"))
 
+    def _build_apim_compat_base_url(self) -> str | None:
+        base = self.mcp_base_url.rstrip("/")
+        if self._is_local_mcp() or not base.startswith("http"):
+            return None
+
+        parts = base.split("/")
+        if len(parts) < 4:
+            return None
+
+        maybe_version = parts[-1]
+        if maybe_version and maybe_version[0].isdigit():
+            # Some APIM imports with version embedded in context end up exposing
+            # /<context>/<version>/<version>/..., so we retry with this form.
+            return f"{base}/{maybe_version}"
+        return None
+
+    def _switch_to_apim_compat_url(self) -> bool:
+        compat_base = self._build_apim_compat_base_url()
+        if not compat_base or compat_base == self.mcp_base_url.rstrip("/"):
+            return False
+
+        self.mcp_base_url = compat_base
+        self._mcp_session_id = None
+        if get_debug_mode():
+            print(Colors.yellow(f"[MCP] Reintentando con ruta APIM compat: {self.mcp_base_url}"))
+        return True
+
     def _normalize_city(self, city: str) -> str:
         if not city:
             return city
@@ -227,6 +254,8 @@ class WeatherPlugin:
                 return {"error": "Sin permisos para esta operación"}
             if response.status_code == 404:
                 if not _retried:
+                    if self._switch_to_apim_compat_url():
+                        return self._call_mcp(tool_name, params, _retried=True)
                     if get_debug_mode():
                         print(Colors.yellow("[MCP] 404 recibido, reinicializando sesión y reintentando..."))
                     self._mcp_session_id = None
