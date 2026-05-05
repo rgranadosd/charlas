@@ -188,21 +188,21 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
         ) : null}
         {showAgentRegistrationIdentity ? <CollapsibleInspectorPanel
           key={`agent-registration-${selectedStepOrder ?? "all"}`}
-          title="Agent Registration Identity"
-          subtitle="Identidad logica registrada del agente"
+          title="Configured Agent Identity"
+          subtitle="AGENT_ID definido en backend / WSO2 agent registration"
           defaultExpanded={getDefaultExpanded()}
         >
           <dl className="meta-grid">
             <div>
-              <dt>configured_agent_id</dt>
+              <dt>AGENT_ID</dt>
               <dd>{session?.configured_agent_id ?? "n/a"}</dd>
             </div>
             <div>
-              <dt>origen</dt>
-              <dd>Configuracion / WSO2 agent registration</dd>
+              <dt>source</dt>
+              <dd>backend config / WSO2 agent registration</dd>
             </div>
           </dl>
-          <p className="inspector-explanation-panel__body">Identidad logica registrada del agente.</p>
+          <p className="inspector-explanation-panel__body">Esta es la identidad logica del agente. No se deriva de claims del token ni de identificadores tecnicos del cliente OAuth.</p>
         </CollapsibleInspectorPanel> : null}
         {showOAuthClientIdentity ? <CollapsibleInspectorPanel
           key={`oauth-client-${selectedStepOrder ?? "all"}`}
@@ -216,8 +216,12 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
               <dd>{session?.oauth_client_id ?? "n/a"}</dd>
             </div>
             <div>
-              <dt>token_subject</dt>
-              <dd>{session?.agent_token_subject ?? "n/a"}</dd>
+              <dt>token_sub</dt>
+              <dd>{session?.agent_token_sub ?? "n/a"}</dd>
+            </div>
+            <div>
+              <dt>same_as_client_id</dt>
+              <dd>{session?.agent_token_sub_same_as_client_id ? "true" : "false"}</dd>
             </div>
             <div>
               <dt>token_authentication_type</dt>
@@ -229,7 +233,7 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
             </div>
           </dl>
           <ScopeChips scopes={agent?.scopes ?? []} />
-          <p className="inspector-explanation-panel__body">Esto representa la identidad tecnica del cliente OAuth autenticado en WSO2. No sustituye al agent_id logico.</p>
+          <p className="inspector-explanation-panel__body">Este token autentica al cliente OAuth asociado al agente en WSO2. El agent_id logico sigue viniendo del registro/configuracion del agente y no debe inferirse desde sub ni client_id.</p>
         </CollapsibleInspectorPanel> : null}
         {showAgent && agent ? (
           <TokenCard
