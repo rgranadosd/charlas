@@ -1,0 +1,4 @@
+Welcome to the OBO demo lab.
+
+This file is synthetic and exists only to demonstrate ownership resolution.
+If /files/me returns this item, the API matched the delegated or direct user sub against the demo JSON seed.

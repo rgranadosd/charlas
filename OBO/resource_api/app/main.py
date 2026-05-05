@@ -6,8 +6,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
-from app.security import bearer, enforce_user_resource, require_token, settings
-from app.state import list_public_files, list_user_files, share_user_file, upload_user_file
+from app.config import settings
+from app.demo_files_repository import DemoFilesUnavailableError
+from app.security import bearer, enforce_user_resource, require_token
+from app.state import demo_files_debug_state, list_public_files, list_user_files, share_user_file, upload_user_file
 
 
 class UploadRequest(BaseModel):
@@ -19,6 +21,18 @@ class ShareRequest(BaseModel):
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+
+
+def _require_user_subject(context: Any) -> str:
+    if context.subject:
+        return context.subject
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": "User subject required",
+            "reason": "The token is valid but does not carry a user subject suitable for /files/me ownership.",
+        },
+    )
 
 
 @app.get("/health")
@@ -52,11 +66,12 @@ async def public_files(
 @app.get("/files/me")
 async def my_files(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> dict[str, Any]:
     context = enforce_user_resource(require_token(credentials))
+    subject = _require_user_subject(context)
     explanation = (
-        "La API acepta el token porque existe contexto de usuario. Si ademas incluye act, queda demostrada la delegacion OBO."
+        "La API acepta el token porque existe un sub de usuario. El ownership de /files/me se resuelve solo con ese sub; si ademas existe act, queda demostrada la delegacion OBO."
     )
     return {
-        "items": list_user_files(context.subject or "anonymous-user"),
+        "items": list_user_files(subject),
         "token_analysis": context.analysis("allowed", explanation),
     }
 
@@ -71,7 +86,11 @@ async def upload_file(
         required_scopes=["files.write"],
         delegated_only=True,
     )
-    created = upload_user_file(context.subject or "anonymous-user", payload.file_name)
+    subject = _require_user_subject(context)
+    try:
+        created = upload_user_file(subject, payload.file_name)
+    except DemoFilesUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     explanation = "La carga exige scope files.write y delegacion explicita; un AGENT_TOKEN aislado no basta."
     return {
         "item": created,
@@ -90,8 +109,11 @@ async def share_file(
         required_scopes=["files.share"],
         delegated_only=True,
     )
+    subject = _require_user_subject(context)
     try:
-        shared = share_user_file(context.subject or "anonymous-user", file_id, payload.target)
+        shared = share_user_file(subject, file_id, payload.target)
+    except DemoFilesUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="File not found") from exc
     explanation = "Compartir un fichero es una accion sensible del usuario; por eso la demo exige OBO_TOKEN y scope files.share."
@@ -99,3 +121,10 @@ async def share_file(
         "item": shared,
         "token_analysis": context.analysis("allowed", explanation),
     }
+
+
+if settings.is_local_or_dev:
+
+    @app.get("/debug/demo-files")
+    async def debug_demo_files() -> dict[str, Any]:
+        return demo_files_debug_state()

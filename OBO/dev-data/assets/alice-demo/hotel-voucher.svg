@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-label="Demo hotel voucher">
+  <rect width="320" height="180" rx="18" fill="#0b2338" />
+  <rect x="16" y="16" width="288" height="148" rx="14" fill="#123e62" stroke="#4bd2b0" stroke-width="2" />
+  <text x="28" y="48" fill="#eef6fb" font-family="IBM Plex Sans, sans-serif" font-size="22" font-weight="700">Hotel Voucher</text>
+  <text x="28" y="82" fill="#c7d8e6" font-family="IBM Plex Sans, sans-serif" font-size="14">Demo asset for local OBO ownership walkthrough</text>
+  <text x="28" y="114" fill="#4bd2b0" font-family="IBM Plex Mono, monospace" font-size="14">OWNER: alice-demo</text>
+  <text x="28" y="138" fill="#eef6fb" font-family="IBM Plex Mono, monospace" font-size="14">FILE ID: alice-f2</text>
+</svg>
