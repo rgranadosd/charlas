@@ -123,8 +123,8 @@ export function StepRunnerPanel({
 
   const completedGuidedSteps = guidedSteps.filter((step) => step.done).length;
   const nextGuidedStep = guidedSteps.find((step) => !step.done) ?? null;
-  const canTestUserAccess = userTokenSynced;
-  const canTestAgentAccess = agentPhaseDone && userAccessAllowed;
+  const canTestUserAccess = userTokenSynced && agentPhaseDone;
+  const canTestAgentAccess = userTokenSynced && agentPhaseDone && userAccessAllowed;
 
   function getStepClass(order: number, done: boolean, failed: boolean) {
     if (done) {
@@ -263,7 +263,7 @@ export function StepRunnerPanel({
                       >
                         <span className="happy-substep__token">USER_TOKEN</span>
                         <span className="happy-substep__state">{getContrastCardStateLabel(latestUserAccessTrace, canTestUserAccess)}</span>
-                        <span className="happy-substep__hint">Debe quedar en verde antes de probar el agente.</span>
+                        <span className="happy-substep__hint">Se desbloquea tras obtener AGENT_TOKEN y debe quedar en verde.</span>
                         <span className="happy-substep__status-code">{latestUserAccessTrace?.response_status ?? "--"}</span>
                       </button>
                       <button
