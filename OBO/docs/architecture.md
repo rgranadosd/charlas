@@ -72,9 +72,10 @@ Por cada sesion demo se guardan:
 - `oauth_client_id`
 - `agent_token`
 - `agent_token_claims`
-- `agent_token_sub`
-- `agent_token_sub_same_as_client_id`
-- `agent_token_authentication_type`
+- `token_sub`
+- `sub_matches_client_id`
+- `token_authentication_type`
+- `security_meaning`
 - `obo_authorization_url`
 - `obo_state`
 - `code_verifier`

@@ -64,6 +64,11 @@ class AgentTokenService:
         if not self.settings.agent_client_id or not self.settings.agent_client_secret:
             raise HTTPException(status_code=400, detail="Agent client credentials are not configured")
 
+        security_meaning = (
+            "El AGENT_TOKEN autentica al cliente OAuth asociado al agente. "
+            "El agent_id lógico proviene del registro/configuración en WSO2 y no tiene por qué venir como claim del token."
+        )
+
         result = await oauth_service.request_client_credentials_token(
             client_id=self.settings.agent_client_id,
             client_secret=self.settings.agent_client_secret,
@@ -81,7 +86,7 @@ class AgentTokenService:
         access_token = result["body"].get("access_token")
         artifact = build_token_artifact(
             access_token,
-            explanation="Emitido por WSO2 IS para autenticar al cliente OAuth asociado al agente. El agent_id logico proviene del registro/configuracion del agente y no debe inferirse desde sub ni client_id.",
+            explanation="Emitido por WSO2 IS para autenticar al cliente OAuth asociado al agente. El agent_id logico proviene del registro/configuracion del agente.",
             consumer="Backend OBO coordinator y llamadas autonomas del agente",
             issuer_hint=self.settings.wso2_issuer,
         )
@@ -97,6 +102,7 @@ class AgentTokenService:
             oauth_client_id=oauth_client_id,
             token_sub=token_sub,
             token_authentication_type=token_authentication_type,
+            security_meaning=security_meaning,
         )
         session_store.append_trace(
             session_id,
@@ -112,7 +118,7 @@ class AgentTokenService:
                 "response_status": result["status_code"],
                 "response_body": result["body"],
                 "functional_interpretation": "El backend obtuvo un token propio del agente usando client credentials.",
-                "security_interpretation": "Este token autentica al cliente OAuth del agente en WSO2. El agent_id logico sigue viniendo de AGENT_ID y no debe inferirse desde sub ni client_id del token.",
+                "security_interpretation": security_meaning,
             },
         )
         return session_store.serialize_session(session_id, self.settings.debug_show_full_tokens)

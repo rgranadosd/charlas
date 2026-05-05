@@ -19,6 +19,11 @@ interface CollapsibleInspectorPanelProps {
   children: React.ReactNode;
 }
 
+interface IdentityMeaningRow {
+  field: string;
+  meaning: string;
+}
+
 function CollapsibleInspectorPanel({
   title,
   subtitle,
@@ -67,6 +72,25 @@ function formatInlineValue(value: unknown): string {
   return normalized.trim() ? normalized : "n/a";
 }
 
+const STEP_2_IDENTITY_ROWS: IdentityMeaningRow[] = [
+  {
+    field: "AGENT_ID",
+    meaning: "Identidad lógica del agente en WSO2",
+  },
+  {
+    field: "client_id",
+    meaning: "Identidad técnica del cliente OAuth",
+  },
+  {
+    field: "sub",
+    meaning: "Subject técnico del token",
+  },
+  {
+    field: "act.sub",
+    meaning: "Agente delegado dentro del OBO token",
+  },
+];
+
 const STEP_LABELS: Record<number, string> = {
   1: "Login usuario",
   2: "Obtener AGENT_TOKEN",
@@ -84,7 +108,7 @@ const STEP_EXPLANATIONS: Record<number, { title: string; body: string }> = {
   },
   2: {
     title: "Resumen",
-    body: "Antes del OBO, AGENT_ID identifica al agente registrado en WSO2 y AGENT_TOKEN solo autentica al cliente OAuth tecnico del agente.",
+    body: "En el paso 2 no se espera ver agent_id dentro del AGENT_TOKEN. El agent_id lógico viene de configuración; la identidad técnica del token se muestra como client_id/sub; la identidad delegada del agente aparecerá en act.sub cuando exista OBO_TOKEN.",
   },
   3: {
     title: "Resumen",
@@ -217,23 +241,55 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
             </div>
             <div>
               <dt>token_sub</dt>
-              <dd>{session?.agent_token_sub ?? "n/a"}</dd>
+              <dd>{session?.token_sub ?? "n/a"}</dd>
             </div>
             <div>
-              <dt>same_as_client_id</dt>
-              <dd>{session?.agent_token_sub_same_as_client_id ? "true" : "false"}</dd>
+              <dt>sub_matches_client_id</dt>
+              <dd>{session?.sub_matches_client_id ? "true" : "false"}</dd>
             </div>
             <div>
               <dt>token_authentication_type</dt>
-              <dd>{session?.agent_token_authentication_type ?? "n/a"}</dd>
+              <dd>{session?.token_authentication_type ?? "n/a"}</dd>
             </div>
             <div>
               <dt>aud</dt>
               <dd>{formatInlineValue(agent?.audience)}</dd>
             </div>
           </dl>
+          {session?.sub_matches_client_id ? (
+            <div className="identity-badge-row">
+              <span
+                className="semantic-badge"
+                title="Coinciden en este token, pero no deben interpretarse como el agent_id lógico."
+              >
+                sub matches client_id
+              </span>
+            </div>
+          ) : null}
+          <div className="identity-callout">
+            <p className="identity-callout__title">Security meaning</p>
+            <p className="identity-callout__body">{session?.security_meaning ?? "n/a"}</p>
+          </div>
+          <div className="identity-meaning-table-wrapper">
+            <table className="identity-meaning-table">
+              <thead>
+                <tr>
+                  <th>Campo</th>
+                  <th>Significado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {STEP_2_IDENTITY_ROWS.map((row) => (
+                  <tr key={row.field}>
+                    <td>{row.field}</td>
+                    <td>{row.meaning}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <ScopeChips scopes={agent?.scopes ?? []} />
-          <p className="inspector-explanation-panel__body">Este token autentica al cliente OAuth asociado al agente en WSO2. El agent_id logico sigue viniendo del registro/configuracion del agente y no debe inferirse desde sub ni client_id.</p>
+          <p className="inspector-explanation-panel__body">Esto representa la identidad técnica del cliente OAuth autenticado en WSO2. No sustituye al agent_id lógico.</p>
         </CollapsibleInspectorPanel> : null}
         {showAgent && agent ? (
           <TokenCard
