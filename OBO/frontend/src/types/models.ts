@@ -75,7 +75,8 @@ export interface SessionResponse {
   updated_at: string;
   configured_agent_id: string | null;
   oauth_client_id: string | null;
-  agent_token_subject: string | null;
+  agent_token_sub: string | null;
+  agent_token_sub_same_as_client_id: boolean;
   agent_token_authentication_type: string | null;
   delegated_user_id: string | null;
   delegated_agent_id: string | null;

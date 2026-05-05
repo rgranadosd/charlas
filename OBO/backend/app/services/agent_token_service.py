@@ -81,21 +81,21 @@ class AgentTokenService:
         access_token = result["body"].get("access_token")
         artifact = build_token_artifact(
             access_token,
-            explanation="Emitido por WSO2 IS para autenticar al cliente OAuth del agente. La identidad logica del agente proviene de AGENT_ID en configuracion.",
+            explanation="Emitido por WSO2 IS para autenticar al cliente OAuth asociado al agente. El agent_id logico proviene del registro/configuracion del agente y no debe inferirse desde sub ni client_id.",
             consumer="Backend OBO coordinator y llamadas autonomas del agente",
             issuer_hint=self.settings.wso2_issuer,
         )
         artifact = await self._enrich_opaque_token_artifact(artifact)
         claims = artifact.get("claims", {})
         oauth_client_id = extract_oauth_client_id(claims) or self.settings.agent_client_id or None
-        token_subject = extract_subject(claims)
+        token_sub = extract_subject(claims)
         token_authentication_type = extract_token_authentication_type(claims) or "APPLICATION"
         session_store.set_agent_token(
             session_id,
             artifact=artifact,
             configured_agent_id=self.settings.agent_id,
             oauth_client_id=oauth_client_id,
-            token_subject=token_subject,
+            token_sub=token_sub,
             token_authentication_type=token_authentication_type,
         )
         session_store.append_trace(
