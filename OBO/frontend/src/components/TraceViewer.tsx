@@ -9,7 +9,7 @@ interface TraceViewerProps {
 const STEP_TRACE_ACTIONS: Record<number, string[]> = {
   1: ["Sincronizar USER_TOKEN"],
   2: ["Obtener AGENT_TOKEN"],
-  3: ["Probar acceso con AGENT_TOKEN"],
+  3: ["Probar acceso con USER_TOKEN", "Probar acceso con AGENT_TOKEN"],
   4: ["Iniciar delegacion OBO"],
   5: ["Recibir authorization_code"],
   6: ["Intercambiar code por OBO_TOKEN"],
@@ -27,6 +27,15 @@ export function TraceViewer({ traces, selectedStepOrder = null }: TraceViewerPro
     return date.toLocaleString();
   }
 
+  function extractTokenSource(requestParameters: unknown): string | null {
+    if (!requestParameters || typeof requestParameters !== "object" || Array.isArray(requestParameters)) {
+      return null;
+    }
+
+    const tokenSource = (requestParameters as { token_source?: unknown }).token_source;
+    return typeof tokenSource === "string" && tokenSource.trim() ? tokenSource : null;
+  }
+
   const selectedActions = selectedStepOrder ? STEP_TRACE_ACTIONS[selectedStepOrder] ?? [] : [];
 
   return (
@@ -42,6 +51,7 @@ export function TraceViewer({ traces, selectedStepOrder = null }: TraceViewerPro
         {traces.map((trace, index) => {
           const isCurrent = index === 0;
           const isSelectedStepTrace = selectedActions.includes(trace.action);
+          const tokenSource = extractTokenSource(trace.request_parameters);
           const traceClasses = ["trace-item"];
 
           if (isCurrent) {
@@ -88,6 +98,12 @@ export function TraceViewer({ traces, selectedStepOrder = null }: TraceViewerPro
                     <p className="trace-note-card__label">Lectura de seguridad</p>
                     <p className="trace-note-card__value">{trace.security_interpretation}</p>
                   </div>
+                  {tokenSource ? (
+                    <div className="trace-note-card trace-note-card--token-source">
+                      <p className="trace-note-card__label">Token usado</p>
+                      <p className="trace-note-card__value trace-note-card__value--mono">{tokenSource}</p>
+                    </div>
+                  ) : null}
                 </div>
                 <p className="trace-endpoint">{trace.endpoint}</p>
                 <details className="trace-technical-details">

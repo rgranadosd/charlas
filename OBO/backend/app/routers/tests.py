@@ -24,6 +24,7 @@ async def _call_resource_api(
     label: str,
     session_id: str,
     payload: ProtectedAccessRequest,
+    token_source: str,
 ) -> dict[str, Any]:
     settings = get_settings()
     url = f"{settings.resource_api_base_url}{payload.resource_path}"
@@ -46,6 +47,7 @@ async def _call_resource_api(
         "url": url,
         "headers": {"Authorization": f"Bearer {token[:18]}..."},
         "json": payload.payload,
+        "token_source": token_source,
     }
     response_payload = {"status_code": response.status_code, "body": response_body}
     session_store.set_last_api_interaction(
@@ -63,11 +65,25 @@ async def _call_resource_api(
             "request_parameters": request_payload,
             "response_status": response.status_code,
             "response_body": response_body,
-            "functional_interpretation": "La demo llamo a la API protegida para contrastar token autonomo frente a token delegado.",
+            "functional_interpretation": f"La demo llamo a la API protegida usando {token_source} para contrastar token autonomo frente a token delegado.",
             "security_interpretation": security_explanation,
         },
     )
     return session_store.serialize_session(session_id, settings.debug_show_full_tokens)
+
+
+def _require_stored_token(
+    *,
+    session_id: str,
+    artifact_key: str,
+    missing_detail: str,
+) -> str:
+    current = session_store.get_or_create(session_id)
+    artifact = current.get(artifact_key)
+    token = artifact.get("token") if isinstance(artifact, dict) else None
+    if not token:
+        raise HTTPException(status_code=400, detail=missing_detail)
+    return token
 
 
 @router.post("/api/agent-token")
@@ -84,15 +100,37 @@ async def test_agent_access(
     x_demo_session_id: str | None = Header(default=None),
 ) -> dict:
     session_id = _require_session_id(x_demo_session_id)
-    current = session_store.get_or_create(session_id)
-    artifact = current.get("agent_token")
-    if not artifact or not artifact.get("token"):
-        raise HTTPException(status_code=400, detail="AGENT_TOKEN is missing")
+    token = _require_stored_token(
+        session_id=session_id,
+        artifact_key="agent_token",
+        missing_detail="AGENT_TOKEN is missing",
+    )
     return await _call_resource_api(
-        token=artifact["token"],
+        token=token,
         label="Probar acceso con AGENT_TOKEN",
         session_id=session_id,
         payload=payload,
+        token_source="el AGENT_TOKEN almacenado en la sesion del paso 2",
+    )
+
+
+@router.post("/api/test/user-access")
+async def test_user_access(
+    payload: ProtectedAccessRequest,
+    x_demo_session_id: str | None = Header(default=None),
+) -> dict:
+    session_id = _require_session_id(x_demo_session_id)
+    token = _require_stored_token(
+        session_id=session_id,
+        artifact_key="user_token",
+        missing_detail="USER_TOKEN is missing",
+    )
+    return await _call_resource_api(
+        token=token,
+        label="Probar acceso con USER_TOKEN",
+        session_id=session_id,
+        payload=payload,
+        token_source="el USER_TOKEN almacenado en la sesion del paso 1 (/api/session/user-token)",
     )
 
 
@@ -102,13 +140,15 @@ async def test_obo_access(
     x_demo_session_id: str | None = Header(default=None),
 ) -> dict:
     session_id = _require_session_id(x_demo_session_id)
-    current = session_store.get_or_create(session_id)
-    artifact = current.get("obo_token")
-    if not artifact or not artifact.get("token"):
-        raise HTTPException(status_code=400, detail="OBO_TOKEN is missing")
+    token = _require_stored_token(
+        session_id=session_id,
+        artifact_key="obo_token",
+        missing_detail="OBO_TOKEN is missing",
+    )
     return await _call_resource_api(
-        token=artifact["token"],
+        token=token,
         label="Leer mis ficheros con OBO_TOKEN",
         session_id=session_id,
         payload=payload,
+        token_source="el OBO_TOKEN almacenado en la sesion tras el paso 6",
     )

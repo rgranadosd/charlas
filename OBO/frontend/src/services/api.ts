@@ -104,6 +104,13 @@ export class BackendApi {
     });
   }
 
+  testUserAccess(request: ProtectedAccessRequest): Promise<SessionResponse> {
+    return this.request<SessionResponse>("/api/test/user-access", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
   testOboAccess(request: ProtectedAccessRequest): Promise<SessionResponse> {
     return this.request<SessionResponse>("/api/test/obo-access", {
       method: "POST",

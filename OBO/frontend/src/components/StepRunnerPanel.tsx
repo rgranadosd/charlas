@@ -18,6 +18,7 @@ interface StepRunnerPanelProps {
   onStartObo: () => Promise<unknown>;
   onExchangeObo: () => Promise<unknown>;
   onOpenConsent: () => void;
+  onTestUserAccess: () => Promise<unknown>;
   onTestAgentAccess: () => Promise<unknown>;
   onTestOboRead: () => Promise<unknown>;
   onUploadWithObo: () => Promise<unknown>;
@@ -39,6 +40,7 @@ export function StepRunnerPanel({
   onStartObo,
   onExchangeObo,
   onOpenConsent,
+  onTestUserAccess,
   onTestAgentAccess,
   onTestOboRead,
   onUploadWithObo,
@@ -49,13 +51,22 @@ export function StepRunnerPanel({
   const userPhaseDone = isAuthenticated;
   const userTokenSynced = session?.artifacts.user.available ?? false;
   const agentPhaseDone = session?.artifacts.agent.available ?? false;
+  const latestUserAccessTrace = session?.traces.find(
+    (trace) => trace.action === "Probar acceso con USER_TOKEN",
+  );
   const latestAgentAccessTrace = session?.traces.find(
     (trace) => trace.action === "Probar acceso con AGENT_TOKEN",
   );
-  const agentAccessDone =
+  const userAccessAllowed =
+    latestUserAccessTrace !== undefined && latestUserAccessTrace.response_status < 400;
+  const userAccessRejected =
+    latestUserAccessTrace !== undefined && latestUserAccessTrace.response_status >= 400;
+  const agentAccessAllowed =
     latestAgentAccessTrace !== undefined && latestAgentAccessTrace.response_status < 400;
-  const agentAccessFailed =
+  const agentAccessRejected =
     latestAgentAccessTrace !== undefined && latestAgentAccessTrace.response_status >= 400;
+  const contrastAccessDone = userAccessAllowed && agentAccessRejected;
+  const contrastAccessFailed = userAccessRejected || agentAccessAllowed || failedStepOrders.includes(3);
   const delegationPhaseDone = session?.artifacts.delegation.status === "available";
   const consentPhaseDone = session?.artifacts.authorization_code.status === "available";
   const oboPhaseDone = session?.artifacts.obo.available ?? false;
@@ -80,9 +91,9 @@ export function StepRunnerPanel({
     },
     {
       order: 3,
-      label: "Probar recurso privado con AGENT_TOKEN",
-      done: agentAccessDone,
-      failed: agentAccessFailed || failedStepOrders.includes(3),
+      label: "Comparar USER_TOKEN vs AGENT_TOKEN",
+      done: contrastAccessDone,
+      failed: contrastAccessFailed,
     },
     {
       order: 4,
@@ -112,6 +123,8 @@ export function StepRunnerPanel({
 
   const completedGuidedSteps = guidedSteps.filter((step) => step.done).length;
   const nextGuidedStep = guidedSteps.find((step) => !step.done) ?? null;
+  const canTestUserAccess = userTokenSynced;
+  const canTestAgentAccess = agentPhaseDone && userAccessAllowed;
 
   function getStepClass(order: number, done: boolean, failed: boolean) {
     if (done) {
@@ -176,21 +189,42 @@ export function StepRunnerPanel({
     },
   };
 
-  async function handleStepClick(order: number) {
+  async function runStepAction(order: number, action: () => Promise<unknown> | void) {
     onSelectStep(order);
-    const action = guidedActions[order];
-    if (!action || action.disabled) {
-      return;
-    }
 
     try {
-      await action.onClick();
+      await action();
       setFailedStepOrders((current) => current.filter((stepOrder) => stepOrder !== order));
     } catch {
       setFailedStepOrders((current) =>
         current.includes(order) ? current : [...current, order],
       );
     }
+  }
+
+  async function handleStepClick(order: number) {
+    const action = guidedActions[order];
+    if (!action || action.disabled) {
+      return;
+    }
+
+    await runStepAction(order, action.onClick);
+  }
+
+  function getContrastCardClass(trace: SessionResponse["traces"][number] | undefined, enabled: boolean) {
+    if (!trace) {
+      return enabled ? "is-pending" : "is-locked";
+    }
+
+    return trace.response_status < 400 ? "is-allowed" : "is-denied";
+  }
+
+  function getContrastCardStateLabel(trace: SessionResponse["traces"][number] | undefined, enabled: boolean) {
+    if (!trace) {
+      return enabled ? "Pendiente" : "Bloqueado";
+    }
+
+    return trace.response_status < 400 ? "Permitido" : "Denegado";
   }
 
   return (
@@ -206,6 +240,51 @@ export function StepRunnerPanel({
         <div className="happy-path-flow" role="list" aria-label="Flujo guiado del protocolo">
           {guidedSteps.map((step, index) => {
             const action = guidedActions[step.order as keyof typeof guidedActions];
+
+            if (step.order === 3) {
+              return (
+                <div key={step.order} className="happy-step-node" role="listitem">
+                  <div
+                    className={`happy-step happy-step--contrast ${getStepClass(step.order, step.done, step.failed)} ${selectedStepOrder === step.order ? "is-selected" : ""}`}
+                  >
+                    <div className="happy-step__topline">
+                      <span className="button-order">{step.order}</span>
+                      <span className="happy-step__state">{getStepStateLabel(step.order, step.done, step.failed)}</span>
+                    </div>
+                    <span className="happy-step__title">{step.label}</span>
+                    <div className="happy-step-contrast-grid">
+                      <button
+                        type="button"
+                        className={`happy-substep ${getContrastCardClass(latestUserAccessTrace, canTestUserAccess)}`}
+                        onClick={() => {
+                          void runStepAction(3, onTestUserAccess);
+                        }}
+                        disabled={!canTestUserAccess}
+                      >
+                        <span className="happy-substep__token">USER_TOKEN</span>
+                        <span className="happy-substep__state">{getContrastCardStateLabel(latestUserAccessTrace, canTestUserAccess)}</span>
+                        <span className="happy-substep__hint">Debe quedar en verde antes de probar el agente.</span>
+                        <span className="happy-substep__status-code">{latestUserAccessTrace?.response_status ?? "--"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`happy-substep ${getContrastCardClass(latestAgentAccessTrace, canTestAgentAccess)}`}
+                        onClick={() => {
+                          void runStepAction(3, onTestAgentAccess);
+                        }}
+                        disabled={!canTestAgentAccess}
+                      >
+                        <span className="happy-substep__token">AGENT_TOKEN</span>
+                        <span className="happy-substep__state">{getContrastCardStateLabel(latestAgentAccessTrace, canTestAgentAccess)}</span>
+                        <span className="happy-substep__hint">Se desbloquea despues del USER_TOKEN y debe quedar en rojo.</span>
+                        <span className="happy-substep__status-code">{latestAgentAccessTrace?.response_status ?? "--"}</span>
+                      </button>
+                    </div>
+                  </div>
+                  {index < guidedSteps.length - 1 ? <div className="happy-step-arrow" aria-hidden="true" /> : null}
+                </div>
+              );
+            }
 
             return (
               <div key={step.order} className="happy-step-node" role="listitem">
