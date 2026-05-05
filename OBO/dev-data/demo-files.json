@@ -1,0 +1,44 @@
+{
+  "version": "demo-v1",
+  "users": [
+    {
+      "label": "alice-demo",
+      "owner_sub": "rafa@carbon.super",
+      "owner_sub_aliases": [
+        "be7e3cef-6264-464d-b7e3-4507a1fe3206"
+      ],
+      "files": [
+        {
+          "id": "alice-f1",
+          "filename": "welcome-pack.txt",
+          "content_type": "text/plain",
+          "size_bytes": 128,
+          "storage_path": "dev-data/assets/alice-demo/welcome-pack.txt",
+          "created_at": "2026-05-05T10:00:00Z"
+        },
+        {
+          "id": "alice-f2",
+          "filename": "hotel-voucher.svg",
+          "content_type": "image/svg+xml",
+          "size_bytes": 512,
+          "storage_path": "dev-data/assets/alice-demo/hotel-voucher.svg",
+          "created_at": "2026-05-05T10:05:00Z"
+        }
+      ]
+    },
+    {
+      "label": "bob-demo",
+      "owner_sub": "REPLACE_WITH_REAL_SUB_BOB",
+      "files": [
+        {
+          "id": "bob-f1",
+          "filename": "expense-report-may.csv",
+          "content_type": "text/csv",
+          "size_bytes": 256,
+          "storage_path": "dev-data/assets/bob-demo/expense-report-may.csv",
+          "created_at": "2026-05-05T10:10:00Z"
+        }
+      ]
+    }
+  ]
+}

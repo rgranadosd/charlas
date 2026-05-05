@@ -1,0 +1,4 @@
+line_item,amount,currency,status
+taxi-airport,48.50,EUR,approved
+team-lunch,82.10,EUR,pending
+printer-supplies,19.99,EUR,approved

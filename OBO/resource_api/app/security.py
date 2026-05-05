@@ -11,6 +11,8 @@ from jwt import PyJWK
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.config import settings
+
 
 def _extract_scopes(claims: dict[str, Any]) -> list[str]:
     scope = claims.get("scope") or claims.get("scp") or []
@@ -49,23 +51,6 @@ def _truncate(token: str) -> str:
         return token
     return f"{token[:20]}...{token[-12:]}"
 
-
-class SecuritySettings:
-    def __init__(self) -> None:
-        self.app_name = os.getenv("APP_NAME", "WSO2 OBO Resource API")
-        self.resource_api_host = os.getenv("RESOURCE_API_HOST", "0.0.0.0")
-        self.resource_api_port = int(os.getenv("RESOURCE_API_PORT", "8001"))
-        self.wso2_issuer = os.getenv("WSO2_ISSUER", "https://localhost:9443/oauth2/token")
-        self.wso2_jwks_endpoint = os.getenv("WSO2_JWKS_ENDPOINT", "https://localhost:9443/oauth2/jwks")
-        self.wso2_introspection_endpoint = os.getenv(
-            "WSO2_INTROSPECTION_ENDPOINT", "https://localhost:9443/oauth2/introspect"
-        )
-        self.introspection_client_id = os.getenv("INTROSPECTION_CLIENT_ID", "admin")
-        self.introspection_client_secret = os.getenv("INTROSPECTION_CLIENT_SECRET", "admin")
-        self.expected_audience = os.getenv("EXPECTED_AUDIENCE", "")
-
-
-settings = SecuritySettings()
 bearer = HTTPBearer(auto_error=False)
 
 
