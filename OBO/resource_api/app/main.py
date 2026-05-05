@@ -9,7 +9,14 @@ from pydantic import BaseModel
 from app.config import settings
 from app.demo_files_repository import DemoFilesUnavailableError
 from app.security import bearer, enforce_user_resource, require_token
-from app.state import demo_files_debug_state, list_public_files, list_user_files, share_user_file, upload_user_file
+from app.state import (
+    demo_files_debug_state,
+    list_public_files,
+    list_user_files,
+    share_user_file,
+    upload_user_file,
+    user_has_seeded_files,
+)
 
 
 class UploadRequest(BaseModel):
@@ -67,6 +74,15 @@ async def public_files(
 async def my_files(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> dict[str, Any]:
     context = enforce_user_resource(require_token(credentials))
     subject = _require_user_subject(context)
+    if settings.demo_files_enabled and not user_has_seeded_files(subject):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "User has no seeded demo resources",
+                "reason": "The token belongs to a human user, but /files/me in this demo is restricted to subjects present in dev-data/demo-files.json.",
+                "subject": subject,
+            },
+        )
     explanation = (
         "La API acepta el token porque existe un sub de usuario. El ownership de /files/me se resuelve solo con ese sub; si ademas existe act, queda demostrada la delegacion OBO."
     )

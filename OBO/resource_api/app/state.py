@@ -30,6 +30,13 @@ def list_user_files(subject: str) -> list[dict[str, Any]]:
     return repository.list_files_for_user(subject)
 
 
+def user_has_seeded_files(subject: str) -> bool:
+    repository = get_demo_file_repository()
+    if not repository.active:
+        return False
+    return repository.has_seeded_user(subject)
+
+
 def upload_user_file(subject: str, file_name: str) -> dict[str, Any]:
     repository = get_demo_file_repository()
     return repository.upload_file_for_user(subject, file_name)
