@@ -146,6 +146,8 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
                 }
               }}
               onLogout={() => {
+                backend.resetSession();
+                setSelectedStepOrder(null);
                 void signOut();
               }}
               onRefresh={backend.refreshSession}
@@ -158,7 +160,7 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
               onUploadWithObo={() => backend.uploadWithObo("generated-report.txt")}
               onShareWithObo={() => backend.shareWithObo("usr-1", "security-team@example.com")}
             />
-            <TraceViewer traces={backend.session?.traces ?? []} />
+            <TraceViewer traces={backend.session?.traces ?? []} selectedStepOrder={selectedStepOrder} />
           </div>
         </main>
 

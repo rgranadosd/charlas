@@ -4,13 +4,21 @@ import { env } from "../config/env";
 import { BackendApi } from "../services/api";
 import type { ProtectedAccessRequest, SessionResponse } from "../types/models";
 
+const SESSION_STORAGE_KEY = "obo-demo-session-id";
+
 function getOrCreateSessionId(): string {
-  const existing = window.localStorage.getItem("obo-demo-session-id");
+  const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
   if (existing) {
     return existing;
   }
   const created = window.crypto.randomUUID();
-  window.localStorage.setItem("obo-demo-session-id", created);
+  window.localStorage.setItem(SESSION_STORAGE_KEY, created);
+  return created;
+}
+
+function createFreshSessionId(): string {
+  const created = window.crypto.randomUUID();
+  window.localStorage.setItem(SESSION_STORAGE_KEY, created);
   return created;
 }
 
@@ -22,15 +30,15 @@ function describeError(error: unknown): string {
 }
 
 export function useBackendSession() {
-  const [sessionId] = useState(() => getOrCreateSessionId());
-  const [api] = useState(() => new BackendApi(env.backendBaseUrl, getOrCreateSessionId()));
+  const [sessionId, setSessionId] = useState(() => getOrCreateSessionId());
+  const [api, setApi] = useState(() => new BackendApi(env.backendBaseUrl, getOrCreateSessionId()));
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void refreshSession();
-  }, []);
+  }, [api]);
 
   async function withLoading<T>(label: string, action: () => Promise<T>): Promise<T> {
     setLoadingAction(label);
@@ -118,6 +126,16 @@ export function useBackendSession() {
     });
   }
 
+  function resetSession(): string {
+    const nextSessionId = createFreshSessionId();
+    setSessionId(nextSessionId);
+    setSession(null);
+    setError(null);
+    setLoadingAction(null);
+    setApi(new BackendApi(env.backendBaseUrl, nextSessionId));
+    return nextSessionId;
+  }
+
   return {
     sessionId,
     session,
@@ -132,5 +150,6 @@ export function useBackendSession() {
     testOboAccess,
     uploadWithObo,
     shareWithObo,
+    resetSession,
   };
 }
