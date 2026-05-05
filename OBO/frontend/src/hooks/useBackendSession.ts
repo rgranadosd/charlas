@@ -102,6 +102,14 @@ export function useBackendSession() {
     });
   }
 
+  async function testUserAccess(request: ProtectedAccessRequest): Promise<SessionResponse> {
+    return withLoading("Probar acceso con USER_TOKEN", async () => {
+      const next = await api.testUserAccess(request);
+      setSession(next);
+      return next;
+    });
+  }
+
   async function testOboAccess(request: ProtectedAccessRequest): Promise<SessionResponse> {
     return withLoading("Leer mis ficheros con OBO_TOKEN", async () => {
       const next = await api.testOboAccess(request);
@@ -147,6 +155,7 @@ export function useBackendSession() {
     startObo,
     exchangeObo,
     testAgentAccess,
+    testUserAccess,
     testOboAccess,
     uploadWithObo,
     shareWithObo,

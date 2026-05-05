@@ -14,8 +14,14 @@ interface DashboardPageProps {
 
 function deriveSuggestedStepOrder(isAuthenticated: boolean, session: ReturnType<typeof useBackendSession>["session"]): number {
   const agentAvailable = session?.artifacts.agent.available ?? false;
+  const userAccessDone =
+    session?.traces.some(
+      (trace) => trace.action === "Probar acceso con USER_TOKEN" && trace.response_status < 400,
+    ) ?? false;
   const agentAccessDone =
-    session?.traces.some((trace) => trace.action === "Probar acceso con AGENT_TOKEN") ?? false;
+    session?.traces.some(
+      (trace) => trace.action === "Probar acceso con AGENT_TOKEN" && trace.response_status >= 400,
+    ) ?? false;
   const delegationStarted = session?.artifacts.delegation.status === "available";
   const authCodeAvailable = session?.artifacts.authorization_code.status === "available";
   const oboAvailable = session?.artifacts.obo.available ?? false;
@@ -25,7 +31,7 @@ function deriveSuggestedStepOrder(isAuthenticated: boolean, session: ReturnType<
   const guided = [
     { order: 1, done: isAuthenticated },
     { order: 2, done: agentAvailable },
-    { order: 3, done: agentAccessDone },
+    { order: 3, done: userAccessDone && agentAccessDone },
     { order: 4, done: delegationStarted },
     { order: 5, done: authCodeAvailable },
     { order: 6, done: oboAvailable },
@@ -155,6 +161,7 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
               onStartObo={backend.startObo}
               onExchangeObo={backend.exchangeObo}
               onOpenConsent={openConsentWindow}
+              onTestUserAccess={() => backend.testUserAccess({ resource_path: "/files/me", method: "GET" })}
               onTestAgentAccess={() => backend.testAgentAccess({ resource_path: "/files/me", method: "GET" })}
               onTestOboRead={() => backend.testOboAccess({ resource_path: "/files/me", method: "GET" })}
               onUploadWithObo={() => backend.uploadWithObo("generated-report.txt")}

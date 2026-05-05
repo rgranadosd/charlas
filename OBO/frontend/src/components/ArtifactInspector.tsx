@@ -94,7 +94,7 @@ const STEP_2_IDENTITY_ROWS: IdentityMeaningRow[] = [
 const STEP_LABELS: Record<number, string> = {
   1: "Login usuario",
   2: "Obtener AGENT_TOKEN",
-  3: "Probar recurso privado con AGENT_TOKEN",
+  3: "Comparar USER_TOKEN vs AGENT_TOKEN",
   4: "Iniciar delegacion OBO",
   5: "Abrir pantalla de consentimiento",
   6: "Intercambiar code por OBO_TOKEN",
@@ -112,7 +112,7 @@ const STEP_EXPLANATIONS: Record<number, { title: string; body: string }> = {
   },
   3: {
     title: "Resumen",
-    body: "Aqui se ve la separacion correcta: el cliente OAuth del agente esta autenticado, pero eso no le da por si solo identidad delegada del usuario.",
+    body: "Aqui se contrasta el mismo recurso con ambos tokens: USER_TOKEN debe permitir acceso al recurso del usuario y AGENT_TOKEN debe quedar denegado porque no aporta contexto delegado.",
   },
   4: {
     title: "Resumen",
@@ -140,7 +140,7 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
   const obo = session?.artifacts.obo;
   const selectedStepLabel = selectedStepOrder ? STEP_LABELS[selectedStepOrder] : null;
 
-  const showUser = selectedStepOrder === null || selectedStepOrder === 1;
+  const showUser = selectedStepOrder === null || selectedStepOrder === 1 || selectedStepOrder === 3;
   const showAgent = selectedStepOrder === null || selectedStepOrder === 2 || selectedStepOrder === 3;
   const showDelegation =
     selectedStepOrder === null || selectedStepOrder === 4 || selectedStepOrder === 5;
