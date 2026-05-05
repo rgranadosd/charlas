@@ -164,6 +164,9 @@ class InMemoryFileRepository:
     def list_files_for_user(self, owner_sub: str) -> list[dict[str, Any]]:
         return deepcopy(self._files_by_owner.get(owner_sub, []))
 
+    def has_seeded_user(self, owner_sub: str) -> bool:
+        return owner_sub in self._files_by_owner
+
     def _ensure_active(self) -> None:
         if not self.active:
             raise DemoFilesUnavailableError(self.error or "Demo repository is inactive")
