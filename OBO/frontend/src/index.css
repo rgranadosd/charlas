@@ -225,6 +225,76 @@ button:disabled {
   gap: 0.8rem;
 }
 
+.identity-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.semantic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 210, 176, 0.35);
+  background: rgba(75, 210, 176, 0.12);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.identity-callout {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.identity-callout__title,
+.identity-callout__body {
+  margin: 0;
+}
+
+.identity-callout__title {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.identity-meaning-table-wrapper {
+  overflow-x: auto;
+}
+
+.identity-meaning-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 320px;
+}
+
+.identity-meaning-table th,
+.identity-meaning-table td {
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.identity-meaning-table th {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.identity-meaning-table td:first-child {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
 .eyebrow,
 .summary-label,
 dt,

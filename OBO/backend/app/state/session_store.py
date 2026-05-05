@@ -30,9 +30,10 @@ class SessionStore:
             "oauth_client_id": None,
             "agent_token": None,
             "agent_token_claims": {},
-            "agent_token_authentication_type": None,
-            "agent_token_sub": None,
-            "agent_token_sub_same_as_client_id": False,
+            "token_authentication_type": None,
+            "token_sub": None,
+            "sub_matches_client_id": False,
+            "security_meaning": None,
             "obo_authorization_url": None,
             "obo_state": None,
             "code_verifier": None,
@@ -82,6 +83,7 @@ class SessionStore:
         oauth_client_id: str | None,
         token_sub: str | None,
         token_authentication_type: str | None,
+        security_meaning: str,
     ) -> None:
         with self._lock:
             session = self._sessions.setdefault(session_id, self._build_session(session_id))
@@ -89,11 +91,12 @@ class SessionStore:
             session["oauth_client_id"] = oauth_client_id
             session["agent_token"] = artifact
             session["agent_token_claims"] = artifact.get("claims", {})
-            session["agent_token_authentication_type"] = token_authentication_type
-            session["agent_token_sub"] = token_sub
-            session["agent_token_sub_same_as_client_id"] = bool(
+            session["token_authentication_type"] = token_authentication_type
+            session["token_sub"] = token_sub
+            session["sub_matches_client_id"] = bool(
                 oauth_client_id is not None and token_sub == oauth_client_id
             )
+            session["security_meaning"] = security_meaning
             session["timestamps"]["agent_token_received_at"] = utcnow_iso()
             self._touch(session)
 
@@ -253,9 +256,11 @@ class SessionStore:
             "updated_at": session.get("updated_at"),
             "configured_agent_id": session.get("configured_agent_id"),
             "oauth_client_id": session.get("oauth_client_id"),
-            "agent_token_sub": session.get("agent_token_sub"),
-            "agent_token_sub_same_as_client_id": session.get("agent_token_sub_same_as_client_id", False),
-            "agent_token_authentication_type": session.get("agent_token_authentication_type"),
+            "token_sub": session.get("token_sub"),
+            "sub_matches_client_id": session.get("sub_matches_client_id", False),
+            "token_authentication_type": session.get("token_authentication_type"),
+            "agent_token_claims": session.get("agent_token_claims", {}),
+            "security_meaning": session.get("security_meaning"),
             "delegated_user_id": session.get("delegated_user_id"),
             "delegated_agent_id": session.get("delegated_agent_id"),
             "artifacts": artifacts,
@@ -271,9 +276,10 @@ class SessionStore:
                 "oauth_client_id": session.get("oauth_client_id"),
                 "agent_token": serialize_secret(session.get("agent_token", {}).get("token") if session.get("agent_token") else None, show_full_tokens),
                 "agent_token_claims": session.get("agent_token_claims", {}),
-                "agent_token_authentication_type": session.get("agent_token_authentication_type"),
-                "agent_token_sub": session.get("agent_token_sub"),
-                "agent_token_sub_same_as_client_id": session.get("agent_token_sub_same_as_client_id", False),
+                "token_authentication_type": session.get("token_authentication_type"),
+                "token_sub": session.get("token_sub"),
+                "sub_matches_client_id": session.get("sub_matches_client_id", False),
+                "security_meaning": session.get("security_meaning"),
                 "obo_authorization_url": serialize_secret(session.get("obo_authorization_url"), show_full_tokens),
                 "obo_state": serialize_secret(session.get("obo_state"), show_full_tokens),
                 "code_verifier": serialize_secret(session.get("code_verifier"), show_full_tokens),
