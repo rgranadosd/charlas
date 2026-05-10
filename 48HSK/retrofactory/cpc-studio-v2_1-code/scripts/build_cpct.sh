@@ -25,11 +25,4 @@ echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
 RVM_APP="/Applications/Retro Virtual Machine 2.1.app"
 DSK_FILE="$GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
 
-if [ -d "$RVM_APP" ] && [ -f "$DSK_FILE" ]; then
-	read -p "¿Quieres lanzar Retro Virtual Machine con el disco generado? [s/N]: " launch_rvm
-	if [[ "$launch_rvm" =~ ^[sS]$ ]]; then
-		open -a "$RVM_APP" "$DSK_FILE"
-	else
-		echo "No se lanzará Retro Virtual Machine."
-	fi
-fi
+# (Eliminado: ya no se pregunta ni se lanza RVM automáticamente)
