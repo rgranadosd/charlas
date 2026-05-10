@@ -1,0 +1,36 @@
+XL2
+H 9 areas 5 global symbols
+M main
+O -mz80
+S _cpct_drawStringM1 Ref0000
+S .__.ABS. Def0000
+S _cpct_memset Ref0000
+S _cpct_getScreenPtr Ref0000
+A _CODE size 41 flags 0 addr 0
+S _main Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 21 00 40 E5 AF F5 33 26 C0 E5 CD 00 00 21
+R 00 00 00 00 02 0D 02 00
+T 0E 00 14 60 E5 21 00 C0 E5 CD 00 00 01 2B 00 11
+R 00 00 00 00 02 0A 03 00 00 0D 00 00
+T 1C 00 01 00 D5 E5 C5 CD 00 00 21 06 00 39 F9
+R 00 00 00 00 02 08 00 00
+T 29 00
+R 00 00 00 00
+T 29 00 18 FE
+R 00 00 00 00
+T 2B 00
+R 00 00 00 00
+T 2B 00 57 65 6C 63 6F 6D 65 20 74 6F 20 43 50 43
+R 00 00 00 00
+T 39 00 74 65 6C 65 72 61 21 00
+R 00 00 00 00
