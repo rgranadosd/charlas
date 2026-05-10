@@ -25,4 +25,6 @@ echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
 RVM_APP="/Applications/Retro Virtual Machine 2.1.app"
 DSK_FILE="$GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
 
-# (Eliminado: ya no se pregunta ni se lanza RVM automáticamente)
+if [ -d "$RVM_APP" ] && [ -f "$DSK_FILE" ]; then
+	open -a "$RVM_APP" "$DSK_FILE"
+fi
