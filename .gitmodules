@@ -1,0 +1,3 @@
+[submodule "48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera"]
+	path = 48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera
+	url = https://github.com/lronaldo/cpctelera.git
