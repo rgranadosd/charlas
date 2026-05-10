@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ROOT="/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code"
+CPCTELERA_HOME="$PROJECT_ROOT/tools/cpctelera/cpctelera"
+GENERATED_PROJECTS="$PROJECT_ROOT/generated_projects"
+PROJECT_NAME="${1:-testcpct}"
+
+source "$HOME/.profile" || true
+export CPCT_PATH="$CPCTELERA_HOME"
+export PATH="$CPCTELERA_HOME/tools/scripts:$PATH"
+
+cd "$GENERATED_PROJECTS"
+rm -rf "$PROJECT_NAME"
+cpct_mkproject "$PROJECT_NAME"
+cd "$PROJECT_NAME"
+make
+
+echo
+echo "Build completada:"
+echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.cdt"
+echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
+
+# Try to open the .dsk file with Retro Virtual Machine 2.1 if available (macOS)
+RVM_APP="/Applications/Retro Virtual Machine 2.1.app"
+DSK_FILE="$GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
+
+if [ -d "$RVM_APP" ] && [ -f "$DSK_FILE" ]; then
+	read -p "¿Quieres lanzar Retro Virtual Machine con el disco generado? [s/N]: " launch_rvm
+	if [[ "$launch_rvm" =~ ^[sS]$ ]]; then
+		open -a "$RVM_APP" "$DSK_FILE"
+	else
+		echo "No se lanzará Retro Virtual Machine."
+	fi
+fi
