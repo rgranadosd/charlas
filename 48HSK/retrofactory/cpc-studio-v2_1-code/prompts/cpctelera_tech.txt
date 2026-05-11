@@ -22,6 +22,8 @@ REGLAS:
 - No uses markdown.
 - Si el juego se parece a Ghosts 'n Goblins, usa "action_platformer_run_and_gun".
 - Para action_platformer_run_and_gun usa un scaffold basado en tilemap, colisión, jugador, enemigo, proyectil y HUD.
+- El módulo principal del juego debe ser src/game.c con su cabecera src/game.h.
+- No dependas de src/scene_game.c como loop principal.
 - No añadas rutas fuera de src/.
 - El primer vertical slice debe ser pequeño y compilable.
 
@@ -42,7 +44,7 @@ SALIDA OBLIGATORIA:
     "allowed_files": [
       "src/main.c",
       "src/game.h",
-      "src/scene_game.c",
+      "src/game.c",
       "src/entities/player.h",
       "src/entities/player.c",
       "src/entities/enemy.h",
@@ -63,9 +65,11 @@ SALIDA OBLIGATORIA:
     "overwrite_files": [
       "src/main.c",
       "src/game.h",
-      "src/scene_game.c"
+      "src/game.c"
     ],
     "create_if_missing": [
+      "src/game.h",
+      "src/game.c",
       "src/entities/player.h",
       "src/entities/player.c",
       "src/entities/enemy.h",

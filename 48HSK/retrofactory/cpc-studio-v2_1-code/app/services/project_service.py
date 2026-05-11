@@ -1,144 +1,96 @@
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
 from app.services.file_service import write_text
 
 
-def _to_cpct_video_mode(video_mode: str) -> int:
-    normalized = str(video_mode).strip().lower()
-    if normalized in {"mode 0", "0", "m0"}:
-        return 0
-    if normalized in {"mode 2", "2", "m2"}:
-        return 2
-    return 1
+def _normalize_src_path(raw_path: str) -> str:
+    if not isinstance(raw_path, str):
+        raise ValueError("All file paths must be strings.")
+
+    candidate = raw_path.strip().replace("\\", "/")
+    if not candidate:
+        raise ValueError("File path cannot be empty.")
+
+    if "/../" in f"/{candidate}/" or candidate.startswith("../") or candidate.endswith("/.."):
+        raise ValueError(f"Path traversal is not allowed: {raw_path}")
+
+    path = PurePosixPath(candidate)
+    if path.is_absolute():
+        raise ValueError(f"Absolute paths are not allowed: {raw_path}")
+
+    normalized = path.as_posix()
+    if not normalized.startswith("src/"):
+        raise ValueError(f"Only paths under src/ are allowed: {raw_path}")
+
+    if normalized.endswith("/") or normalized == "src":
+        raise ValueError(f"Expected a file path under src/, got: {raw_path}")
+
+    return normalized
+
+
+def _normalize_scaffold_list(values, field_name: str) -> set[str]:
+    if values is None:
+        return set()
+    if not isinstance(values, list):
+        raise ValueError(f"payload['scaffold']['{field_name}'] must be a list.")
+    return {_normalize_src_path(value) for value in values}
+
+
+def _ensure_inside_project(base: Path, target: Path) -> None:
+    base_resolved = base.resolve()
+    target_resolved = target.resolve()
+    if target_resolved != base_resolved and base_resolved not in target_resolved.parents:
+        raise ValueError(f"Refusing to write outside project directory: {target}")
 
 
 def generate_project(base_dir: str, payload: dict) -> str:
     base = Path(base_dir)
-    video_mode = payload.get("video_mode", "Mode 1")
-    cpct_mode = _to_cpct_video_mode(video_mode)
-    gameplay = payload.get("gameplay_spec", "")
-    art_spec = payload.get("art_spec", "")
-    tech_plan = payload.get("implementation_plan", "")
+    if not base.exists() or not base.is_dir():
+        raise FileNotFoundError(f"Project directory does not exist: {base}")
 
-    write_text(base / "src" / "game.h", """#ifndef GAME_H
-#define GAME_H
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dictionary.")
 
-void game_init(void);
-void game_update(void);
-void game_render(void);
+    files = payload.get("files")
+    if not isinstance(files, dict):
+        raise ValueError("payload['files'] must be a dictionary of path -> content.")
 
-#endif
-""")
+    scaffold = payload.get("scaffold")
+    if not isinstance(scaffold, dict):
+        raise ValueError("payload['scaffold'] must be a dictionary.")
 
-    write_text(base / "src" / "systems" / "input.h", """#ifndef INPUT_H
-#define INPUT_H
+    allowed_files = _normalize_scaffold_list(scaffold.get("allowed_files"), "allowed_files")
+    overwrite_files = _normalize_scaffold_list(scaffold.get("overwrite_files"), "overwrite_files")
+    create_if_missing = _normalize_scaffold_list(scaffold.get("create_if_missing"), "create_if_missing")
 
-void input_update(void);
+    if not overwrite_files.issubset(allowed_files):
+        raise ValueError("'overwrite_files' must be a subset of 'allowed_files'.")
+    if not create_if_missing.issubset(allowed_files):
+        raise ValueError("'create_if_missing' must be a subset of 'allowed_files'.")
 
-#endif
-""")
+    normalized_files: dict[str, str] = {}
+    for raw_path, raw_content in files.items():
+        rel_path = _normalize_src_path(raw_path)
 
-    write_text(base / "src" / "entities" / "player.h", """#ifndef PLAYER_H
-#define PLAYER_H
+        if rel_path not in allowed_files:
+            raise ValueError(f"File not allowed by scaffold: {rel_path}")
 
-void player_init(void);
-void player_update(void);
-void player_render(void);
+        target = base / rel_path
+        if target.exists():
+            if rel_path not in overwrite_files:
+                raise ValueError(f"Overwrite not allowed by scaffold: {rel_path}")
+        else:
+            if rel_path not in create_if_missing:
+                raise ValueError(f"Creation not allowed by scaffold: {rel_path}")
 
-#endif
-""")
+        if not isinstance(raw_content, str):
+            raise ValueError(f"File content must be a string for path: {rel_path}")
 
-    write_text(base / "src" / "main.c", """#include <cpctelera.h>
-#include "game.h"
+        normalized_files[rel_path] = raw_content
 
-void main(void) {
-    game_init();
-
-    while (1) {
-        game_update();
-        game_render();
-        cpct_waitVSYNC();
-    }
-}
-""")
-
-    write_text(base / "src" / "systems" / "input.c", """#include <cpctelera.h>
-#include "input.h"
-
-void input_update(void) {
-    cpct_scanKeyboard_f();
-}
-""")
-
-    write_text(base / "src" / "entities" / "player.c", """#include <cpctelera.h>
-#include "player.h"
-
-/* In Mode 1, X is expressed in screen bytes (1 byte = 4 horizontal pixels). */
-static u8 px;
-static u8 py;
-
-void player_init(void) {
-    px = 20;
-    py = 80;
-}
-
-void player_update(void) {
-    if (cpct_isKeyPressed(Key_CursorLeft) && px > 0)
-        px -= 2;
-
-    if (cpct_isKeyPressed(Key_CursorRight) && px < 70)
-        px += 2;
-}
-
-void player_render(void) {
-    u8* pvmem;
-
-    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 0, py);
-    cpct_drawSolidBox(pvmem, 0x00, 80, 8);
-
-    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, px, py);
-    cpct_drawSolidBox(pvmem, 0xF0, 4, 8);
-}
-""")
-
-    scene = f"""#include <cpctelera.h>
-#include "game.h"
-#include "systems/input.h"
-#include "entities/player.h"
-
-/* Auto-generated notes
-Video mode: {video_mode}
-
-Gameplay:
-{gameplay}
-
-Art:
-{art_spec}
-
-Tech:
-{tech_plan}
-*/
-
-void game_init(void) {{
-    cpct_disableFirmware();
-    cpct_setVideoMode({cpct_mode});
-    cpct_clearScreen(0x00);
-    player_init();
-}}
-
-void game_update(void) {{
-    input_update();
-    player_update();
-}}
-
-void game_render(void) {{
-    player_render();
-}}
-"""
-    write_text(base / "src" / "scene_game.c", scene)
-
-    write_text(base / "README.md", f"""# Generated Project
-
-Recommended video mode: {video_mode}
-""")
+    for rel_path, content in normalized_files.items():
+        target = base / rel_path
+        _ensure_inside_project(base, target)
+        write_text(target, content)
 
     return str(base)

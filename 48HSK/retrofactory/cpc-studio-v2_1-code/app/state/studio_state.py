@@ -1,17 +1,30 @@
-from typing import Any, Optional, TypedDict
+from typing import Optional, TypedDict
+
+from app.schemas.outputs import (
+    ArtOutput,
+    BuildOutput,
+    BuildValidationOutput,
+    DesignOutput,
+    IntegrationOutput,
+    NarrativeOutput,
+    OrchestratorOutput,
+    QAOutput,
+    TechOutput,
+)
+
 
 class StudioState(TypedDict, total=False):
     user_request: str
     target_platform: str
     framework: str
-    orchestrator: dict[str, Any]
-    narrative: dict[str, Any]
-    design: dict[str, Any]
-    art: dict[str, Any]
-    tech: dict[str, Any]
-    qa: dict[str, Any]
-    integration: dict[str, Any]
-    build_validation: dict[str, Any]
-    build_output: dict[str, Any]
+    orchestrator: OrchestratorOutput
+    narrative: NarrativeOutput
+    design: DesignOutput
+    art: ArtOutput
+    tech: TechOutput
+    integration: IntegrationOutput
+    build_output: BuildOutput
+    build_validation: BuildValidationOutput
+    qa: QAOutput
     final_output: str
     generated_project_path: Optional[str]

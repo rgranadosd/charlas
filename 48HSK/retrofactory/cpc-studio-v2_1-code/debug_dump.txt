@@ -1,0 +1,833 @@
+
+===== app/agents/cpctelera_tech_agent.py =====
+import json
+
+from app.services.llm_service import json_call
+from app.services.resource_service import format_resources_for_prompt
+
+CORE_GAME_H = "src/game.h"
+CORE_GAME_C = "src/game.c"
+LEGACY_SCENE_GAME_C = "src/scene_game.c"
+
+
+def _as_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value in (None, ""):
+        return []
+    return [str(value).strip()]
+
+
+def _as_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _ensure_core_scaffold(scaffold: dict) -> dict:
+    allowed_files = _as_list(scaffold.get("allowed_files"))
+    overwrite_files = _as_list(scaffold.get("overwrite_files"))
+    create_if_missing = _as_list(scaffold.get("create_if_missing"))
+
+    # game.c is now the main loop module. Keep scene_game optional, not central.
+    allowed_files = [path for path in allowed_files if path != LEGACY_SCENE_GAME_C]
+    overwrite_files = [path for path in overwrite_files if path != LEGACY_SCENE_GAME_C]
+    create_if_missing = [path for path in create_if_missing if path != LEGACY_SCENE_GAME_C]
+
+    for core_path in (CORE_GAME_H, CORE_GAME_C):
+        allowed_files.append(core_path)
+        overwrite_files.append(core_path)
+        create_if_missing.append(core_path)
+
+    return {
+        "allowed_files": _unique(allowed_files),
+        "overwrite_files": _unique(overwrite_files),
+        "create_if_missing": _unique(create_if_missing),
+    }
+
+
+def run(
+    user_request: str,
+    orchestrator_output: dict | None = None,
+    narrative_output: dict | None = None,
+    design_output: dict | None = None,
+    art_output: dict | None = None,
+) -> dict:
+    blocks = []
+    if orchestrator_output:
+        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
+    if narrative_output:
+        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
+    if design_output:
+        blocks.append("Design JSON:\n" + json.dumps(design_output, ensure_ascii=False, indent=2))
+    if art_output:
+        blocks.append("Art JSON:\n" + json.dumps(art_output, ensure_ascii=False, indent=2))
+
+    resource_context = format_resources_for_prompt("cpctelera_tech_agent", user_request, limit=6)
+    if resource_context:
+        blocks.append(resource_context)
+
+    payload = json_call("cpctelera_tech", user_request, "\n\n".join(blocks))
+    scaffold = _ensure_core_scaffold(_as_dict(payload.get("scaffold")))
+
+    return {
+        "archetype": str(payload.get("archetype", "")).strip(),
+        "video_mode": str(payload.get("video_mode", "Mode 1")).strip() or "Mode 1",
+        "level_structure": str(payload.get("level_structure", "")).strip(),
+        "camera": str(payload.get("camera", "")).strip(),
+        "modules": _as_list(payload.get("modules")),
+        "input_model": _as_dict(payload.get("input_model")),
+        "entity_model": _as_dict(payload.get("entity_model")),
+        "collision_model": _as_dict(payload.get("collision_model")),
+        "rendering_model": _as_dict(payload.get("rendering_model")),
+        "data_model": _as_dict(payload.get("data_model")),
+        "update_order": _as_list(payload.get("update_order")),
+        "scaffold": scaffold,
+    }
+
+===== app/agents/code_integrator_agent.py =====
+import json
+
+from app.services.llm_service import json_call
+
+MAIN_C_PATH = "src/main.c"
+GAME_H_PATH = "src/game.h"
+GAME_C_PATH = "src/game.c"
+
+GAME_H_STUB = """#ifndef GAME_H
+#define GAME_H
+
+void game_init(void);
+void game_update(void);
+void game_render(void);
+
+#endif
+"""
+
+GAME_C_STUB = """#include "game.h"
+#include <cpctelera.h>
+
+void game_init(void) {
+    cpct_disableFirmware();
+    cpct_setVideoMode(1);
+    cpct_clearScreen(0x00);
+}
+
+void game_update(void) {
+}
+
+void game_render(void) {
+}
+"""
+
+MAIN_C_STUB = """#include <cpctelera.h>
+#include "game.h"
+
+int main(void) {
+    game_init();
+
+    while (1) {
+        game_update();
+        game_render();
+        cpct_waitVSYNC();
+    }
+
+    return 0;
+}
+"""
+
+
+def _normalize_files(payload: dict, allowed_files: set[str]) -> dict[str, str]:
+    raw_files = payload.get("files")
+    if not isinstance(raw_files, dict):
+        return {}
+
+    normalized: dict[str, str] = {}
+    for path, content in raw_files.items():
+        if not isinstance(path, str):
+            continue
+        rel_path = path.strip().replace("\\", "/")
+        if not rel_path.startswith("src/"):
+            continue
+        if allowed_files and rel_path not in allowed_files:
+            continue
+        normalized[rel_path] = str(content)
+
+    return normalized
+
+
+def _is_allowed(path: str, allowed_files: set[str]) -> bool:
+    return not allowed_files or path in allowed_files
+
+
+def _ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> dict[str, str]:
+    normalized = dict(files)
+
+    if _is_allowed(GAME_H_PATH, allowed_files):
+        normalized[GAME_H_PATH] = GAME_H_STUB
+
+    if _is_allowed(GAME_C_PATH, allowed_files):
+        normalized[GAME_C_PATH] = GAME_C_STUB
+
+    if _is_allowed(MAIN_C_PATH, allowed_files):
+        normalized[MAIN_C_PATH] = MAIN_C_STUB
+
+    # scene_game is no longer the central game loop module.
+    normalized.pop("src/scene_game.c", None)
+
+    return normalized
+
+
+def run(
+    user_request: str,
+    orchestrator_output: dict | None = None,
+    narrative_output: dict | None = None,
+    design_output: dict | None = None,
+    art_output: dict | None = None,
+    tech_output: dict | None = None,
+) -> dict:
+    blocks = []
+    if orchestrator_output:
+        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
+    if narrative_output:
+        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
+    if design_output:
+        blocks.append("Design JSON:\n" + json.dumps(design_output, ensure_ascii=False, indent=2))
+    if art_output:
+        blocks.append("Art JSON:\n" + json.dumps(art_output, ensure_ascii=False, indent=2))
+    if tech_output:
+        blocks.append("Tech JSON:\n" + json.dumps(tech_output, ensure_ascii=False, indent=2))
+
+    payload = json_call("code_integrator", user_request, "\n\n".join(blocks))
+
+    scaffold = tech_output.get("scaffold", {}) if isinstance(tech_output, dict) else {}
+    allowed_files = set(scaffold.get("allowed_files", [])) if isinstance(scaffold, dict) else set()
+    files = _normalize_files(payload, allowed_files)
+    files = _ensure_core_game_module(files, allowed_files)
+
+    if not files:
+        return {
+            "files": {},
+            "integration_notes": "CodeIntegratorAgent returned no valid scaffold files.",
+        }
+
+    return {
+        "files": files,
+        "integration_notes": f"Generated {len(files)} valid source files.",
+    }
+
+===== app/services/project_service.py =====
+from pathlib import Path, PurePosixPath
+
+from app.services.file_service import write_text
+
+
+def _normalize_src_path(raw_path: str) -> str:
+    if not isinstance(raw_path, str):
+        raise ValueError("All file paths must be strings.")
+
+    candidate = raw_path.strip().replace("\\", "/")
+    if not candidate:
+        raise ValueError("File path cannot be empty.")
+
+    if "/../" in f"/{candidate}/" or candidate.startswith("../") or candidate.endswith("/.."):
+        raise ValueError(f"Path traversal is not allowed: {raw_path}")
+
+    path = PurePosixPath(candidate)
+    if path.is_absolute():
+        raise ValueError(f"Absolute paths are not allowed: {raw_path}")
+
+    normalized = path.as_posix()
+    if not normalized.startswith("src/"):
+        raise ValueError(f"Only paths under src/ are allowed: {raw_path}")
+
+    if normalized.endswith("/") or normalized == "src":
+        raise ValueError(f"Expected a file path under src/, got: {raw_path}")
+
+    return normalized
+
+
+def _normalize_scaffold_list(values, field_name: str) -> set[str]:
+    if values is None:
+        return set()
+    if not isinstance(values, list):
+        raise ValueError(f"payload['scaffold']['{field_name}'] must be a list.")
+    return {_normalize_src_path(value) for value in values}
+
+
+def _ensure_inside_project(base: Path, target: Path) -> None:
+    base_resolved = base.resolve()
+    target_resolved = target.resolve()
+    if target_resolved != base_resolved and base_resolved not in target_resolved.parents:
+        raise ValueError(f"Refusing to write outside project directory: {target}")
+
+
+def generate_project(base_dir: str, payload: dict) -> str:
+    base = Path(base_dir)
+    if not base.exists() or not base.is_dir():
+        raise FileNotFoundError(f"Project directory does not exist: {base}")
+
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dictionary.")
+
+    files = payload.get("files")
+    if not isinstance(files, dict):
+        raise ValueError("payload['files'] must be a dictionary of path -> content.")
+
+    scaffold = payload.get("scaffold")
+    if not isinstance(scaffold, dict):
+        raise ValueError("payload['scaffold'] must be a dictionary.")
+
+    allowed_files = _normalize_scaffold_list(scaffold.get("allowed_files"), "allowed_files")
+    overwrite_files = _normalize_scaffold_list(scaffold.get("overwrite_files"), "overwrite_files")
+    create_if_missing = _normalize_scaffold_list(scaffold.get("create_if_missing"), "create_if_missing")
+
+    if not overwrite_files.issubset(allowed_files):
+        raise ValueError("'overwrite_files' must be a subset of 'allowed_files'.")
+    if not create_if_missing.issubset(allowed_files):
+        raise ValueError("'create_if_missing' must be a subset of 'allowed_files'.")
+
+    normalized_files: dict[str, str] = {}
+    for raw_path, raw_content in files.items():
+        rel_path = _normalize_src_path(raw_path)
+
+        if rel_path not in allowed_files:
+            raise ValueError(f"File not allowed by scaffold: {rel_path}")
+
+        target = base / rel_path
+        if target.exists():
+            if rel_path not in overwrite_files:
+                raise ValueError(f"Overwrite not allowed by scaffold: {rel_path}")
+        else:
+            if rel_path not in create_if_missing:
+                raise ValueError(f"Creation not allowed by scaffold: {rel_path}")
+
+        if not isinstance(raw_content, str):
+            raise ValueError(f"File content must be a string for path: {rel_path}")
+
+        normalized_files[rel_path] = raw_content
+
+    for rel_path, content in normalized_files.items():
+        target = base / rel_path
+        _ensure_inside_project(base, target)
+        write_text(target, content)
+
+    return str(base)
+
+===== app/graph/main_graph.py =====
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from langgraph.graph import StateGraph, START, END
+
+from app.agents.art_agent import run as run_art
+from app.agents.build_agent import (
+    CPCTELERA_HOME,
+    CPCT_MKPROJECT,
+    run as run_build,
+    sanitize_project_name,
+)
+from app.agents.build_validation_agent import run as run_build_validation
+from app.agents.code_integrator_agent import run as run_integrator
+from app.agents.cpctelera_tech_agent import run as run_tech
+from app.agents.design_agent import run as run_design
+from app.agents.narrative_agent import run as run_narrative
+from app.agents.orchestrator_agent import run as run_orchestrator
+from app.agents.qa_agent import run as run_qa
+from app.schemas.outputs import (
+    ArtOutput,
+    BuildOutput,
+    BuildValidationOutput,
+    DesignOutput,
+    IntegrationOutput,
+    NarrativeOutput,
+    OrchestratorOutput,
+    QAOutput,
+    TechOutput,
+)
+from app.services.project_service import generate_project
+from app.state.studio_state import StudioState
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+GENERATED_PROJECTS_DIR = PROJECT_ROOT / "generated_projects"
+
+
+def _to_dict(payload) -> dict:
+    if payload is None:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump()
+    return {}
+
+
+def _json_block(title: str, payload) -> str:
+    data = _to_dict(payload)
+    if not data:
+        return ""
+    return f"{title}:\n" + json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _build_failure_payload(stderr: str, build_notes: str) -> dict:
+    return {
+        "success": False,
+        "return_code": -1,
+        "stdout": "",
+        "stderr": stderr,
+        "artifacts": [],
+        "build_notes": build_notes,
+    }
+
+
+def _cpct_env() -> dict[str, str]:
+    env = os.environ.copy()
+    scripts_dir = str(CPCT_MKPROJECT.parent)
+    env["CPCT_PATH"] = str(CPCTELERA_HOME)
+    env["PATH"] = f"{scripts_dir}:{env.get('PATH', '')}" if env.get("PATH") else scripts_dir
+    return env
+
+
+def _is_valid_cpct_scaffold(project_dir: Path) -> bool:
+    return (
+        project_dir.exists()
+        and project_dir.is_dir()
+        and (project_dir / "src").is_dir()
+        and (project_dir / "src" / "main.c").is_file()
+        and (project_dir / "cfg").is_dir()
+        and (project_dir / "cfg" / "build_config.mk").is_file()
+        and (project_dir / "Makefile").is_file()
+    )
+
+
+def _is_build_path_compatible(project_dir: Path) -> bool:
+    expected = (GENERATED_PROJECTS_DIR / sanitize_project_name(project_dir.name)).resolve()
+    return project_dir.resolve() == expected
+
+
+def _next_default_run_project_dir() -> Path:
+    # Keep names <= 8 chars and alphanumeric so build_agent resolves the same path.
+    # Format: runXXXXX (timestamp-derived suffix).
+    seed = int(time.time() * 1000)
+    for offset in range(1000):
+        suffix = f"{(seed + offset) % 100000:05d}"
+        project_name = f"run{suffix}"
+        candidate = (GENERATED_PROJECTS_DIR / project_name).resolve()
+        if not candidate.exists():
+            return candidate
+
+    raise RuntimeError("Could not find a free generated_projects/runXXXXX directory.")
+
+
+def _scaffold_path_set(scaffold: dict, key: str) -> set[str]:
+    values = scaffold.get(key, []) if isinstance(scaffold, dict) else []
+    if not isinstance(values, list):
+        return set()
+
+    normalized: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        path = value.strip().replace("\\", "/")
+        if path:
+            normalized.add(path)
+    return normalized
+
+
+def _filter_writable_integration_files(
+    files: dict[str, str],
+    project_dir: Path,
+    scaffold: dict,
+) -> tuple[dict[str, str], list[str]]:
+    allowed_files = _scaffold_path_set(scaffold, "allowed_files")
+    overwrite_files = _scaffold_path_set(scaffold, "overwrite_files")
+    create_if_missing = _scaffold_path_set(scaffold, "create_if_missing")
+
+    filtered: dict[str, str] = {}
+    dropped: list[str] = []
+
+    for rel_path, content in files.items():
+        if rel_path not in allowed_files:
+            dropped.append(rel_path)
+            continue
+
+        target = project_dir / rel_path
+        if target.exists():
+            if rel_path in overwrite_files:
+                filtered[rel_path] = content
+            else:
+                dropped.append(rel_path)
+            continue
+
+        if rel_path in create_if_missing:
+            filtered[rel_path] = content
+        else:
+            dropped.append(rel_path)
+
+    return filtered, dropped
+
+
+def _create_cpct_project(project_dir: Path) -> Path:
+    if project_dir.exists():
+        raise ValueError(f"Project directory already exists: {project_dir}")
+    if not CPCT_MKPROJECT.exists():
+        raise FileNotFoundError(f"cpct_mkproject not found at {CPCT_MKPROJECT}")
+
+    parent_dir = project_dir.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
+
+    project_name = sanitize_project_name(project_dir.name)
+
+    try:
+        subprocess.run(
+            [str(CPCT_MKPROJECT), project_name],
+            cwd=str(parent_dir),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=_cpct_env(),
+            check=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"cpct_mkproject timed out while creating {project_name} in {parent_dir}"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "")[-3000:]
+        stdout = (exc.stdout or "")[-3000:]
+        raise RuntimeError(
+            f"cpct_mkproject failed for {project_name} in {parent_dir}."
+            f"\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        ) from exc
+
+    created_project_dir = (parent_dir / project_name).resolve()
+    if not _is_valid_cpct_scaffold(created_project_dir):
+        raise RuntimeError(
+            f"Created directory is not a valid CPCtelera scaffold: {created_project_dir}"
+        )
+    if not _is_build_path_compatible(created_project_dir):
+        raise ValueError(
+            "Generated project path is not compatible with build agent path resolution: "
+            f"{created_project_dir}"
+        )
+
+    return created_project_dir
+
+
+def _resolve_integration_project_path(state: StudioState) -> Path:
+    raw_path = state.get("generated_project_path")
+    candidate = Path(raw_path).expanduser().resolve() if raw_path else _next_default_run_project_dir()
+
+    if candidate.exists():
+        if not _is_valid_cpct_scaffold(candidate):
+            raise ValueError(
+                "Refusing to integrate into a directory without valid CPCtelera scaffold: "
+                f"{candidate}"
+            )
+        if not _is_build_path_compatible(candidate):
+            raise ValueError(
+                "Existing generated_project_path is not compatible with build path resolution: "
+                f"{candidate}"
+            )
+        return candidate
+
+    return _create_cpct_project(candidate)
+
+
+def orchestrator_node(state: StudioState):
+    print("-> orchestrator_node", file=sys.stderr)
+    raw = run_orchestrator(state["user_request"])
+    return {"orchestrator": OrchestratorOutput.model_validate(raw)}
+
+
+def narrative_node(state: StudioState):
+    print("-> narrative_node", file=sys.stderr)
+    raw = run_narrative(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+    )
+    return {
+        "narrative": NarrativeOutput.model_validate(raw)
+    }
+
+
+def design_node(state: StudioState):
+    print("-> design_node", file=sys.stderr)
+    raw = run_design(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+        _to_dict(state.get("narrative")) or None,
+    )
+    return {
+        "design": DesignOutput.model_validate(raw)
+    }
+
+
+def art_node(state: StudioState):
+    print("-> art_node", file=sys.stderr)
+    raw = run_art(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+        _to_dict(state.get("narrative")) or None,
+        _to_dict(state.get("design")) or None,
+    )
+    return {
+        "art": ArtOutput.model_validate(raw)
+    }
+
+
+def tech_node(state: StudioState):
+    print("-> tech_node", file=sys.stderr)
+    raw = run_tech(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+        _to_dict(state.get("narrative")) or None,
+        _to_dict(state.get("design")) or None,
+        _to_dict(state.get("art")) or None,
+    )
+    return {
+        "tech": TechOutput.model_validate(raw)
+    }
+
+
+def integration_node(state: StudioState):
+    print("-> integration_node", file=sys.stderr)
+    integration_project_dir = _resolve_integration_project_path(state)
+
+    raw = run_integrator(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+        _to_dict(state.get("narrative")) or None,
+        _to_dict(state.get("design")) or None,
+        _to_dict(state.get("art")) or None,
+        _to_dict(state.get("tech")) or None,
+    )
+    integration = IntegrationOutput.model_validate(raw)
+
+    tech = _to_dict(state.get("tech"))
+    scaffold = tech.get("scaffold", {}) if isinstance(tech, dict) else {}
+
+    writable_files, dropped_files = _filter_writable_integration_files(
+        integration.files,
+        integration_project_dir,
+        scaffold,
+    )
+
+    payload = {
+        "files": writable_files,
+        "scaffold": scaffold,
+    }
+
+    path = generate_project(str(integration_project_dir), payload)
+
+    notes = integration.integration_notes or (
+        f"Generated {len(integration.files)} valid source files."
+    )
+    if dropped_files:
+        dropped_preview = ", ".join(sorted(dropped_files)[:10])
+        notes += (
+            f" Skipped {len(dropped_files)} files not writable by scaffold/project state"
+            f": {dropped_preview}{', ...' if len(dropped_files) > 10 else ''}."
+        )
+    if not writable_files:
+        notes += " No files were applied."
+
+    integration = integration.model_copy(
+        update={
+            "files": writable_files,
+            "integration_notes": notes,
+        }
+    )
+
+    return {
+        "integration": integration,
+        "generated_project_path": path,
+    }
+
+def build_node(state: StudioState):
+    print("-> build_node", file=sys.stderr)
+    project_path = state.get("generated_project_path")
+    if not project_path:
+        build_output = BuildOutput.model_validate(
+            _build_failure_payload(
+                "generated_project_path is missing before build_node.",
+                "Build skipped because integration did not provide a project path.",
+            )
+        )
+        return {
+            "build_output": build_output,
+            "generated_project_path": "",
+        }
+
+    requested_project_path = Path(project_path).resolve()
+
+    if not _is_valid_cpct_scaffold(requested_project_path):
+        build_output = BuildOutput.model_validate(
+            _build_failure_payload(
+                f"Invalid CPCtelera scaffold: {requested_project_path}",
+                "Build skipped because the integration path is not a valid CPCtelera project.",
+            )
+        )
+        return {
+            "build_output": build_output,
+            "generated_project_path": str(requested_project_path),
+        }
+
+    if not _is_build_path_compatible(requested_project_path):
+        build_output = BuildOutput.model_validate(
+            _build_failure_payload(
+                f"Build path mismatch risk for: {requested_project_path}",
+                "Build skipped to avoid compiling a different directory than integration_node used.",
+            )
+        )
+        return {
+            "build_output": build_output,
+            "generated_project_path": str(requested_project_path),
+        }
+
+    build_raw, resolved_project_path = run_build(str(requested_project_path))
+    if Path(resolved_project_path).resolve() != requested_project_path:
+        build_output = BuildOutput.model_validate(
+            _build_failure_payload(
+                (
+                    "Build agent resolved a different project path than integration_node used. "
+                    f"requested={requested_project_path} resolved={resolved_project_path}"
+                ),
+                "Build aborted to preserve integration/build path consistency.",
+            )
+        )
+        return {
+            "build_output": build_output,
+            "generated_project_path": str(requested_project_path),
+        }
+
+    build_output = BuildOutput.model_validate(build_raw)
+
+    return {
+        "build_output": build_output,
+        "generated_project_path": str(requested_project_path),
+    }
+
+
+def build_validation_node(state: StudioState):
+    print("-> build_validation_node", file=sys.stderr)
+    raw = run_build_validation(
+        state["user_request"],
+        state.get("generated_project_path"),
+        _to_dict(state.get("build_output")),
+    )
+
+    return {
+        "build_validation": BuildValidationOutput.model_validate(raw)
+    }
+
+
+def qa_node(state: StudioState):
+    print("-> qa_node", file=sys.stderr)
+    raw = run_qa(
+        state["user_request"],
+        _to_dict(state.get("orchestrator")) or None,
+        _to_dict(state.get("design")) or None,
+        _to_dict(state.get("art")) or None,
+        _to_dict(state.get("tech")) or None,
+        _to_dict(state.get("integration")) or None,
+        _to_dict(state.get("build_validation")) or None,
+        _to_dict(state.get("build_output")) or None,
+    )
+
+    return {
+        "qa": QAOutput.model_validate(raw)
+    }
+
+
+def compose_node(state: StudioState):
+    parts = ["# CPC Studio Output", ""]
+    if state.get("orchestrator"):
+        parts += ["## Orchestrator", _json_block("spec", state["orchestrator"]), ""]
+    if state.get("narrative"):
+        parts += ["## Narrative", _json_block("narrative", state["narrative"]), ""]
+    if state.get("design"):
+        parts += ["## Design", _json_block("design", state["design"]), ""]
+    if state.get("art"):
+        parts += ["## Art", _json_block("art", state["art"]), ""]
+    if state.get("tech"):
+        parts += ["## Tech", _json_block("tech", state["tech"]), ""]
+    if state.get("integration"):
+        parts += ["## Integration", state["integration"].integration_notes, ""]
+    if state.get("build_output"):
+        bo = state["build_output"]
+        status = "OK" if bo.success else f"FAILED (exit {bo.return_code})"
+        parts += ["## Build", f"Status: {status}", bo.build_notes, ""]
+        if bo.artifacts:
+            parts += ["Artifacts: " + ", ".join(bo.artifacts), ""]
+        if not bo.success and bo.stderr:
+            parts += ["Errors:", bo.stderr[:2000], ""]
+    if state.get("build_validation"):
+        parts += ["## Build Validation", _json_block("build_validation", state["build_validation"]), ""]
+    if state.get("qa"):
+        parts += ["## QA", _json_block("qa", state["qa"]), ""]
+
+    return {"final_output": "\n".join(parts).strip()}
+
+
+builder = StateGraph(StudioState)
+builder.add_node("orchestrator_node", orchestrator_node)
+builder.add_node("narrative_node", narrative_node)
+builder.add_node("design_node", design_node)
+builder.add_node("art_node", art_node)
+builder.add_node("tech_node", tech_node)
+builder.add_node("integration_node", integration_node)
+builder.add_node("build_node", build_node)
+builder.add_node("build_validation_node", build_validation_node)
+builder.add_node("qa_node", qa_node)
+builder.add_node("compose_node", compose_node)
+
+builder.add_edge(START, "orchestrator_node")
+builder.add_edge("orchestrator_node", "narrative_node")
+builder.add_edge("narrative_node", "design_node")
+builder.add_edge("design_node", "art_node")
+builder.add_edge("art_node", "tech_node")
+builder.add_edge("tech_node", "integration_node")
+builder.add_edge("integration_node", "build_node")
+builder.add_edge("build_node", "build_validation_node")
+builder.add_edge("build_validation_node", "qa_node")
+builder.add_edge("qa_node", "compose_node")
+builder.add_edge("compose_node", END)
+
+graph = builder.compile()
+
+
+def run_studio(user_request: str):
+    return graph.invoke({
+        "user_request": user_request,
+        "target_platform": "Amstrad CPC 6128",
+        "framework": "CPCtelera",
+    })
+
+===== generated project path =====
+
+===== tree src =====
+/src  [error opening dir]
+
+0 directories, 0 files
+
+===== /src/main.c =====
+
+===== /src/game.h =====
+NO EXISTE
+
+===== /src/game.c =====
+NO EXISTE

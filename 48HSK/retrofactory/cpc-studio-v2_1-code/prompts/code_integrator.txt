@@ -28,6 +28,24 @@ REGLAS:
 
 REGLAS ESPECÍFICAS PARA action_platformer_run_and_gun:
 - Implementa un vertical slice pequeño.
+- El módulo central del juego debe ser:
+  - src/game.h
+  - src/game.c
+- src/game.h debe declarar exactamente:
+  - void game_init(void);
+  - void game_update(void);
+  - void game_render(void);
+- src/main.c debe incluir "game.h" y llamar:
+  - game_init();
+  - game_update();
+  - game_render();
+- Si necesitas un stub inicial compilable, usa esta base para src/game.c:
+  - #include "game.h"
+  - #include <cpctelera.h>
+  - void game_init(void) { cpct_disableFirmware(); cpct_setVideoMode(1); cpct_clearScreen(0x00); }
+  - void game_update(void) { }
+  - void game_render(void) { }
+- No uses src/scene_game.c como archivo principal del loop.
 - Debe incluir:
   - bucle principal
   - inicialización del juego

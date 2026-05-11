@@ -14,6 +14,10 @@ PROMPTS = BASE / "prompts"
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 
+ANSI_YELLOW = "\033[33m"
+ANSI_RESET = "\033[0m"
+INFO_TAG = f"{ANSI_YELLOW}[INFO]{ANSI_RESET}"
+
 PLATFORM_CONTEXT = """
 Target platform: Amstrad CPC 6128
 CPU: Z80A 4 MHz
@@ -68,6 +72,12 @@ def invoke_with_backoff(llm, messages, retries=5, base_delay=2):
             print(f"[retry] rate limit detectado, reintentando en {delay}s...")
             time.sleep(delay)
     raise last_error
+
+
+def _trace_llm_io(prompt_name: str, kind: str, content: str) -> None:
+    print(f"{INFO_TAG} [llm][{prompt_name}] {kind}_START")
+    print(content)
+    print(f"{INFO_TAG} [llm][{prompt_name}] {kind}_END")
 
 
 def _response_text(response) -> str:
@@ -132,8 +142,13 @@ def json_call(prompt_name: str, user_request: str, extra_context: str = "", retr
 
     last_error = None
     for _ in range(retries):
+        request_trace = messages[-1].get("content", "") if isinstance(messages[-1], dict) else str(messages[-1])
+        _trace_llm_io(prompt_name, "REQUEST", str(request_trace))
+
         response = invoke_with_backoff(llm, messages)
         text = _response_text(response)
+        _trace_llm_io(prompt_name, "RESPONSE", text)
+
         try:
             return _extract_json_object(text)
         except Exception as exc:
@@ -164,4 +179,16 @@ def structured_call(prompt_name: str, schema, user_request: str, extra_context: 
         {"role": "system", "content": system},
         {"role": "user", "content": f"{context}\n\nUser request:\n{user_request}"},
     ]
-    return invoke_with_backoff(llm, messages)
+
+    request_trace = messages[-1].get("content", "") if isinstance(messages[-1], dict) else str(messages[-1])
+    _trace_llm_io(prompt_name, "REQUEST", str(request_trace))
+
+    response = invoke_with_backoff(llm, messages)
+
+    if hasattr(response, "model_dump"):
+        response_text = json.dumps(response.model_dump(), ensure_ascii=False, indent=2)
+    else:
+        response_text = _response_text(response)
+    _trace_llm_io(prompt_name, "RESPONSE", response_text)
+
+    return response
