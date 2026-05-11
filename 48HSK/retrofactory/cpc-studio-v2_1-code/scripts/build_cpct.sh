@@ -20,11 +20,3 @@ echo
 echo "Build completada:"
 echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.cdt"
 echo "  $GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
-
-# Try to open the .dsk file with Retro Virtual Machine 2.1 if available (macOS)
-RVM_APP="/Applications/Retro Virtual Machine 2.1.app"
-DSK_FILE="$GENERATED_PROJECTS/$PROJECT_NAME/$PROJECT_NAME.dsk"
-
-if [ -d "$RVM_APP" ] && [ -f "$DSK_FILE" ]; then
-	open -a "$RVM_APP" "$DSK_FILE"
-fi

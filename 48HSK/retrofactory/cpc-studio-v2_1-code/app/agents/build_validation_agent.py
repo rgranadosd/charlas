@@ -1,41 +1,70 @@
-from app.schemas.outputs import BuildValidationOutput
-from app.schemas.outputs import BuildOutput
+import json
+from pathlib import Path
+
+from app.services.llm_service import json_call
 
 
-def run(build_output: BuildOutput | None) -> BuildValidationOutput:
+def _as_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value in (None, ""):
+        return []
+    return [str(value).strip()]
+
+
+def _build_output_dict(build_output) -> dict:
     if build_output is None:
-        return BuildValidationOutput(
-            expected_entrypoints=[],
-            expected_headers=[],
-            validation_notes="No build output received from build_agent."
-        )
+        return {}
+    if isinstance(build_output, dict):
+        return build_output
+    if hasattr(build_output, "model_dump"):
+        return build_output.model_dump()
+    return {}
 
-    expected_artifacts = {".cdt", ".dsk"}
-    found_artifacts = set()
 
-    for artifact in build_output.artifacts or []:
-        if artifact.endswith(".cdt"):
-            found_artifacts.add(".cdt")
-        elif artifact.endswith(".dsk"):
-            found_artifacts.add(".dsk")
+def _project_snapshot(project_path: str | None) -> dict:
+    if not project_path:
+        return {"exists": False, "files": []}
 
-    missing = sorted(expected_artifacts - found_artifacts)
+    base = Path(project_path)
+    if not base.exists():
+        return {"exists": False, "files": []}
 
-    if build_output.success and not missing:
-        notes = "Build validation passed: CPCtelera produced the expected final artifacts (.cdt and .dsk)."
-    elif build_output.success and missing:
-        notes = (
-            "Build command finished successfully, but some expected final artifacts are missing: "
-            + ", ".join(missing)
-        )
-    else:
-        notes = (
-            f"Build validation failed. Return code: {build_output.return_code}. "
-            f"stderr: {(build_output.stderr or '')[:500]}"
-        )
+    files = []
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(base)).replace("\\", "/")
+        if rel.startswith("obj/"):
+            continue
+        files.append(rel)
 
-    return BuildValidationOutput(
-        expected_entrypoints=["src/main.c"],
-        expected_headers=[],
-        validation_notes=notes,
+    return {"exists": True, "files": files[:400]}
+
+
+def run(user_request: str, project_path: str | None, build_output=None) -> dict:
+    build_payload = _build_output_dict(build_output)
+    snapshot = _project_snapshot(project_path)
+
+    extra_context = "\n\n".join(
+        [
+            "Project snapshot JSON:\n" + json.dumps(snapshot, ensure_ascii=False, indent=2),
+            "Build output JSON:\n" + json.dumps(build_payload, ensure_ascii=False, indent=2),
+        ]
     )
+
+    validation_request = user_request or "Validate generated CPCtelera project coherence."
+    payload = json_call("build_validation", validation_request, extra_context)
+
+    status = str(payload.get("status", "fail")).strip().lower()
+    if status not in {"pass", "fail"}:
+        status = "fail"
+
+    return {
+        "status": status,
+        "missing_files": _as_list(payload.get("missing_files")),
+        "invalid_paths": _as_list(payload.get("invalid_paths")),
+        "header_source_mismatches": _as_list(payload.get("header_source_mismatches")),
+        "suspected_compile_errors": _as_list(payload.get("suspected_compile_errors")),
+        "fix_recommendations": _as_list(payload.get("fix_recommendations")),
+    }

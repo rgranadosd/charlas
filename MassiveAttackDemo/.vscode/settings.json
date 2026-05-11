@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd /Users/rafagranados/Develop/charlas/MassiveAttackDemo/LivePortrait && source liveportrait_env/bin/activate && python3 -c \"\nimport ast, sys\nwith open\\('\\.\\./massive_attack_v3\\.py'\\) as f:\n    src = f\\.read\\(\\)\ntry:\n    ast\\.parse\\(src\\)\n    print\\('OK: sin errores de sintaxis'\\)\nexcept SyntaxError as e:\n    print\\(f'SYNTAX ERROR: \\{e\\}'\\)\n\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

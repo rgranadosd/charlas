@@ -4,6 +4,8 @@
 set -e
 cd "$(dirname "$0")"
 
+MCP_PORT="${WEATHER_MCP_LOCAL_PORT:-28080}"
+
 # 1. Configuración de Entorno
 if [ ! -d "venv" ]; then
     echo "📦 Creando entorno virtual..."
@@ -56,21 +58,21 @@ EOL
 elif [ "$MODE" == "serve" ]; then
     # --- MODO SERVIDOR (Para WSO2) ---
     echo "🚀 Lanzando Servidor MCP HTTP Stream (Para WSO2)..."
-    echo "📡 URL para WSO2: http://localhost:8080/mcp"
+    echo "📡 URL para WSO2: http://localhost:${MCP_PORT}/mcp"
     
-    if lsof -i :8080 > /dev/null 2>&1; then
-        echo "⚠️  El puerto 8080 está en uso. Matando el proceso..."
-        lsof -ti :8080 | xargs kill -9
+    if lsof -i :"$MCP_PORT" > /dev/null 2>&1; then
+        echo "⚠️  El puerto ${MCP_PORT} está en uso. Matando el proceso..."
+        lsof -ti :"$MCP_PORT" | xargs kill -9
         sleep 2  # Esperar para asegurarse de que el puerto se libera
-        if lsof -i :8080 > /dev/null 2>&1; then
-            echo "❌ No se pudo liberar el puerto 8080. Por favor, verifica manualmente."
+        if lsof -i :"$MCP_PORT" > /dev/null 2>&1; then
+            echo "❌ No se pudo liberar el puerto ${MCP_PORT}. Por favor, verifica manualmente."
             exit 1
         fi
-        echo "✅ Puerto 8080 liberado."
+        echo "✅ Puerto ${MCP_PORT} liberado."
     fi
 
     # Lanzar el servidor MCP con uvicorn (soporta HTTP Streaming)
-    python3 -m uvicorn weather_mcp_openmeteo:asgi_app --host 0.0.0.0 --port 8080 --log-level info
+    python3 -m uvicorn weather_mcp_openmeteo:asgi_app --host 0.0.0.0 --port "$MCP_PORT" --log-level info
 
 else
     echo "❌ Modo desconocido. Usa: ./run_weather_mcp.sh [inspect|serve]"
