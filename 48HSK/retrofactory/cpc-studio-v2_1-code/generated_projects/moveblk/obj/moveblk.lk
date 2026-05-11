@@ -1,0 +1,15 @@
+-mjwx
+-i obj/moveblk.ihx
+-b _CODE = 0x4000
+-b _DATA = 0x0000
+-u
+-k /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/main.rel
+obj/scene_game.rel
+obj/systems/input.rel
+obj/entities/player.rel
+
+-e

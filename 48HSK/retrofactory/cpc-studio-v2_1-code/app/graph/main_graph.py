@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+
 from langgraph.graph import StateGraph, START, END
 from app.state.studio_state import StudioState
 from app.agents.orchestrator_agent import run as run_orchestrator
@@ -10,70 +12,132 @@ from app.agents.qa_agent import run as run_qa
 from app.agents.code_integrator_agent import run as run_integrator
 from app.agents.build_validation_agent import run as run_build_validation
 from app.agents.build_agent import run as run_build
+from app.services.file_service import write_text
 from app.services.project_service import generate_project
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "generated_projects" / "latest_project"
 
 
-def router_node(state: StudioState):
-    print("-> router_node")
-    decision = run_orchestrator(state["user_request"])
-    return {"route": decision.route}
+def _json_block(title: str, payload: dict | None) -> str:
+    if not payload:
+        return ""
+    return f"{title}:\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def orchestrator_node(state: StudioState):
+    print("-> orchestrator_node")
+    return {"orchestrator": run_orchestrator(state["user_request"])}
 
 
 def narrative_node(state: StudioState):
     print("-> narrative_node")
-    return {"narrative": run_narrative(state["user_request"])}
+    return {
+        "narrative": run_narrative(
+            state["user_request"],
+            state.get("orchestrator"),
+        )
+    }
 
 
 def design_node(state: StudioState):
     print("-> design_node")
-    extra = ""
-    if state.get("narrative"):
-        n = state["narrative"]
-        extra = f"Premise: {n.premise}\nTone: {n.tone}\nCharacters: {', '.join(n.characters)}"
-    return {"design": run_design(state["user_request"], extra)}
+    return {
+        "design": run_design(
+            state["user_request"],
+            state.get("orchestrator"),
+            state.get("narrative"),
+        )
+    }
 
 
 def art_node(state: StudioState):
     print("-> art_node")
-    extra = state.get("design").gameplay_spec if state.get("design") else ""
-    return {"art": run_art(state["user_request"], extra)}
+    return {
+        "art": run_art(
+            state["user_request"],
+            state.get("orchestrator"),
+            state.get("narrative"),
+            state.get("design"),
+        )
+    }
 
 
 def tech_node(state: StudioState):
     print("-> tech_node")
-    parts = []
-    if state.get("design"):
-        parts.append(state["design"].gameplay_spec)
-    if state.get("art"):
-        parts.append(state["art"].art_spec)
-    return {"tech": run_tech(state["user_request"], "\n".join(parts))}
+    return {
+        "tech": run_tech(
+            state["user_request"],
+            state.get("orchestrator"),
+            state.get("narrative"),
+            state.get("design"),
+            state.get("art"),
+        )
+    }
 
 
 def qa_node(state: StudioState):
     print("-> qa_node")
-    extra = state.get("tech").implementation_plan if state.get("tech") else ""
-    return {"qa": run_qa(state["user_request"], extra)}
+    return {
+        "qa": run_qa(
+            state["user_request"],
+            state.get("orchestrator"),
+            state.get("design"),
+            state.get("art"),
+            state.get("tech"),
+            state.get("integration"),
+            state.get("build_validation"),
+            state.get("build_output"),
+        )
+    }
 
 
 def integration_node(state: StudioState):
     print("-> integration_node")
-    integration = run_integrator()
+    integration = run_integrator(
+        state["user_request"],
+        state.get("orchestrator"),
+        state.get("narrative"),
+        state.get("design"),
+        state.get("art"),
+        state.get("tech"),
+    )
+
+    design = state.get("design") or {}
+    art = state.get("art") or {}
+    tech = state.get("tech") or {}
+
     payload = {
-        "video_mode": state.get("tech").recommended_video_mode if state.get("tech") else "Mode 1",
-        "gameplay_spec": state.get("design").gameplay_spec if state.get("design") else "",
-        "art_spec": state.get("art").art_spec if state.get("art") else "",
-        "implementation_plan": state.get("tech").implementation_plan if state.get("tech") else "",
+        "video_mode": tech.get("video_mode", "Mode 1"),
+        "gameplay_spec": json.dumps(design, ensure_ascii=False, indent=2),
+        "art_spec": json.dumps(art, ensure_ascii=False, indent=2),
+        "implementation_plan": json.dumps(tech, ensure_ascii=False, indent=2),
     }
     path = generate_project(str(GENERATED_DIR), payload)
-    return {"integration": integration, "generated_project_path": path}
+
+    applied = 0
+    generated_path = Path(path)
+    for rel_path, content in (integration.get("files") or {}).items():
+        normalized = str(rel_path).strip().replace("\\", "/")
+        if not normalized.startswith("src/"):
+            continue
+        write_text(generated_path / normalized, str(content))
+        applied += 1
+
+    integration_result = dict(integration)
+    integration_result["integration_notes"] = f"Applied {applied} source files from CodeIntegratorAgent."
+
+    return {"integration": integration_result, "generated_project_path": path}
 
 
 def build_validation_node(state: StudioState):
     print("-> build_validation_node")
-    build_output = state.get("build_output")
-    return {"build_validation": run_build_validation(build_output)}
+    return {
+        "build_validation": run_build_validation(
+            state["user_request"],
+            state.get("generated_project_path"),
+            state.get("build_output"),
+        )
+    }
 
 
 def build_node(state: StudioState):
@@ -88,55 +152,55 @@ def build_node(state: StudioState):
 
 def compose_node(state: StudioState):
     parts = ["# CPC Studio Output", ""]
+    if state.get("orchestrator"):
+        parts += ["## Orchestrator", _json_block("spec", state["orchestrator"]), ""]
+    if state.get("narrative"):
+        parts += ["## Narrative", _json_block("narrative", state["narrative"]), ""]
     if state.get("design"):
-        parts += ["## Design", state["design"].gameplay_spec, ""]
+        parts += ["## Design", _json_block("design", state["design"]), ""]
     if state.get("art"):
-        parts += ["## Art", state["art"].art_spec, ""]
+        parts += ["## Art", _json_block("art", state["art"]), ""]
     if state.get("tech"):
-        parts += ["## Tech", state["tech"].implementation_plan, ""]
+        parts += ["## Tech", _json_block("tech", state["tech"]), ""]
     if state.get("qa"):
-        parts += ["## QA", state["qa"].performance_check, ""]
+        parts += ["## QA", _json_block("qa", state["qa"]), ""]
     if state.get("integration"):
-        parts += ["## Integration", state["integration"].integration_notes, ""]
+        parts += ["## Integration", state["integration"].get("integration_notes", ""), ""]
     if state.get("build_validation"):
-        parts += ["## Build Validation", state["build_validation"].validation_notes, ""]
+        parts += ["## Build Validation", _json_block("build_validation", state["build_validation"]), ""]
     if state.get("build_output"):
         bo = state["build_output"]
-        status = "OK" if bo.success else f"FAILED (exit {bo.return_code})"
-        parts += ["## Build", f"Status: {status}", bo.build_notes, ""]
-        if bo.artifacts:
-            parts += ["Artifacts: " + ", ".join(bo.artifacts), ""]
-        if not bo.success and bo.stderr:
-            parts += ["Errors:", bo.stderr[:2000], ""]
+        status = "OK" if bo.get("success") else f"FAILED (exit {bo.get('return_code')})"
+        parts += ["## Build", f"Status: {status}", bo.get("build_notes", ""), ""]
+        if bo.get("artifacts"):
+            parts += ["Artifacts: " + ", ".join(bo.get("artifacts", [])), ""]
+        if not bo.get("success") and bo.get("stderr"):
+            parts += ["Errors:", bo.get("stderr", "")[:2000], ""]
     return {"final_output": "\n".join(parts).strip()}
 
 
-def route_selector(state: StudioState):
-    return "narrative_node" if state["route"] == "narrative_design_art_tech" else "design_node"
-
-
 builder = StateGraph(StudioState)
-builder.add_node("router_node", router_node)
+builder.add_node("orchestrator_node", orchestrator_node)
 builder.add_node("narrative_node", narrative_node)
 builder.add_node("design_node", design_node)
 builder.add_node("art_node", art_node)
 builder.add_node("tech_node", tech_node)
-builder.add_node("qa_node", qa_node)
 builder.add_node("integration_node", integration_node)
-builder.add_node("build_validation_node", build_validation_node)
 builder.add_node("build_node", build_node)
+builder.add_node("build_validation_node", build_validation_node)
+builder.add_node("qa_node", qa_node)
 builder.add_node("compose_node", compose_node)
 
-builder.add_edge(START, "router_node")
-builder.add_conditional_edges("router_node", route_selector, {"narrative_node": "narrative_node", "design_node": "design_node"})
+builder.add_edge(START, "orchestrator_node")
+builder.add_edge("orchestrator_node", "narrative_node")
 builder.add_edge("narrative_node", "design_node")
 builder.add_edge("design_node", "art_node")
 builder.add_edge("art_node", "tech_node")
-builder.add_edge("tech_node", "qa_node")
-builder.add_edge("qa_node", "integration_node")
+builder.add_edge("tech_node", "integration_node")
 builder.add_edge("integration_node", "build_node")
 builder.add_edge("build_node", "build_validation_node")
-builder.add_edge("build_validation_node", "compose_node")
+builder.add_edge("build_validation_node", "qa_node")
+builder.add_edge("qa_node", "compose_node")
 builder.add_edge("compose_node", END)
 
 graph = builder.compile()

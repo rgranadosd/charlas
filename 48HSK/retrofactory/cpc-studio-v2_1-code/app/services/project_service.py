@@ -2,9 +2,19 @@ from pathlib import Path
 from app.services.file_service import write_text
 
 
+def _to_cpct_video_mode(video_mode: str) -> int:
+    normalized = str(video_mode).strip().lower()
+    if normalized in {"mode 0", "0", "m0"}:
+        return 0
+    if normalized in {"mode 2", "2", "m2"}:
+        return 2
+    return 1
+
+
 def generate_project(base_dir: str, payload: dict) -> str:
     base = Path(base_dir)
     video_mode = payload.get("video_mode", "Mode 1")
+    cpct_mode = _to_cpct_video_mode(video_mode)
     gameplay = payload.get("gameplay_spec", "")
     art_spec = payload.get("art_spec", "")
     tech_plan = payload.get("implementation_plan", "")
@@ -62,6 +72,7 @@ void input_update(void) {
     write_text(base / "src" / "entities" / "player.c", """#include <cpctelera.h>
 #include "player.h"
 
+/* In Mode 1, X is expressed in screen bytes (1 byte = 4 horizontal pixels). */
 static u8 px;
 static u8 py;
 
@@ -109,7 +120,7 @@ Tech:
 
 void game_init(void) {{
     cpct_disableFirmware();
-    cpct_setVideoMode(1);
+    cpct_setVideoMode({cpct_mode});
     cpct_clearScreen(0x00);
     player_init();
 }}

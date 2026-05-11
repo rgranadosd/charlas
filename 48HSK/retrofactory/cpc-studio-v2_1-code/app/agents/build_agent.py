@@ -3,9 +3,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app.schemas.outputs import BuildOutput
-
-
 PROJECT_ROOT = Path("/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code")
 CPCTELERA_HOME = PROJECT_ROOT / "tools" / "cpctelera" / "cpctelera"
 GENERATED_PROJECTS = PROJECT_ROOT / "generated_projects"
@@ -65,12 +62,30 @@ def _prepare_project(project_path: str | None) -> tuple[str, Path, Path | None]:
     return project_name, target_path, source_path
 
 
-def run(project_path: str | None) -> tuple[BuildOutput, str]:
+def _build_output(
+    success: bool,
+    return_code: int,
+    stdout: str,
+    stderr: str,
+    artifacts: list[str] | None = None,
+    build_notes: str = "",
+) -> dict:
+    return {
+        "success": success,
+        "return_code": return_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "artifacts": artifacts or [],
+        "build_notes": build_notes,
+    }
+
+
+def run(project_path: str | None) -> tuple[dict, str]:
     project_name, target_path, source_path = _prepare_project(project_path)
     env = _build_env()
 
     if not CPCT_MKPROJECT.exists():
-        return BuildOutput(
+        return _build_output(
             success=False,
             return_code=-1,
             stdout="",
@@ -118,7 +133,7 @@ def run(project_path: str | None) -> tuple[BuildOutput, str]:
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return BuildOutput(
+        return _build_output(
             success=False,
             return_code=-1,
             stdout="",
@@ -126,7 +141,7 @@ def run(project_path: str | None) -> tuple[BuildOutput, str]:
             build_notes="Build timed out.",
         ), str(target_path)
     except subprocess.CalledProcessError as exc:
-        return BuildOutput(
+        return _build_output(
             success=False,
             return_code=exc.returncode,
             stdout=(exc.stdout or "")[-4000:],
@@ -134,7 +149,7 @@ def run(project_path: str | None) -> tuple[BuildOutput, str]:
             build_notes=f"cpct_mkproject failed while creating {project_name} in {GENERATED_PROJECTS}.",
         ), str(target_path)
     except FileNotFoundError:
-        return BuildOutput(
+        return _build_output(
             success=False,
             return_code=-1,
             stdout="",
@@ -174,7 +189,7 @@ def run(project_path: str | None) -> tuple[BuildOutput, str]:
         else:
             notes = f"Build failed with exit code {result.returncode}."
 
-    return BuildOutput(
+    return _build_output(
         success=success,
         return_code=result.returncode,
         stdout=full_stdout,

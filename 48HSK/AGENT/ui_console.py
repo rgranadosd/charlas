@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import threading
+import textwrap
 import time
 from typing import Optional
 
@@ -77,6 +78,20 @@ def _safe_version(module_name: str) -> str:
         return "?"
 
 
+def _wrap_plain_lines(lines: list[str], width: int) -> list[str]:
+    wrapped: list[str] = []
+    safe_width = max(1, width)
+    for line in lines:
+        parts = textwrap.wrap(
+            line,
+            width=safe_width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        wrapped.extend(parts or [""])
+    return wrapped
+
+
 def print_start_motd(banner_name: str = "default") -> None:
     """Print ANSI MOTD with dynamic banners."""
     reset = "\033[0m"
@@ -90,14 +105,14 @@ def print_start_motd(banner_name: str = "default") -> None:
     httpx_ver = _safe_version("httpx")
     requests_ver = _safe_version("requests")
 
-    info_lines = [
-        f"{orange}Python {python_ver}{reset}",
-        f"{orange}semantic-kernel {sk_ver}{reset}",
-        f"{orange}openai {openai_ver}{reset}",
-        f"{orange}httpx {httpx_ver}{reset}",
-        f"{orange}requests {requests_ver}{reset}",
-        f"{orange}WSO2 IS {os.getenv('WSO2_AUTH_ENDPOINT', 'https://localhost:9443')}{reset}",
-        f"{orange}WSO2 APIM {os.getenv('WSO2_APIM_TOKEN_ENDPOINT', 'https://localhost:9453')}{reset}",
+    info_values = [
+        f"Python {python_ver}",
+        f"semantic-kernel {sk_ver}",
+        f"openai {openai_ver}",
+        f"httpx {httpx_ver}",
+        f"requests {requests_ver}",
+        f"WSO2 IS {os.getenv('WSO2_AUTH_ENDPOINT', 'https://localhost:9443')}",
+        f"WSO2 APIM {os.getenv('WSO2_APIM_TOKEN_ENDPOINT', 'https://localhost:9453')}",
     ]
 
     try:
@@ -111,22 +126,37 @@ def print_start_motd(banner_name: str = "default") -> None:
 
     line_prefix = "\r" if getattr(sys.stdout, "isatty", lambda: False)() else ""
     term_width = shutil.get_terminal_size((120, 20)).columns
-
-    max_rows = max(len(big), len(info_lines))
-    left_width = 74
-    max_right = max((len(_strip_ansi(x)) for x in info_lines), default=0)
-    divider_len = max(72, len(_strip_ansi(title)), left_width + max_right)
-    divider_len = min(divider_len, term_width)
+    banner_width = max((len(_strip_ansi(line)) for line in big), default=0)
+    title_width = len(_strip_ansi(title))
+    divider_len = min(term_width, max(24, title_width, banner_width))
+    format_info = lambda text: f"{orange}{text}{reset}"
+    min_right_width = 24
+    column_gap = 3
+    use_two_columns = banner_width + column_gap + min_right_width <= term_width
 
     print("\n" + line_prefix + title)
     print(line_prefix + f"{orange}{dim}{'─' * divider_len}{reset}")
 
-    right_offset = max(0, max_rows - len(info_lines))
-    for index in range(max_rows):
-        left = big[index] if index < len(big) else ""
-        right = info_lines[index - right_offset] if index >= right_offset and (index - right_offset) < len(info_lines) else ""
-        pad = " " * max(0, left_width - len(_strip_ansi(left)))
-        print(line_prefix + f"{left}{pad}{right}")
+    if use_two_columns:
+        right_width = max(min_right_width, term_width - banner_width - column_gap)
+        info_lines = [format_info(line) for line in _wrap_plain_lines(info_values, right_width)]
+        max_rows = max(len(big), len(info_lines))
+        right_offset = max(0, max_rows - len(info_lines))
+        for index in range(max_rows):
+            left = big[index] if index < len(big) else ""
+            right = info_lines[index - right_offset] if index >= right_offset and (index - right_offset) < len(info_lines) else ""
+            pad = " " * max(0, banner_width - len(_strip_ansi(left)) + column_gap)
+            print(line_prefix + f"{left}{pad}{right}")
+    else:
+        if banner_width <= term_width:
+            for line in big:
+                print(line_prefix + line)
+        else:
+            print(line_prefix + format_info(f"{APP_NAME} {APP_VERSION}"))
+
+        print(line_prefix + f"{orange}{dim}{'─' * divider_len}{reset}")
+        for line in _wrap_plain_lines(info_values, max(20, term_width - 2)):
+            print(line_prefix + format_info(line))
 
     print(line_prefix + f"{orange}{dim}{'─' * divider_len}{reset}\n")
 

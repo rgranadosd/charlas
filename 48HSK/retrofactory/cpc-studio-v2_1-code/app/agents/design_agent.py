@@ -1,16 +1,37 @@
-from app.schemas.outputs import DesignOutput
-from app.services.llm_service import structured_call
-from app.services.resource_service import format_resources_for_prompt
+import json
+
+from app.services.llm_service import json_call
 
 
-def run(user_request: str, extra_context: str = "") -> DesignOutput:
-    graphics_context = format_resources_for_prompt("graphics_agent", user_request, limit=3)
-    examples_context = format_resources_for_prompt("example_code_agent", user_request, limit=3)
-    print("\n[design_agent][retrieved_context]")
-    print(graphics_context)
-    print(examples_context)
-    print("[/design_agent][retrieved_context]\n")
-    merged_context = "\n\n".join(
-        x for x in [extra_context, graphics_context, examples_context] if x
-    )
-    return structured_call("design", DesignOutput, user_request, merged_context)
+def _as_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value in (None, ""):
+        return []
+    return [str(value).strip()]
+
+
+def run(
+    user_request: str,
+    orchestrator_output: dict | None = None,
+    narrative_output: dict | None = None,
+) -> dict:
+    blocks = []
+    if orchestrator_output:
+        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
+    if narrative_output:
+        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
+
+    payload = json_call("design", user_request, "\n\n".join(blocks))
+    return {
+        "core_loop": str(payload.get("core_loop", "")).strip(),
+        "win_condition": str(payload.get("win_condition", "")).strip(),
+        "lose_condition": str(payload.get("lose_condition", "")).strip(),
+        "player_actions": _as_list(payload.get("player_actions")),
+        "game_states": _as_list(payload.get("game_states")),
+        "enemy_roles": _as_list(payload.get("enemy_roles")),
+        "level_flow": _as_list(payload.get("level_flow")),
+        "difficulty_curve": str(payload.get("difficulty_curve", "")).strip(),
+        "score_model": str(payload.get("score_model", "")).strip(),
+        "lives_model": str(payload.get("lives_model", "")).strip(),
+    }

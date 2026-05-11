@@ -1,4 +1,5 @@
 import os
+import json
 import time
 from pathlib import Path
 
@@ -67,6 +68,90 @@ def invoke_with_backoff(llm, messages, retries=5, base_delay=2):
             print(f"[retry] rate limit detectado, reintentando en {delay}s...")
             time.sleep(delay)
     raise last_error
+
+
+def _response_text(response) -> str:
+    content = getattr(response, "content", response)
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                if "text" in item:
+                    parts.append(str(item["text"]))
+                elif "content" in item:
+                    parts.append(str(item["content"]))
+        return "\n".join(parts).strip()
+
+    return str(content).strip()
+
+
+def _extract_json_object(text: str) -> dict:
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("LLM returned empty content.")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        parsed = json.loads(raw[start : end + 1])
+
+    if not isinstance(parsed, dict):
+        raise ValueError("Expected a JSON object at top level.")
+
+    return parsed
+
+
+def json_call(prompt_name: str, user_request: str, extra_context: str = "", retries: int = 3) -> dict:
+    llm = build_model()
+    system = load_prompt(prompt_name)
+
+    context = PLATFORM_CONTEXT
+    if extra_context:
+        context += f"\n\nRetrieved project knowledge:\n{extra_context}"
+
+    messages = [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": (
+                f"{context}\n\nUser request:\n{user_request}\n\n"
+                "Devuelve SOLO un objeto JSON valido. Sin markdown, sin texto adicional."
+            ),
+        },
+    ]
+
+    last_error = None
+    for _ in range(retries):
+        response = invoke_with_backoff(llm, messages)
+        text = _response_text(response)
+        try:
+            return _extract_json_object(text)
+        except Exception as exc:
+            last_error = exc
+            messages.extend(
+                [
+                    {"role": "assistant", "content": text},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Tu respuesta anterior no fue JSON valido. "
+                            "Repite SOLO el JSON valido, sin markdown ni explicaciones."
+                        ),
+                    },
+                ]
+            )
+
+    raise ValueError(f"LLM JSON output could not be parsed after {retries} attempts: {last_error}")
 
 
 def structured_call(prompt_name: str, schema, user_request: str, extra_context: str = ""):
