@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-PROJECT_ROOT = Path("/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CPCTELERA_HOME = PROJECT_ROOT / "tools" / "cpctelera" / "cpctelera"
 GENERATED_PROJECTS = PROJECT_ROOT / "generated_projects"
 CPCT_MKPROJECT = CPCTELERA_HOME / "tools" / "scripts" / "cpct_mkproject"
@@ -62,6 +62,18 @@ def _prepare_project(project_path: str | None) -> tuple[str, Path, Path | None]:
     return project_name, target_path, source_path
 
 
+def _is_valid_cpct_scaffold(project_dir: Path) -> bool:
+    return (
+        project_dir.exists()
+        and project_dir.is_dir()
+        and (project_dir / "src").is_dir()
+        and (project_dir / "src" / "main.c").is_file()
+        and (project_dir / "cfg").is_dir()
+        and (project_dir / "cfg" / "build_config.mk").is_file()
+        and (project_dir / "Makefile").is_file()
+    )
+
+
 def _build_output(
     success: bool,
     return_code: int,
@@ -113,6 +125,18 @@ def run(project_path: str | None) -> tuple[dict, str]:
             create_result = None
 
         _sync_generated_sources(source_path, target_path)
+
+        if not _is_valid_cpct_scaffold(target_path):
+            return _build_output(
+                success=False,
+                return_code=-1,
+                stdout="",
+                stderr=f"Invalid CPCtelera scaffold at {target_path}",
+                build_notes=(
+                    "Build skipped because the target project does not contain a valid "
+                    "CPCtelera scaffold (src/, src/main.c, cfg/, cfg/build_config.mk, Makefile)."
+                ),
+            ), str(target_path)
 
         subprocess.run(
             ["make", "clean"],
