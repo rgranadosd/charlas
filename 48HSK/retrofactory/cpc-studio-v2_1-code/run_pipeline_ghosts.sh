@@ -88,6 +88,11 @@ trace_log "Launching pipeline command"
 if [[ "${DEBUG}" -eq 1 ]]; then
   set -x
 fi
+if [[ "${DEBUG}" -eq 1 ]]; then
+  export LLM_DEBUG=1
+else
+  export LLM_DEBUG=0
+fi
 python -u -m app.main --request "${REQUEST}" 2>&1 | tee -a "${LOG_FILE}"
 cmd_exit=${PIPESTATUS[0]}
 if [[ "${DEBUG}" -eq 1 ]]; then

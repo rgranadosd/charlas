@@ -25,13 +25,15 @@ from app.schemas.outputs import (
     ArtOutput,
     BuildOutput,
     BuildValidationOutput,
+    ContractValidationOutput,
     DesignOutput,
     IntegrationOutput,
     NarrativeOutput,
     OrchestratorOutput,
     QAOutput,
-    TechOutput,
+    TechOutputV2,
 )
+from app.services.contract_validation_service import adapt_tech_output, validate_contract
 from app.services.project_service import generate_project
 from app.state.studio_state import StudioState
 
@@ -272,9 +274,31 @@ def tech_node(state: StudioState):
         _to_dict(state.get("design")) or None,
         _to_dict(state.get("art")) or None,
     )
+    tech = adapt_tech_output(TechOutputV2.model_validate(raw))
     return {
-        "tech": TechOutput.model_validate(raw)
+        "tech": tech
     }
+
+
+def contractvalidationnode(state: StudioState):
+    print("-> contractvalidationnode", file=sys.stderr)
+    validation = validate_contract(_to_dict(state.get("tech")))
+    return {
+        "contractvalidation": validation,
+        "contract_validation": validation,
+    }
+
+
+def _route_after_contractvalidation(state: StudioState):
+    raw = state.get("contractvalidation") or state.get("contract_validation")
+    payload = _to_dict(raw)
+
+    try:
+        validation = ContractValidationOutput.model_validate(payload)
+    except Exception:
+        return "compose_node"
+
+    return "integration_node" if validation.status == "pass" else "compose_node"
 
 
 def integration_node(state: StudioState):
@@ -333,6 +357,32 @@ def integration_node(state: StudioState):
 
 def build_node(state: StudioState):
     print("-> build_node", file=sys.stderr)
+
+    integration = state.get("integration")
+    prebuild_errors = []
+    if integration is not None:
+        prebuild_errors = [
+            str(item).strip()
+            for item in getattr(integration, "prebuild_validation_errors", [])
+            if str(item).strip()
+        ]
+
+    if prebuild_errors:
+        stderr = "Pre-build C validation failed before compilation:\n" + "\n".join(
+            f"- {issue}" for issue in prebuild_errors[:20]
+        )
+        build_output = BuildOutput.model_validate(
+            _build_failure_payload(
+                stderr,
+                "Build skipped due to malformed generated C includes/prototypes.",
+            )
+        )
+        project_path = state.get("generated_project_path")
+        return {
+            "build_output": build_output,
+            "generated_project_path": str(Path(project_path).resolve()) if project_path else "",
+        }
+
     project_path = state.get("generated_project_path")
     if not project_path:
         build_output = BuildOutput.model_validate(
@@ -439,8 +489,18 @@ def compose_node(state: StudioState):
         parts += ["## Art", _json_block("art", state["art"]), ""]
     if state.get("tech"):
         parts += ["## Tech", _json_block("tech", state["tech"]), ""]
+    contract_validation = state.get("contractvalidation") or state.get("contract_validation")
+    if contract_validation:
+        parts += [
+            "## Contract Validation",
+            _json_block("contract_validation", contract_validation),
+            "",
+        ]
     if state.get("integration"):
         parts += ["## Integration", state["integration"].integration_notes, ""]
+        prebuild_errors = state["integration"].prebuild_validation_errors
+        if prebuild_errors:
+            parts += ["Pre-build Validation Errors:", "\n".join(prebuild_errors[:20]), ""]
     if state.get("build_output"):
         bo = state["build_output"]
         status = "OK" if bo.success else f"FAILED (exit {bo.return_code})"
@@ -463,6 +523,7 @@ builder.add_node("narrative_node", narrative_node)
 builder.add_node("design_node", design_node)
 builder.add_node("art_node", art_node)
 builder.add_node("tech_node", tech_node)
+builder.add_node("contractvalidationnode", contractvalidationnode)
 builder.add_node("integration_node", integration_node)
 builder.add_node("build_node", build_node)
 builder.add_node("build_validation_node", build_validation_node)
@@ -474,7 +535,15 @@ builder.add_edge("orchestrator_node", "narrative_node")
 builder.add_edge("narrative_node", "design_node")
 builder.add_edge("design_node", "art_node")
 builder.add_edge("art_node", "tech_node")
-builder.add_edge("tech_node", "integration_node")
+builder.add_edge("tech_node", "contractvalidationnode")
+builder.add_conditional_edges(
+    "contractvalidationnode",
+    _route_after_contractvalidation,
+    {
+        "integration_node": "integration_node",
+        "compose_node": "compose_node",
+    },
+)
 builder.add_edge("integration_node", "build_node")
 builder.add_edge("build_node", "build_validation_node")
 builder.add_edge("build_validation_node", "qa_node")
