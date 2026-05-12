@@ -40,7 +40,88 @@ SALIDA OBLIGATORIA:
   "rendering_model": {},
   "data_model": {},
   "update_order": [],
+  "runtime_contract": {
+    "compile_profile": "playable_slice",
+    "critical_modules": [
+      "src/main.c",
+      "src/game.c"
+    ],
+    "integrated_modules": [
+      "src/main.c",
+      "src/game.c"
+    ],
+    "required_entrypoints": [
+      "game_init",
+      "game_update",
+      "game_render"
+    ],
+    "main_loop_file": "src/main.c",
+    "reject_empty_main_loop": true
+  },
+  "module_contracts": [
+    {
+      "module": "src/main.c",
+      "header": "",
+      "local_includes": ["game.h"],
+      "exports": [],
+      "required_symbols": ["game_init", "game_update", "game_render"],
+      "required_assets": [],
+      "critical": true,
+      "integrated": true,
+      "allows_stub": false
+    },
+    {
+      "module": "src/game.c",
+      "header": "src/game.h",
+      "local_includes": ["game.h"],
+      "exports": ["game_init", "game_update", "game_render"],
+      "required_symbols": [],
+      "required_assets": [],
+      "critical": true,
+      "integrated": true,
+      "allows_stub": false
+    }
+  ],
+  "asset_contract": {
+    "required_assets": [],
+    "declared_assets": [],
+    "defined_assets": []
+  },
+  "integration_blueprint": {
+    "planned_files": [],
+    "provided_symbols": {},
+    "required_symbols": {},
+    "file_headers": {},
+    "integrated_modules": [],
+    "files": {}
+  },
   "scaffold": {
+    "required_files": [
+      "src/main.c",
+      "src/game.h",
+      "src/game.c"
+    ],
+    "base_scaffold_files": [
+      "src/main.c"
+    ],
+    "optional_files": [
+      "src/entities/player.h",
+      "src/entities/player.c",
+      "src/entities/enemy.h",
+      "src/entities/enemy.c",
+      "src/entities/projectile.h",
+      "src/entities/projectile.c",
+      "src/systems/input.h",
+      "src/systems/input.c",
+      "src/systems/collision.h",
+      "src/systems/collision.c",
+      "src/systems/tilemap.h",
+      "src/systems/tilemap.c",
+      "src/systems/hud.h",
+      "src/systems/hud.c",
+      "src/data/level1.h",
+      "src/data/level1.c"
+    ],
     "allowed_files": [
       "src/main.c",
       "src/game.h",

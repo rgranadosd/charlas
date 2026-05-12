@@ -4,12 +4,13 @@ from app.schemas.outputs import (
     ArtOutput,
     BuildOutput,
     BuildValidationOutput,
+    ContractValidationOutput,
     DesignOutput,
     IntegrationOutput,
     NarrativeOutput,
     OrchestratorOutput,
     QAOutput,
-    TechOutput,
+    TechOutputV2,
 )
 
 
@@ -21,7 +22,9 @@ class StudioState(TypedDict, total=False):
     narrative: NarrativeOutput
     design: DesignOutput
     art: ArtOutput
-    tech: TechOutput
+    tech: TechOutputV2
+    contractvalidation: ContractValidationOutput
+    contract_validation: ContractValidationOutput
     integration: IntegrationOutput
     build_output: BuildOutput
     build_validation: BuildValidationOutput

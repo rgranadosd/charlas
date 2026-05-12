@@ -91,6 +91,10 @@ def run_full_studio_pipeline(game_request: str) -> dict[str, Any]:
         "design": _to_dict(state.get("design")) or {},
         "art": _to_dict(state.get("art")) or {},
         "tech": _to_dict(state.get("tech")) or {},
+        "contract_validation": _to_dict(
+            state.get("contract_validation") or state.get("contractvalidation")
+        )
+        or {},
         "integration": _to_dict(state.get("integration")) or {},
         "build": build_output,
         "build_validation": _to_dict(state.get("build_validation")) or {},

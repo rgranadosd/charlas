@@ -16,7 +16,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 
 ANSI_YELLOW = "\033[33m"
 ANSI_RESET = "\033[0m"
-INFO_TAG = f"{ANSI_YELLOW}[INFO]{ANSI_RESET}"
+DEBUG_TAG = f"{ANSI_YELLOW}[Debug]{ANSI_RESET}"
 
 PLATFORM_CONTEXT = """
 Target platform: Amstrad CPC 6128
@@ -65,19 +65,39 @@ def invoke_with_backoff(llm, messages, retries=5, base_delay=2):
         except Exception as e:
             last_error = e
             text = str(e).lower()
-            retryable = "rate limit" in text or "429" in text or "rate_limited" in text
+            retryable = (
+                "rate limit" in text
+                or "429" in text
+                or "rate_limited" in text
+                or "connection error" in text
+                or "connecterror" in text
+                or "api connection error" in text
+                or "temporary failure" in text
+                or "name resolution" in text
+                or "nodename nor servname provided" in text
+                or "timed out" in text
+                or "timeout" in text
+            )
             if not retryable or attempt == retries - 1:
                 raise
             delay = base_delay * (2 ** attempt)
-            print(f"[retry] rate limit detectado, reintentando en {delay}s...")
+            print(f"[retry] error transitorio detectado, reintentando en {delay}s...")
             time.sleep(delay)
     raise last_error
 
 
+def _is_debug_enabled() -> bool:
+    value = os.getenv("LLM_DEBUG", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def _trace_llm_io(prompt_name: str, kind: str, content: str) -> None:
-    print(f"{INFO_TAG} [llm][{prompt_name}] {kind}_START")
+    if not _is_debug_enabled():
+        return
+
+    print(f"{DEBUG_TAG} [llm][{prompt_name}] {kind}_START")
     print(content)
-    print(f"{INFO_TAG} [llm][{prompt_name}] {kind}_END")
+    print(f"{DEBUG_TAG} [llm][{prompt_name}] {kind}_END")
 
 
 def _response_text(response) -> str:
