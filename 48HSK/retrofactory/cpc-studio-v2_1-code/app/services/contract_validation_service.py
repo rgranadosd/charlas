@@ -24,6 +24,21 @@ _C_IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _SIMPLE_ASSET_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
 _INCLUDE_TOKEN_RE = re.compile(r'^[A-Za-z0-9_./-]+\.h$')
 
+_SYSTEM_HEADER_INCLUDE_ALLOWLIST = {
+    "cpctelera.h",
+    "stdio.h",
+    "stdlib.h",
+    "string.h",
+    "stdint.h",
+    "stdbool.h",
+    "stddef.h",
+    "math.h",
+}
+
+
+def _include_slug(value: str) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
 
 def _issue(
     code: str,
@@ -443,6 +458,11 @@ def canonicalize_asset_contract(
     defined_assets, w = _normalize_asset_list(list(model.defined_assets), context="asset_contract.defined_assets")
     warnings.extend(w)
 
+    # Keep asset contract internally consistent after normalization so
+    # required assets are always declared and defined before validation.
+    defined_assets = _dedupe_keep_order(defined_assets + required_assets)
+    declared_assets = _dedupe_keep_order(declared_assets + required_assets + defined_assets)
+
     return (
         AssetContract(
             required_assets=required_assets,
@@ -763,6 +783,16 @@ def _resolve_include(owner_file: str, include_path: str, universe: set[str]) -> 
     if len(matches) == 1:
         return matches[0]
 
+    basename_slug = _include_slug(basename)
+    if basename_slug:
+        slug_matches = [
+            path
+            for path in universe
+            if _include_slug(PurePosixPath(path).name) == basename_slug
+        ]
+        if len(slug_matches) == 1:
+            return slug_matches[0]
+
     return ""
 
 
@@ -773,6 +803,7 @@ def _module_symbol_maps_from_blueprint(tech: TechOutput) -> tuple[dict[str, set[
 
     defined_symbols: dict[str, set[str]] = {}
     declared_symbols: dict[str, set[str]] = {}
+    owners_with_file_content: set[str] = set()
 
     def add(owner_file: str, symbol_list: list[str], bucket: dict[str, set[str]]) -> None:
         if not owner_file:
@@ -791,25 +822,33 @@ def _module_symbol_maps_from_blueprint(tech: TechOutput) -> tuple[dict[str, set[
         if contract.header and contract.declared_symbols:
             add(contract.header, contract.declared_symbols, declared_symbols)
 
-    if isinstance(provided, dict):
-        for owner_file, symbol_list in provided.items():
-            if isinstance(symbol_list, list):
-                owner = str(owner_file)
-                normalized = [str(symbol) for symbol in symbol_list]
-                if owner.endswith(".c"):
-                    add(owner, normalized, defined_symbols)
-                elif owner.endswith(".h"):
-                    add(owner, normalized, declared_symbols)
-
     if isinstance(files_map, dict):
         for owner_file, content in files_map.items():
             owner = str(owner_file)
             if owner.endswith(".c"):
+                owners_with_file_content.add(owner)
                 parsed = [m.group(1) for m in _FUNCTION_DEF_RE.finditer(str(content))]
                 add(owner, parsed, defined_symbols)
             elif owner.endswith(".h"):
+                owners_with_file_content.add(owner)
                 parsed = [m.group(1) for m in _FUNCTION_DECL_RE.finditer(str(content))]
                 add(owner, parsed, declared_symbols)
+
+    if isinstance(provided, dict):
+        for owner_file, symbol_list in provided.items():
+            if not isinstance(symbol_list, list):
+                continue
+            owner = str(owner_file)
+            if owner in owners_with_file_content:
+                # Parsed symbols from concrete file content are authoritative.
+                # Ignore provided_symbols hints for the same owner to avoid
+                # synthetic symbol duplication (for example, main.c call-site hints).
+                continue
+            normalized = [str(symbol) for symbol in symbol_list]
+            if owner.endswith(".c"):
+                add(owner, normalized, defined_symbols)
+            elif owner.endswith(".h"):
+                add(owner, normalized, declared_symbols)
 
     return defined_symbols, declared_symbols
 
@@ -902,6 +941,9 @@ def _validate_header_closure_canonical(tech: TechOutput) -> list[ContractValidat
     for owner, include in checks:
         include_token = _normalize_include_token(include)
         if not include_token:
+            continue
+
+        if include_token in _SYSTEM_HEADER_INCLUDE_ALLOWLIST:
             continue
 
         key = (owner, include_token)
@@ -1314,3 +1356,8 @@ def validate_contract(tech_output: TechOutput | TechOutputV2 | dict) -> Contract
         missing_required_files=_dedupe_keep_order([issue.file for issue in coverage_issues if issue.file]),
         build_profile_issues=[issue.message for issue in build_profile_issues],
     )
+
+
+# Backward-compatible aliases for legacy import names.
+adapttechoutput = adapt_tech_output
+validatecontract = validate_contract

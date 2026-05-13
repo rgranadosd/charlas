@@ -14,11 +14,45 @@ CORE_GAME_C = "src/game.c"
 CORE_MAIN_C = "src/main.c"
 LEGACY_SCENE_GAME_C = "src/scene_game.c"
 
+RUNTIME_CRITICAL_MODULES = [
+    "src/entities/player.c",
+    "src/systems/input.c",
+    "src/systems/collision.c",
+    "src/systems/tilemap.c",
+]
+
+RUNTIME_SUPPORT_FILES = [
+    "src/entities/player.h",
+    "src/entities/player.c",
+    "src/systems/input.h",
+    "src/systems/input.c",
+    "src/systems/collision.h",
+    "src/systems/collision.c",
+    "src/systems/tilemap.h",
+    "src/systems/tilemap.c",
+    "src/data/level1.h",
+    "src/data/level1.c",
+    "src/data/tileset/base.h",
+    "src/data/tileset/base.c",
+    "src/data/sprites/playerknight.h",
+    "src/data/sprites/playerknight.c",
+    "src/data/hud/healthbar.h",
+    "src/data/hud/healthbar.c",
+]
+
 ASSET_FILE_OVERRIDES = {
     "sprplayerknight": ["src/data/sprites/playerknight.h", "src/data/sprites/playerknight.c"],
     "hudhealthbar": ["src/data/hud/healthbar.h", "src/data/hud/healthbar.c"],
     "tilesetbase": ["src/data/tileset/base.h", "src/data/tileset/base.c"],
 }
+
+SYSTEM_HEADER_TOKENS = {
+    "cpctelera.h",
+}
+
+
+def _token_slug(value: str) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
 
 
 def _as_list(value) -> list[str]:
@@ -87,6 +121,41 @@ def _clean_assets(values) -> list[str]:
     return _unique(cleaned)
 
 
+def _clean_local_includes(values) -> list[str]:
+    cleaned: list[str] = []
+
+    for value in _as_list(values):
+        token = str(value).strip()
+        if not token:
+            continue
+
+        if token.startswith("#include"):
+            token = token.replace("#include", "", 1).strip()
+
+        # Local include closure should only track quote includes.
+        if token.startswith("<") and token.endswith(">"):
+            continue
+
+        token = token.strip('"').strip("'").replace("\\", "/")
+        if token.startswith("./"):
+            token = token[2:]
+        if token.startswith("src/"):
+            token = token[4:]
+
+        if not token or not token.endswith(".h"):
+            continue
+
+        normalized = PurePosixPath(token).as_posix()
+        if ".." in PurePosixPath(normalized).parts:
+            continue
+        if normalized in SYSTEM_HEADER_TOKENS:
+            continue
+
+        cleaned.append(normalized)
+
+    return _unique(cleaned)
+
+
 def _asset_key(value: str) -> str:
     return "".join(ch for ch in str(value).lower() if ch.isalnum())
 
@@ -115,6 +184,39 @@ def _asset_file_paths(asset: str) -> list[str]:
         _src_path(f"src/data/{folder}/{stem}.h"),
         _src_path(f"src/data/{folder}/{stem}.c"),
     ]
+
+
+def _asset_alias_paths(asset: str, paths: list[str]) -> list[str]:
+    # Preserve explicit separators from asset names (e.g. font_gothic)
+    # when the computed file stem was compacted (e.g. fontgothic).
+    asset_token = normalize_asset_token(asset) or ""
+    if "_" not in asset_token:
+        return []
+
+    alias_stem_raw = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in asset_token.lower())
+    alias_stem = "_".join(part for part in alias_stem_raw.split("_") if part)
+    if not alias_stem:
+        return []
+
+    alias_slug = _token_slug(alias_stem)
+    aliases: list[str] = []
+    for path in paths:
+        suffix = PurePosixPath(path).suffix.lower()
+        # Emit alias headers only. Mirroring .c files would duplicate
+        # asset data definitions and break linker symbol uniqueness.
+        if suffix != ".h":
+            continue
+
+        stem_slug = _token_slug(PurePosixPath(path).stem)
+        if stem_slug != alias_slug:
+            continue
+
+        parent = PurePosixPath(path).parent.as_posix()
+        alias_path = _src_path(f"{parent}/{alias_stem}{suffix}")
+        if alias_path and alias_path != path:
+            aliases.append(alias_path)
+
+    return _unique(aliases)
 
 
 def _build_asset_file_map(asset_contract: dict, module_contracts: list[dict], runtime: dict) -> dict[str, list[str]]:
@@ -151,6 +253,7 @@ def _build_asset_file_map(asset_contract: dict, module_contracts: list[dict], ru
     result: dict[str, list[str]] = {}
     for asset in _clean_assets(required_assets):
         files = [path for path in _asset_file_paths(asset) if path]
+        files = _unique(files + _asset_alias_paths(asset, files))
         if files:
             result[asset] = _unique(files)
 
@@ -207,10 +310,14 @@ def _ensure_core_scaffold(scaffold: dict) -> dict:
     overwrite_files = [path for path in overwrite_files if path != LEGACY_SCENE_GAME_C]
     create_if_missing = [path for path in create_if_missing if path != LEGACY_SCENE_GAME_C]
 
-    required_files.extend(["src/main.c", CORE_GAME_H, CORE_GAME_C])
-    base_scaffold_files.append("src/main.c")
+    required_files.extend([CORE_MAIN_C, CORE_GAME_H, CORE_GAME_C])
+    required_files.extend(RUNTIME_CRITICAL_MODULES)
+    base_scaffold_files.append(CORE_MAIN_C)
 
-    for core_path in ("src/main.c", CORE_GAME_H, CORE_GAME_C):
+    writable_runtime_files = [CORE_MAIN_C, CORE_GAME_H, CORE_GAME_C]
+    writable_runtime_files.extend(RUNTIME_SUPPORT_FILES)
+
+    for core_path in writable_runtime_files:
         allowed_files.append(core_path)
         overwrite_files.append(core_path)
         create_if_missing.append(core_path)
@@ -218,7 +325,7 @@ def _ensure_core_scaffold(scaffold: dict) -> dict:
     allowed_files.extend(required_files)
     allowed_files.extend(base_scaffold_files)
     allowed_files.extend(optional_files)
-    overwrite_files.append("src/main.c")
+    overwrite_files.append(CORE_MAIN_C)
 
     allowed_files = _unique(path for path in allowed_files if path)
     overwrite_files = [path for path in _unique(path for path in overwrite_files if path) if path in allowed_files]
@@ -292,15 +399,26 @@ def _normalize_module_contracts(payload: dict, modules: list[str], scaffold: dic
             defined_symbols = _clean_symbols(data.get("defined_symbols"))
             if not defined_symbols:
                 defined_symbols = _clean_symbols(data.get("exports"))
+            required_symbols = _clean_symbols(data.get("required_symbols"))
+
+            # Keep module contracts focused on callable symbols.
+            # LLM output may inject type names (e.g. enums/struct aliases)
+            # into declared_symbols; those are not part of symbol closure.
+            symbol_closure_targets = set(defined_symbols + required_symbols)
+            if symbol_closure_targets:
+                declared_symbols = [symbol for symbol in declared_symbols if symbol in symbol_closure_targets]
+            else:
+                declared_symbols = []
+            declared_symbols = _unique(declared_symbols + defined_symbols)
 
             contracts_by_module[module] = {
                 "module": module,
                 "header": header,
-                "local_includes": _unique(_as_list(data.get("local_includes"))),
+                "local_includes": _clean_local_includes(data.get("local_includes")),
                 "declared_symbols": declared_symbols,
                 "defined_symbols": defined_symbols,
                 "exports": defined_symbols,
-                "required_symbols": _clean_symbols(data.get("required_symbols")),
+                "required_symbols": required_symbols,
                 "required_assets": _clean_assets(data.get("required_assets")),
                 "critical": _as_bool(data.get("critical"), default=False),
                 "integrated": _as_bool(data.get("integrated"), default=True),
@@ -339,7 +457,7 @@ def _normalize_module_contracts(payload: dict, modules: list[str], scaffold: dic
         main_contract["header"] = ""
         main_contract["local_includes"] = _unique(main_contract["local_includes"] + ["game.h"])
         main_contract["required_symbols"] = _clean_symbols(
-            main_contract["required_symbols"] + ["gameinit", "gameupdate", "gamerender"]
+            main_contract["required_symbols"] + ["game_init", "game_update", "game_render"]
         )
         main_contract["critical"] = True
         main_contract["integrated"] = True
@@ -347,7 +465,7 @@ def _normalize_module_contracts(payload: dict, modules: list[str], scaffold: dic
 
     game_contract = contracts_by_module.get(CORE_GAME_C)
     if game_contract:
-        entrypoints = _clean_symbols(["gameinit", "gameupdate", "gamerender"])
+        entrypoints = _clean_symbols(["game_init", "game_update", "game_render"])
         game_contract["header"] = CORE_GAME_H
         game_contract["local_includes"] = _unique(game_contract["local_includes"] + ["game.h"])
         game_contract["declared_symbols"] = _clean_symbols(
@@ -409,14 +527,13 @@ def _assets_from_art_for_tilemap(art_output: dict | None) -> list[str]:
 
 
 def _build_contract_main_c(required_entrypoints: list[str]) -> str:
-    entrypoints = _clean_symbols(required_entrypoints) or ["gameinit", "gameupdate", "gamerender"]
+    entrypoints = _clean_symbols(required_entrypoints) or ["game_init", "game_update", "game_render"]
 
     init_symbol = entrypoints[0]
     update_symbol = entrypoints[1] if len(entrypoints) > 1 else entrypoints[0]
     render_symbol = entrypoints[2] if len(entrypoints) > 2 else entrypoints[-1]
 
     body_lines = [
-        "cpct_disableFirmware();",
         f"{init_symbol}();",
         "",
         "while (1) {",
@@ -434,9 +551,8 @@ def _build_contract_main_c(required_entrypoints: list[str]) -> str:
             '#include <cpctelera.h>',
             '#include "game.h"',
             "",
-            "int main(void) {",
+            "void main(void) {",
             *(f"    {line}" if line else "" for line in body_lines),
-            "    return 0;",
             "}",
             "",
         ]
@@ -449,16 +565,16 @@ def _build_contract_game_c() -> str:
             '#include "game.h"',
             '#include <cpctelera.h>',
             "",
-            "void gameinit(void) {",
+            "void game_init(void) {",
             "    cpct_disableFirmware();",
-            "    cpct_setVideoMode(0);",
-            "    cpct_setBorder(HW_BLACK);",
+            "    cpct_setVideoMode(1);",
+            "    cpct_clearScreen(0x00);",
             "}",
             "",
-            "void gameupdate(void) {",
+            "void game_update(void) {",
             "}",
             "",
-            "void gamerender(void) {",
+            "void game_render(void) {",
             "}",
             "",
         ]
@@ -467,7 +583,14 @@ def _build_contract_game_c() -> str:
 
 def _normalize_runtime_contract(payload: dict, module_contracts: list[dict]) -> dict:
     raw = _as_dict(payload.get("runtime_contract"))
-    compile_profile = str(raw.get("compile_profile", "playable_slice")).strip() or "playable_slice"
+    raw_profile = str(raw.get("compile_profile", "playable_slice")).strip()
+    profile_token = "".join(ch for ch in raw_profile.lower() if ch.isalpha())
+    profile_map = {
+        "prototype": "prototype",
+        "verticalslice": "vertical_slice",
+        "playableslice": "playable_slice",
+    }
+    compile_profile = profile_map.get(profile_token, "playable_slice")
     if compile_profile not in {"prototype", "vertical_slice", "playable_slice"}:
         compile_profile = "playable_slice"
 
@@ -481,12 +604,15 @@ def _normalize_runtime_contract(payload: dict, module_contracts: list[dict]) -> 
         if module.get("integrated", True) and module_path:
             integrated_modules.append(module_path)
 
+    critical_modules.extend(RUNTIME_CRITICAL_MODULES)
+    integrated_modules.extend(RUNTIME_CRITICAL_MODULES)
+
     return {
         "compile_profile": compile_profile,
         "critical_modules": _unique(path for path in critical_modules if path),
         "integrated_modules": _unique(path for path in integrated_modules if path),
         "required_entrypoints": _clean_symbols(raw.get("required_entrypoints"))
-        or ["gameinit", "gameupdate", "gamerender"],
+        or ["game_init", "game_update", "game_render"],
         "main_loop_file": _src_path(str(raw.get("main_loop_file", "src/main.c"))),
         "reject_empty_main_loop": _as_bool(raw.get("reject_empty_main_loop"), default=True),
     }
@@ -516,8 +642,8 @@ def _normalize_asset_contract(payload: dict, art_output: dict | None, module_con
         required_assets.extend(_clean_assets(module.get("required_assets")))
 
     required_assets = _unique(required_assets)
-    declared_assets = _clean_assets(raw.get("declared_assets")) or list(required_assets)
-    defined_assets = _clean_assets(raw.get("defined_assets")) or list(required_assets)
+    declared_assets = _unique(_clean_assets(raw.get("declared_assets")) + required_assets)
+    defined_assets = _unique(_clean_assets(raw.get("defined_assets")) + required_assets)
 
     return {
         "required_assets": required_assets,
@@ -571,7 +697,7 @@ def _normalize_integration_blueprint(
             module_path = _src_path(module)
             if not module_path:
                 continue
-            file_headers[module_path] = _unique(_as_list(includes))
+            file_headers[module_path] = _clean_local_includes(includes)
 
     for module in module_contracts:
         module_path = module.get("module", "")
@@ -591,7 +717,7 @@ def _normalize_integration_blueprint(
 
         if module.get("local_includes"):
             file_headers[module_path] = _unique(
-                file_headers.get(module_path, []) + _as_list(module.get("local_includes"))
+                file_headers.get(module_path, []) + _clean_local_includes(module.get("local_includes"))
             )
 
     files = {}
@@ -640,6 +766,114 @@ def _normalize_integration_blueprint(
     }
 
 
+def _resolve_include_reference(owner_file: str, include: str, known_headers: set[str]) -> str:
+    normalized_includes = _clean_local_includes([include])
+    if not normalized_includes:
+        return ""
+
+    token = normalized_includes[0]
+
+    if token.startswith("src/"):
+        direct_src = _src_path(token)
+        if direct_src and direct_src in known_headers:
+            return direct_src
+
+    if token in known_headers:
+        return token
+
+    owner_path = _src_path(owner_file)
+    owner_dir = PurePosixPath(owner_path).parent.as_posix() if owner_path else ""
+    if owner_dir and owner_dir != ".":
+        joined = _src_path(f"{owner_dir}/{token}")
+        if joined and joined in known_headers:
+            return joined
+
+    basename = PurePosixPath(token).name
+    basename_matches = [path for path in known_headers if PurePosixPath(path).name == basename]
+    if len(basename_matches) == 1:
+        return basename_matches[0]
+
+    basename_slug = _token_slug(basename)
+    if basename_slug:
+        slug_matches = [
+            path
+            for path in known_headers
+            if _token_slug(PurePosixPath(path).name) == basename_slug
+        ]
+        if len(slug_matches) == 1:
+            return slug_matches[0]
+
+    return token
+
+
+def _normalize_contract_include_references(
+    module_contracts: list[dict],
+    integration_blueprint: dict,
+    scaffold: dict,
+    asset_file_map: dict[str, list[str]],
+) -> tuple[list[dict], dict]:
+    header_universe: set[str] = set()
+
+    for key in (
+        "required_files",
+        "base_scaffold_files",
+        "optional_files",
+        "allowed_files",
+        "overwrite_files",
+        "create_if_missing",
+    ):
+        for path in _as_list(scaffold.get(key)):
+            normalized = _src_path(path)
+            if normalized and normalized.endswith(".h"):
+                header_universe.add(normalized)
+
+    for mapped_files in asset_file_map.values():
+        for path in _as_list(mapped_files):
+            normalized = _src_path(path)
+            if normalized and normalized.endswith(".h"):
+                header_universe.add(normalized)
+
+    for path in _as_list(integration_blueprint.get("planned_files")):
+        normalized = _src_path(path)
+        if normalized and normalized.endswith(".h"):
+            header_universe.add(normalized)
+
+    normalized_contracts: list[dict] = []
+    for contract in module_contracts:
+        contract_copy = dict(contract)
+        owner = str(contract_copy.get("module", ""))
+        includes = _clean_local_includes(contract_copy.get("local_includes"))
+
+        resolved: list[str] = []
+        for include in includes:
+            include_token = _resolve_include_reference(owner, include, header_universe)
+            if include_token:
+                resolved.append(include_token)
+
+        contract_copy["local_includes"] = _unique(resolved)
+        normalized_contracts.append(contract_copy)
+
+    blueprint = dict(integration_blueprint)
+    raw_file_headers = _as_dict(blueprint.get("file_headers"))
+    normalized_file_headers: dict[str, list[str]] = {}
+    for owner, includes in raw_file_headers.items():
+        owner_path = _src_path(owner)
+        if not owner_path:
+            continue
+
+        resolved: list[str] = []
+        for include in _clean_local_includes(includes):
+            include_token = _resolve_include_reference(owner_path, include, header_universe)
+            if include_token:
+                resolved.append(include_token)
+
+        if resolved:
+            normalized_file_headers[owner_path] = _unique(resolved)
+
+    blueprint["file_headers"] = normalized_file_headers
+    return normalized_contracts, blueprint
+
+
 def run(
     user_request: str,
     orchestrator_output: dict | None = None,
@@ -674,6 +908,12 @@ def run(
         scaffold,
         module_contracts,
         runtime_contract,
+        asset_file_map,
+    )
+    module_contracts, integration_blueprint = _normalize_contract_include_references(
+        module_contracts,
+        integration_blueprint,
+        scaffold,
         asset_file_map,
     )
 
