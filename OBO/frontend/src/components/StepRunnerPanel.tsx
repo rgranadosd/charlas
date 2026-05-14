@@ -263,7 +263,7 @@ export function StepRunnerPanel({
                       >
                         <span className="happy-substep__token">USER_TOKEN</span>
                         <span className="happy-substep__state">{getContrastCardStateLabel(latestUserAccessTrace, canTestUserAccess)}</span>
-                        <span className="happy-substep__hint">Caja independiente. Debe quedar en verde.</span>
+                        <span className="happy-substep__hint">Con USER_TOKEN el acceso al recurso debe permitirse.</span>
                         <span className="happy-substep__status-code">{latestUserAccessTrace?.response_status ?? "--"}</span>
                       </button>
                       <button
@@ -276,7 +276,7 @@ export function StepRunnerPanel({
                       >
                         <span className="happy-substep__token">AGENT_TOKEN</span>
                         <span className="happy-substep__state">{getContrastCardStateLabel(latestAgentAccessTrace, canTestAgentAccess)}</span>
-                        <span className="happy-substep__hint">Caja independiente. Debe quedar en rojo.</span>
+                        <span className="happy-substep__hint">Con AGENT_TOKEN el acceso debe denegarse sin delegacion OBO.</span>
                         <span className="happy-substep__status-code">{latestAgentAccessTrace?.response_status ?? "--"}</span>
                       </button>
                     </div>

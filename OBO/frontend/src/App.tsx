@@ -1,18 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { DashboardPage } from "./pages/DashboardPage";
 
 export default function App() {
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    document.documentElement.dataset.theme = "dark";
+  }, []);
 
-  return (
-    <DashboardPage
-      theme={theme}
-      onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
-    />
-  );
+  return <DashboardPage />;
 }

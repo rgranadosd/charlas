@@ -1,12 +1,14 @@
 import argparse
 import json
 import os
+import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-from app.graph.main_graph import graph
+from app.graph.main_graph import graph, run_studio
 
 BASE = Path(__file__).resolve().parents[1]
 TARGET_PLATFORM = "Amstrad CPC 6128"
@@ -134,9 +136,13 @@ def main() -> None:
             "scroll contenido y gran legibilidad visual."
         )
 
-    ensure_env()
-    result = run_full_studio_pipeline(request)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    try:
+        ensure_env()
+        result = run_studio(request)
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,746 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module enemy
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _collision_clamp_y_at
+                             12 	.globl _collision_is_on_ground_at
+                             13 	.globl _cpct_getScreenPtr
+                             14 	.globl _cpct_drawSolidBox
+                             15 	.globl _enemyinit
+                             16 	.globl _enemyspawn
+                             17 	.globl _enemyupdate
+                             18 	.globl _enemyrender
+                             19 	.globl _enemydamage
+                             20 ;--------------------------------------------------------
+                             21 ; special function registers
+                             22 ;--------------------------------------------------------
+                             23 ;--------------------------------------------------------
+                             24 ; ram data
+                             25 ;--------------------------------------------------------
+                             26 	.area _DATA
+                             27 ;--------------------------------------------------------
+                             28 ; ram data
+                             29 ;--------------------------------------------------------
+                             30 	.area _INITIALIZED
+                             31 ;--------------------------------------------------------
+                             32 ; absolute external ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _DABS (ABS)
+                             35 ;--------------------------------------------------------
+                             36 ; global & static initialisations
+                             37 ;--------------------------------------------------------
+                             38 	.area _HOME
+                             39 	.area _GSINIT
+                             40 	.area _GSFINAL
+                             41 	.area _GSINIT
+                             42 ;--------------------------------------------------------
+                             43 ; Home
+                             44 ;--------------------------------------------------------
+                             45 	.area _HOME
+                             46 	.area _HOME
+                             47 ;--------------------------------------------------------
+                             48 ; code
+                             49 ;--------------------------------------------------------
+                             50 	.area _CODE
+                             51 ;src/entities/enemy.c:5: void enemyinit(Enemy* enemy) {
+                             52 ;	---------------------------------
+                             53 ; Function enemyinit
+                             54 ; ---------------------------------
+   0000                      55 _enemyinit::
+                             56 ;src/entities/enemy.c:6: if (!enemy) {
+   0000 21 03 00      [10]   57 	ld	hl, #2+1
+   0003 39            [11]   58 	add	hl, sp
+   0004 7E            [ 7]   59 	ld	a, (hl)
+   0005 2B            [ 6]   60 	dec	hl
+   0006 B6            [ 7]   61 	or	a,(hl)
+                             62 ;src/entities/enemy.c:7: return;
+   0007 C8            [11]   63 	ret	Z
+                             64 ;src/entities/enemy.c:10: enemy->x = 0;
+   0008 D1            [10]   65 	pop	de
+   0009 C1            [10]   66 	pop	bc
+   000A C5            [11]   67 	push	bc
+   000B D5            [11]   68 	push	de
+   000C AF            [ 4]   69 	xor	a, a
+   000D 02            [ 7]   70 	ld	(bc), a
+                             71 ;src/entities/enemy.c:11: enemy->y = 0;
+   000E 59            [ 4]   72 	ld	e, c
+   000F 50            [ 4]   73 	ld	d, b
+   0010 13            [ 6]   74 	inc	de
+   0011 AF            [ 4]   75 	xor	a, a
+   0012 12            [ 7]   76 	ld	(de), a
+                             77 ;src/entities/enemy.c:12: enemy->vx = 0;
+   0013 59            [ 4]   78 	ld	e, c
+   0014 50            [ 4]   79 	ld	d, b
+   0015 13            [ 6]   80 	inc	de
+   0016 13            [ 6]   81 	inc	de
+   0017 AF            [ 4]   82 	xor	a, a
+   0018 12            [ 7]   83 	ld	(de), a
+                             84 ;src/entities/enemy.c:13: enemy->vy = 0;
+   0019 59            [ 4]   85 	ld	e, c
+   001A 50            [ 4]   86 	ld	d, b
+   001B 13            [ 6]   87 	inc	de
+   001C 13            [ 6]   88 	inc	de
+   001D 13            [ 6]   89 	inc	de
+   001E AF            [ 4]   90 	xor	a, a
+   001F 12            [ 7]   91 	ld	(de), a
+                             92 ;src/entities/enemy.c:14: enemy->w = 4;
+   0020 21 04 00      [10]   93 	ld	hl, #0x0004
+   0023 09            [11]   94 	add	hl, bc
+   0024 36 04         [10]   95 	ld	(hl), #0x04
+                             96 ;src/entities/enemy.c:15: enemy->h = 16;
+   0026 21 05 00      [10]   97 	ld	hl, #0x0005
+   0029 09            [11]   98 	add	hl, bc
+   002A 36 10         [10]   99 	ld	(hl), #0x10
+                            100 ;src/entities/enemy.c:16: enemy->active = 0;
+   002C 21 06 00      [10]  101 	ld	hl, #0x0006
+   002F 09            [11]  102 	add	hl, bc
+   0030 36 00         [10]  103 	ld	(hl), #0x00
+                            104 ;src/entities/enemy.c:17: enemy->health = 1;
+   0032 21 07 00      [10]  105 	ld	hl, #0x0007
+   0035 09            [11]  106 	add	hl, bc
+   0036 36 01         [10]  107 	ld	(hl), #0x01
+                            108 ;src/entities/enemy.c:18: enemy->reward = 100;
+   0038 21 08 00      [10]  109 	ld	hl, #0x0008
+   003B 09            [11]  110 	add	hl, bc
+   003C 36 64         [10]  111 	ld	(hl), #0x64
+                            112 ;src/entities/enemy.c:19: enemy->kind = 0;
+   003E 21 09 00      [10]  113 	ld	hl, #0x0009
+   0041 09            [11]  114 	add	hl, bc
+   0042 36 00         [10]  115 	ld	(hl), #0x00
+   0044 C9            [10]  116 	ret
+                            117 ;src/entities/enemy.c:22: void enemyspawn(Enemy* enemy, u8 x, u8 y, u8 kind, u8 move_right) {
+                            118 ;	---------------------------------
+                            119 ; Function enemyspawn
+                            120 ; ---------------------------------
+   0045                     121 _enemyspawn::
+   0045 DD E5         [15]  122 	push	ix
+   0047 DD 21 00 00   [14]  123 	ld	ix,#0
+   004B DD 39         [15]  124 	add	ix,sp
+   004D 21 F1 FF      [10]  125 	ld	hl, #-15
+   0050 39            [11]  126 	add	hl, sp
+   0051 F9            [ 6]  127 	ld	sp, hl
+                            128 ;src/entities/enemy.c:23: if (!enemy) {
+   0052 DD 7E 05      [19]  129 	ld	a, 5 (ix)
+   0055 DD B6 04      [19]  130 	or	a,4 (ix)
+                            131 ;src/entities/enemy.c:24: return;
+   0058 CArDBr01      [10]  132 	jp	Z,00109$
+                            133 ;src/entities/enemy.c:27: enemy->x = x;
+   005B DD 7E 04      [19]  134 	ld	a, 4 (ix)
+   005E DD 77 FE      [19]  135 	ld	-2 (ix), a
+   0061 DD 7E 05      [19]  136 	ld	a, 5 (ix)
+   0064 DD 77 FF      [19]  137 	ld	-1 (ix), a
+   0067 DD 6E FE      [19]  138 	ld	l,-2 (ix)
+   006A DD 66 FF      [19]  139 	ld	h,-1 (ix)
+   006D DD 7E 06      [19]  140 	ld	a, 6 (ix)
+   0070 77            [ 7]  141 	ld	(hl), a
+                            142 ;src/entities/enemy.c:28: enemy->y = y;
+   0071 DD 4E FE      [19]  143 	ld	c,-2 (ix)
+   0074 DD 46 FF      [19]  144 	ld	b,-1 (ix)
+   0077 03            [ 6]  145 	inc	bc
+   0078 DD 7E 07      [19]  146 	ld	a, 7 (ix)
+   007B 02            [ 7]  147 	ld	(bc), a
+                            148 ;src/entities/enemy.c:29: enemy->vx = move_right ? 1 : -1;
+   007C DD 7E FE      [19]  149 	ld	a, -2 (ix)
+   007F C6 02         [ 7]  150 	add	a, #0x02
+   0081 DD 77 FC      [19]  151 	ld	-4 (ix), a
+   0084 DD 7E FF      [19]  152 	ld	a, -1 (ix)
+   0087 CE 00         [ 7]  153 	adc	a, #0x00
+   0089 DD 77 FD      [19]  154 	ld	-3 (ix), a
+   008C DD 7E 09      [19]  155 	ld	a, 9 (ix)
+   008F B7            [ 4]  156 	or	a, a
+   0090 28 04         [12]  157 	jr	Z,00111$
+   0092 0E 01         [ 7]  158 	ld	c, #0x01
+   0094 18 02         [12]  159 	jr	00112$
+   0096                     160 00111$:
+   0096 0E FF         [ 7]  161 	ld	c, #0xff
+   0098                     162 00112$:
+   0098 DD 6E FC      [19]  163 	ld	l,-4 (ix)
+   009B DD 66 FD      [19]  164 	ld	h,-3 (ix)
+   009E 71            [ 7]  165 	ld	(hl), c
+                            166 ;src/entities/enemy.c:30: enemy->vy = 0;
+   009F DD 7E FE      [19]  167 	ld	a, -2 (ix)
+   00A2 C6 03         [ 7]  168 	add	a, #0x03
+   00A4 DD 77 FA      [19]  169 	ld	-6 (ix), a
+   00A7 DD 7E FF      [19]  170 	ld	a, -1 (ix)
+   00AA CE 00         [ 7]  171 	adc	a, #0x00
+   00AC DD 77 FB      [19]  172 	ld	-5 (ix), a
+   00AF DD 6E FA      [19]  173 	ld	l,-6 (ix)
+   00B2 DD 66 FB      [19]  174 	ld	h,-5 (ix)
+   00B5 36 00         [10]  175 	ld	(hl), #0x00
+                            176 ;src/entities/enemy.c:31: enemy->active = 1;
+   00B7 DD 7E FE      [19]  177 	ld	a, -2 (ix)
+   00BA C6 06         [ 7]  178 	add	a, #0x06
+   00BC DD 77 F8      [19]  179 	ld	-8 (ix), a
+   00BF DD 7E FF      [19]  180 	ld	a, -1 (ix)
+   00C2 CE 00         [ 7]  181 	adc	a, #0x00
+   00C4 DD 77 F9      [19]  182 	ld	-7 (ix), a
+   00C7 DD 6E F8      [19]  183 	ld	l,-8 (ix)
+   00CA DD 66 F9      [19]  184 	ld	h,-7 (ix)
+   00CD 36 01         [10]  185 	ld	(hl), #0x01
+                            186 ;src/entities/enemy.c:32: enemy->kind = kind;
+   00CF DD 7E FE      [19]  187 	ld	a, -2 (ix)
+   00D2 C6 09         [ 7]  188 	add	a, #0x09
+   00D4 DD 77 F8      [19]  189 	ld	-8 (ix), a
+   00D7 DD 7E FF      [19]  190 	ld	a, -1 (ix)
+   00DA CE 00         [ 7]  191 	adc	a, #0x00
+   00DC DD 77 F9      [19]  192 	ld	-7 (ix), a
+   00DF DD 6E F8      [19]  193 	ld	l,-8 (ix)
+   00E2 DD 66 F9      [19]  194 	ld	h,-7 (ix)
+   00E5 DD 7E 08      [19]  195 	ld	a, 8 (ix)
+   00E8 77            [ 7]  196 	ld	(hl), a
+                            197 ;src/entities/enemy.c:35: enemy->w = 5;
+   00E9 DD 7E FE      [19]  198 	ld	a, -2 (ix)
+   00EC C6 04         [ 7]  199 	add	a, #0x04
+   00EE DD 77 F8      [19]  200 	ld	-8 (ix), a
+   00F1 DD 7E FF      [19]  201 	ld	a, -1 (ix)
+   00F4 CE 00         [ 7]  202 	adc	a, #0x00
+   00F6 DD 77 F9      [19]  203 	ld	-7 (ix), a
+                            204 ;src/entities/enemy.c:36: enemy->h = 14;
+   00F9 DD 7E FE      [19]  205 	ld	a, -2 (ix)
+   00FC C6 05         [ 7]  206 	add	a, #0x05
+   00FE DD 77 F6      [19]  207 	ld	-10 (ix), a
+   0101 DD 7E FF      [19]  208 	ld	a, -1 (ix)
+   0104 CE 00         [ 7]  209 	adc	a, #0x00
+   0106 DD 77 F7      [19]  210 	ld	-9 (ix), a
+                            211 ;src/entities/enemy.c:37: enemy->health = 2;
+   0109 DD 7E FE      [19]  212 	ld	a, -2 (ix)
+   010C C6 07         [ 7]  213 	add	a, #0x07
+   010E DD 77 F4      [19]  214 	ld	-12 (ix), a
+   0111 DD 7E FF      [19]  215 	ld	a, -1 (ix)
+   0114 CE 00         [ 7]  216 	adc	a, #0x00
+   0116 DD 77 F5      [19]  217 	ld	-11 (ix), a
+                            218 ;src/entities/enemy.c:38: enemy->reward = 180;
+   0119 DD 7E FE      [19]  219 	ld	a, -2 (ix)
+   011C C6 08         [ 7]  220 	add	a, #0x08
+   011E DD 77 FE      [19]  221 	ld	-2 (ix), a
+   0121 DD 7E FF      [19]  222 	ld	a, -1 (ix)
+   0124 CE 00         [ 7]  223 	adc	a, #0x00
+   0126 DD 77 FF      [19]  224 	ld	-1 (ix), a
+                            225 ;src/entities/enemy.c:34: if (kind == 1) {
+   0129 DD 7E 08      [19]  226 	ld	a, 8 (ix)
+   012C 3D            [ 4]  227 	dec	a
+   012D 20 48         [12]  228 	jr	NZ,00107$
+                            229 ;src/entities/enemy.c:35: enemy->w = 5;
+   012F DD 6E F8      [19]  230 	ld	l,-8 (ix)
+   0132 DD 66 F9      [19]  231 	ld	h,-7 (ix)
+   0135 36 05         [10]  232 	ld	(hl), #0x05
+                            233 ;src/entities/enemy.c:36: enemy->h = 14;
+   0137 DD 6E F6      [19]  234 	ld	l,-10 (ix)
+   013A DD 66 F7      [19]  235 	ld	h,-9 (ix)
+   013D 36 0E         [10]  236 	ld	(hl), #0x0e
+                            237 ;src/entities/enemy.c:37: enemy->health = 2;
+   013F DD 6E F4      [19]  238 	ld	l,-12 (ix)
+   0142 DD 66 F5      [19]  239 	ld	h,-11 (ix)
+   0145 36 02         [10]  240 	ld	(hl), #0x02
+                            241 ;src/entities/enemy.c:38: enemy->reward = 180;
+   0147 DD 6E FE      [19]  242 	ld	l,-2 (ix)
+   014A DD 66 FF      [19]  243 	ld	h,-1 (ix)
+   014D 36 B4         [10]  244 	ld	(hl), #0xb4
+                            245 ;src/entities/enemy.c:39: enemy->vx = move_right ? 2 : -2;
+   014F DD 7E FC      [19]  246 	ld	a, -4 (ix)
+   0152 DD 77 F2      [19]  247 	ld	-14 (ix), a
+   0155 DD 7E FD      [19]  248 	ld	a, -3 (ix)
+   0158 DD 77 F3      [19]  249 	ld	-13 (ix), a
+   015B DD 7E 09      [19]  250 	ld	a, 9 (ix)
+   015E B7            [ 4]  251 	or	a, a
+   015F 28 06         [12]  252 	jr	Z,00113$
+   0161 DD 36 F1 02   [19]  253 	ld	-15 (ix), #0x02
+   0165 18 04         [12]  254 	jr	00114$
+   0167                     255 00113$:
+   0167 DD 36 F1 FE   [19]  256 	ld	-15 (ix), #0xfe
+   016B                     257 00114$:
+   016B DD 6E F2      [19]  258 	ld	l,-14 (ix)
+   016E DD 66 F3      [19]  259 	ld	h,-13 (ix)
+   0171 DD 7E F1      [19]  260 	ld	a, -15 (ix)
+   0174 77            [ 7]  261 	ld	(hl), a
+   0175 18 64         [12]  262 	jr	00109$
+   0177                     263 00107$:
+                            264 ;src/entities/enemy.c:40: } else if (kind == 2) {
+   0177 DD 7E 08      [19]  265 	ld	a, 8 (ix)
+   017A D6 02         [ 7]  266 	sub	a, #0x02
+   017C 20 3D         [12]  267 	jr	NZ,00104$
+                            268 ;src/entities/enemy.c:41: enemy->w = 6;
+   017E DD 6E F8      [19]  269 	ld	l,-8 (ix)
+   0181 DD 66 F9      [19]  270 	ld	h,-7 (ix)
+   0184 36 06         [10]  271 	ld	(hl), #0x06
+                            272 ;src/entities/enemy.c:42: enemy->h = 10;
+   0186 DD 6E F6      [19]  273 	ld	l,-10 (ix)
+   0189 DD 66 F7      [19]  274 	ld	h,-9 (ix)
+   018C 36 0A         [10]  275 	ld	(hl), #0x0a
+                            276 ;src/entities/enemy.c:43: enemy->health = 1;
+   018E DD 6E F4      [19]  277 	ld	l,-12 (ix)
+   0191 DD 66 F5      [19]  278 	ld	h,-11 (ix)
+   0194 36 01         [10]  279 	ld	(hl), #0x01
+                            280 ;src/entities/enemy.c:44: enemy->reward = 150;
+   0196 DD 6E FE      [19]  281 	ld	l,-2 (ix)
+   0199 DD 66 FF      [19]  282 	ld	h,-1 (ix)
+   019C 36 96         [10]  283 	ld	(hl), #0x96
+                            284 ;src/entities/enemy.c:45: enemy->vy = move_right ? 1 : -1;
+   019E DD 4E FA      [19]  285 	ld	c,-6 (ix)
+   01A1 DD 46 FB      [19]  286 	ld	b,-5 (ix)
+   01A4 DD 7E 09      [19]  287 	ld	a, 9 (ix)
+   01A7 B7            [ 4]  288 	or	a, a
+   01A8 28 04         [12]  289 	jr	Z,00115$
+   01AA 3E 01         [ 7]  290 	ld	a, #0x01
+   01AC 18 02         [12]  291 	jr	00116$
+   01AE                     292 00115$:
+   01AE 3E FF         [ 7]  293 	ld	a, #0xff
+   01B0                     294 00116$:
+   01B0 02            [ 7]  295 	ld	(bc), a
+                            296 ;src/entities/enemy.c:46: enemy->vx = 1;
+   01B1 DD 6E FC      [19]  297 	ld	l,-4 (ix)
+   01B4 DD 66 FD      [19]  298 	ld	h,-3 (ix)
+   01B7 36 01         [10]  299 	ld	(hl), #0x01
+   01B9 18 20         [12]  300 	jr	00109$
+   01BB                     301 00104$:
+                            302 ;src/entities/enemy.c:48: enemy->w = 4;
+   01BB DD 6E F8      [19]  303 	ld	l,-8 (ix)
+   01BE DD 66 F9      [19]  304 	ld	h,-7 (ix)
+   01C1 36 04         [10]  305 	ld	(hl), #0x04
+                            306 ;src/entities/enemy.c:49: enemy->h = 16;
+   01C3 DD 6E F6      [19]  307 	ld	l,-10 (ix)
+   01C6 DD 66 F7      [19]  308 	ld	h,-9 (ix)
+   01C9 36 10         [10]  309 	ld	(hl), #0x10
+                            310 ;src/entities/enemy.c:50: enemy->health = 1;
+   01CB DD 6E F4      [19]  311 	ld	l,-12 (ix)
+   01CE DD 66 F5      [19]  312 	ld	h,-11 (ix)
+   01D1 36 01         [10]  313 	ld	(hl), #0x01
+                            314 ;src/entities/enemy.c:51: enemy->reward = 100;
+   01D3 DD 6E FE      [19]  315 	ld	l,-2 (ix)
+   01D6 DD 66 FF      [19]  316 	ld	h,-1 (ix)
+   01D9 36 64         [10]  317 	ld	(hl), #0x64
+   01DB                     318 00109$:
+   01DB DD F9         [10]  319 	ld	sp, ix
+   01DD DD E1         [14]  320 	pop	ix
+   01DF C9            [10]  321 	ret
+                            322 ;src/entities/enemy.c:55: void enemyupdate(Enemy* enemy) {
+                            323 ;	---------------------------------
+                            324 ; Function enemyupdate
+                            325 ; ---------------------------------
+   01E0                     326 _enemyupdate::
+   01E0 DD E5         [15]  327 	push	ix
+   01E2 DD 21 00 00   [14]  328 	ld	ix,#0
+   01E6 DD 39         [15]  329 	add	ix,sp
+   01E8 21 F6 FF      [10]  330 	ld	hl, #-10
+   01EB 39            [11]  331 	add	hl, sp
+   01EC F9            [ 6]  332 	ld	sp, hl
+                            333 ;src/entities/enemy.c:59: if (!enemy || !enemy->active) {
+   01ED DD 7E 05      [19]  334 	ld	a, 5 (ix)
+   01F0 DD B6 04      [19]  335 	or	a,4 (ix)
+   01F3 CArD6r03      [10]  336 	jp	Z,00121$
+   01F6 DD 7E 04      [19]  337 	ld	a, 4 (ix)
+   01F9 DD 77 FE      [19]  338 	ld	-2 (ix), a
+   01FC DD 7E 05      [19]  339 	ld	a, 5 (ix)
+   01FF DD 77 FF      [19]  340 	ld	-1 (ix), a
+   0202 DD 6E FE      [19]  341 	ld	l,-2 (ix)
+   0205 DD 66 FF      [19]  342 	ld	h,-1 (ix)
+   0208 11 06 00      [10]  343 	ld	de, #0x0006
+   020B 19            [11]  344 	add	hl, de
+   020C 7E            [ 7]  345 	ld	a, (hl)
+   020D B7            [ 4]  346 	or	a, a
+                            347 ;src/entities/enemy.c:60: return;
+   020E CArD6r03      [10]  348 	jp	Z,00121$
+                            349 ;src/entities/enemy.c:63: if (enemy->kind == 2) {
+   0211 DD 6E FE      [19]  350 	ld	l,-2 (ix)
+   0214 DD 66 FF      [19]  351 	ld	h,-1 (ix)
+   0217 11 09 00      [10]  352 	ld	de, #0x0009
+   021A 19            [11]  353 	add	hl, de
+   021B 7E            [ 7]  354 	ld	a, (hl)
+   021C DD 77 FD      [19]  355 	ld	-3 (ix), a
+                            356 ;src/entities/enemy.c:64: nextx = (i16)enemy->x + (i16)enemy->vx;
+   021F DD 6E FE      [19]  357 	ld	l,-2 (ix)
+   0222 DD 66 FF      [19]  358 	ld	h,-1 (ix)
+   0225 4E            [ 7]  359 	ld	c, (hl)
+   0226 DD 7E FE      [19]  360 	ld	a, -2 (ix)
+   0229 C6 02         [ 7]  361 	add	a, #0x02
+   022B DD 77 FB      [19]  362 	ld	-5 (ix), a
+   022E DD 7E FF      [19]  363 	ld	a, -1 (ix)
+   0231 CE 00         [ 7]  364 	adc	a, #0x00
+   0233 DD 77 FC      [19]  365 	ld	-4 (ix), a
+                            366 ;src/entities/enemy.c:65: nexty = (i16)enemy->y + (i16)enemy->vy;
+   0236 DD 7E FE      [19]  367 	ld	a, -2 (ix)
+   0239 C6 01         [ 7]  368 	add	a, #0x01
+   023B DD 77 F9      [19]  369 	ld	-7 (ix), a
+   023E DD 7E FF      [19]  370 	ld	a, -1 (ix)
+   0241 CE 00         [ 7]  371 	adc	a, #0x00
+   0243 DD 77 FA      [19]  372 	ld	-6 (ix), a
+   0246 DD 5E FE      [19]  373 	ld	e,-2 (ix)
+   0249 DD 56 FF      [19]  374 	ld	d,-1 (ix)
+   024C 13            [ 6]  375 	inc	de
+   024D 13            [ 6]  376 	inc	de
+   024E 13            [ 6]  377 	inc	de
+                            378 ;src/entities/enemy.c:64: nextx = (i16)enemy->x + (i16)enemy->vx;
+   024F 06 00         [ 7]  379 	ld	b, #0x00
+   0251 DD 6E FB      [19]  380 	ld	l,-5 (ix)
+   0254 DD 66 FC      [19]  381 	ld	h,-4 (ix)
+   0257 7E            [ 7]  382 	ld	a, (hl)
+   0258 DD 77 F8      [19]  383 	ld	-8 (ix), a
+   025B 6F            [ 4]  384 	ld	l, a
+   025C DD 7E F8      [19]  385 	ld	a, -8 (ix)
+   025F 17            [ 4]  386 	rla
+   0260 9F            [ 4]  387 	sbc	a, a
+   0261 67            [ 4]  388 	ld	h, a
+   0262 09            [11]  389 	add	hl,bc
+   0263 4D            [ 4]  390 	ld	c, l
+   0264 44            [ 4]  391 	ld	b, h
+                            392 ;src/entities/enemy.c:63: if (enemy->kind == 2) {
+   0265 DD 7E FD      [19]  393 	ld	a, -3 (ix)
+   0268 D6 02         [ 7]  394 	sub	a, #0x02
+   026A C2r13r03      [10]  395 	jp	NZ,00111$
+                            396 ;src/entities/enemy.c:64: nextx = (i16)enemy->x + (i16)enemy->vx;
+                            397 ;src/entities/enemy.c:65: nexty = (i16)enemy->y + (i16)enemy->vy;
+   026D DD 6E F9      [19]  398 	ld	l,-7 (ix)
+   0270 DD 66 FA      [19]  399 	ld	h,-6 (ix)
+   0273 6E            [ 7]  400 	ld	l, (hl)
+   0274 DD 75 F6      [19]  401 	ld	-10 (ix), l
+   0277 DD 36 F7 00   [19]  402 	ld	-9 (ix), #0x00
+   027B 1A            [ 7]  403 	ld	a, (de)
+   027C 6F            [ 4]  404 	ld	l, a
+   027D 17            [ 4]  405 	rla
+   027E 9F            [ 4]  406 	sbc	a, a
+   027F 67            [ 4]  407 	ld	h, a
+   0280 DD 7E F6      [19]  408 	ld	a, -10 (ix)
+   0283 85            [ 4]  409 	add	a, l
+   0284 DD 77 F6      [19]  410 	ld	-10 (ix), a
+   0287 DD 7E F7      [19]  411 	ld	a, -9 (ix)
+   028A 8C            [ 4]  412 	adc	a, h
+   028B DD 77 F7      [19]  413 	ld	-9 (ix), a
+                            414 ;src/entities/enemy.c:67: if (nextx < 8 || nextx > 72) {
+   028E 79            [ 4]  415 	ld	a, c
+   028F D6 08         [ 7]  416 	sub	a, #0x08
+   0291 78            [ 4]  417 	ld	a, b
+   0292 17            [ 4]  418 	rla
+   0293 3F            [ 4]  419 	ccf
+   0294 1F            [ 4]  420 	rra
+   0295 DE 80         [ 7]  421 	sbc	a, #0x80
+   0297 38 0E         [12]  422 	jr	C,00104$
+   0299 3E 48         [ 7]  423 	ld	a, #0x48
+   029B B9            [ 4]  424 	cp	a, c
+   029C 3E 00         [ 7]  425 	ld	a, #0x00
+   029E 98            [ 4]  426 	sbc	a, b
+   029F E2rA4r02      [10]  427 	jp	PO, 00161$
+   02A2 EE 80         [ 7]  428 	xor	a, #0x80
+   02A4                     429 00161$:
+   02A4 F2rC2r02      [10]  430 	jp	P, 00105$
+   02A7                     431 00104$:
+                            432 ;src/entities/enemy.c:68: enemy->vx = (i8)(-enemy->vx);
+   02A7 AF            [ 4]  433 	xor	a, a
+   02A8 DD 96 F8      [19]  434 	sub	a, -8 (ix)
+   02AB 4F            [ 4]  435 	ld	c, a
+   02AC DD 6E FB      [19]  436 	ld	l,-5 (ix)
+   02AF DD 66 FC      [19]  437 	ld	h,-4 (ix)
+   02B2 71            [ 7]  438 	ld	(hl), c
+                            439 ;src/entities/enemy.c:69: nextx = (i16)enemy->x + (i16)enemy->vx;
+   02B3 DD 6E FE      [19]  440 	ld	l,-2 (ix)
+   02B6 DD 66 FF      [19]  441 	ld	h,-1 (ix)
+   02B9 6E            [ 7]  442 	ld	l, (hl)
+   02BA 26 00         [ 7]  443 	ld	h, #0x00
+   02BC 79            [ 4]  444 	ld	a, c
+   02BD 17            [ 4]  445 	rla
+   02BE 9F            [ 4]  446 	sbc	a, a
+   02BF 47            [ 4]  447 	ld	b, a
+   02C0 09            [11]  448 	add	hl,bc
+   02C1 4D            [ 4]  449 	ld	c, l
+   02C2                     450 00105$:
+                            451 ;src/entities/enemy.c:71: if (nexty < 56 || nexty > 120) {
+   02C2 DD 7E F6      [19]  452 	ld	a, -10 (ix)
+   02C5 D6 38         [ 7]  453 	sub	a, #0x38
+   02C7 DD 7E F7      [19]  454 	ld	a, -9 (ix)
+   02CA 17            [ 4]  455 	rla
+   02CB 3F            [ 4]  456 	ccf
+   02CC 1F            [ 4]  457 	rra
+   02CD DE 80         [ 7]  458 	sbc	a, #0x80
+   02CF 38 12         [12]  459 	jr	C,00107$
+   02D1 3E 78         [ 7]  460 	ld	a, #0x78
+   02D3 DD BE F6      [19]  461 	cp	a, -10 (ix)
+   02D6 3E 00         [ 7]  462 	ld	a, #0x00
+   02D8 DD 9E F7      [19]  463 	sbc	a, -9 (ix)
+   02DB E2rE0r02      [10]  464 	jp	PO, 00162$
+   02DE EE 80         [ 7]  465 	xor	a, #0x80
+   02E0                     466 00162$:
+   02E0 F2rFFr02      [10]  467 	jp	P, 00108$
+   02E3                     468 00107$:
+                            469 ;src/entities/enemy.c:72: enemy->vy = (i8)(-enemy->vy);
+   02E3 1A            [ 7]  470 	ld	a, (de)
+   02E4 6F            [ 4]  471 	ld	l, a
+   02E5 AF            [ 4]  472 	xor	a, a
+   02E6 95            [ 4]  473 	sub	a, l
+   02E7 DD 77 F8      [19]  474 	ld	-8 (ix), a
+   02EA 12            [ 7]  475 	ld	(de),a
+                            476 ;src/entities/enemy.c:73: nexty = (i16)enemy->y + (i16)enemy->vy;
+   02EB DD 6E F9      [19]  477 	ld	l,-7 (ix)
+   02EE DD 66 FA      [19]  478 	ld	h,-6 (ix)
+   02F1 5E            [ 7]  479 	ld	e, (hl)
+   02F2 16 00         [ 7]  480 	ld	d, #0x00
+   02F4 DD 6E F8      [19]  481 	ld	l, -8 (ix)
+   02F7 DD 7E F8      [19]  482 	ld	a, -8 (ix)
+   02FA 17            [ 4]  483 	rla
+   02FB 9F            [ 4]  484 	sbc	a, a
+   02FC 67            [ 4]  485 	ld	h, a
+   02FD 19            [11]  486 	add	hl,de
+   02FE E3            [19]  487 	ex	(sp), hl
+   02FF                     488 00108$:
+                            489 ;src/entities/enemy.c:76: enemy->x = (u8)nextx;
+   02FF DD 6E FE      [19]  490 	ld	l,-2 (ix)
+   0302 DD 66 FF      [19]  491 	ld	h,-1 (ix)
+   0305 71            [ 7]  492 	ld	(hl), c
+                            493 ;src/entities/enemy.c:77: enemy->y = (u8)nexty;
+   0306 DD 4E F6      [19]  494 	ld	c, -10 (ix)
+   0309 DD 6E F9      [19]  495 	ld	l,-7 (ix)
+   030C DD 66 FA      [19]  496 	ld	h,-6 (ix)
+   030F 71            [ 7]  497 	ld	(hl), c
+                            498 ;src/entities/enemy.c:78: return;
+   0310 C3rD6r03      [10]  499 	jp	00121$
+   0313                     500 00111$:
+                            501 ;src/entities/enemy.c:81: nextx = (i16)enemy->x + (i16)enemy->vx;
+                            502 ;src/entities/enemy.c:82: if (nextx < 2) {
+   0313 79            [ 4]  503 	ld	a, c
+   0314 D6 02         [ 7]  504 	sub	a, #0x02
+   0316 78            [ 4]  505 	ld	a, b
+   0317 17            [ 4]  506 	rla
+   0318 3F            [ 4]  507 	ccf
+   0319 1F            [ 4]  508 	rra
+   031A DE 80         [ 7]  509 	sbc	a, #0x80
+   031C 30 0B         [12]  510 	jr	NC,00113$
+                            511 ;src/entities/enemy.c:83: nextx = 2;
+   031E 01 02 00      [10]  512 	ld	bc, #0x0002
+                            513 ;src/entities/enemy.c:84: enemy->vx = 1;
+   0321 DD 6E FB      [19]  514 	ld	l,-5 (ix)
+   0324 DD 66 FC      [19]  515 	ld	h,-4 (ix)
+   0327 36 01         [10]  516 	ld	(hl), #0x01
+   0329                     517 00113$:
+                            518 ;src/entities/enemy.c:86: if (nextx > 74) {
+   0329 3E 4A         [ 7]  519 	ld	a, #0x4a
+   032B B9            [ 4]  520 	cp	a, c
+   032C 3E 00         [ 7]  521 	ld	a, #0x00
+   032E 98            [ 4]  522 	sbc	a, b
+   032F E2r34r03      [10]  523 	jp	PO, 00163$
+   0332 EE 80         [ 7]  524 	xor	a, #0x80
+   0334                     525 00163$:
+   0334 F2r42r03      [10]  526 	jp	P, 00115$
+                            527 ;src/entities/enemy.c:87: nextx = 74;
+   0337 01 4A 00      [10]  528 	ld	bc, #0x004a
+                            529 ;src/entities/enemy.c:88: enemy->vx = -1;
+   033A DD 6E FB      [19]  530 	ld	l,-5 (ix)
+   033D DD 66 FC      [19]  531 	ld	h,-4 (ix)
+   0340 36 FF         [10]  532 	ld	(hl), #0xff
+   0342                     533 00115$:
+                            534 ;src/entities/enemy.c:90: enemy->x = (u8)nextx;
+   0342 DD 6E FE      [19]  535 	ld	l,-2 (ix)
+   0345 DD 66 FF      [19]  536 	ld	h,-1 (ix)
+   0348 71            [ 7]  537 	ld	(hl), c
+                            538 ;src/entities/enemy.c:92: enemy->vy = (i8)(enemy->vy + 1);
+   0349 1A            [ 7]  539 	ld	a, (de)
+   034A 4F            [ 4]  540 	ld	c, a
+   034B 0C            [ 4]  541 	inc	c
+   034C 79            [ 4]  542 	ld	a, c
+   034D 12            [ 7]  543 	ld	(de), a
+                            544 ;src/entities/enemy.c:93: if (enemy->vy > 3) enemy->vy = 3;
+   034E 3E 03         [ 7]  545 	ld	a, #0x03
+   0350 91            [ 4]  546 	sub	a, c
+   0351 E2r56r03      [10]  547 	jp	PO, 00164$
+   0354 EE 80         [ 7]  548 	xor	a, #0x80
+   0356                     549 00164$:
+   0356 F2r5Cr03      [10]  550 	jp	P, 00117$
+   0359 3E 03         [ 7]  551 	ld	a, #0x03
+   035B 12            [ 7]  552 	ld	(de), a
+   035C                     553 00117$:
+                            554 ;src/entities/enemy.c:94: nexty = (i16)enemy->y + (i16)enemy->vy;
+   035C DD 6E F9      [19]  555 	ld	l,-7 (ix)
+   035F DD 66 FA      [19]  556 	ld	h,-6 (ix)
+   0362 4E            [ 7]  557 	ld	c, (hl)
+   0363 06 00         [ 7]  558 	ld	b, #0x00
+   0365 1A            [ 7]  559 	ld	a, (de)
+   0366 6F            [ 4]  560 	ld	l, a
+   0367 17            [ 4]  561 	rla
+   0368 9F            [ 4]  562 	sbc	a, a
+   0369 67            [ 4]  563 	ld	h, a
+   036A 09            [11]  564 	add	hl, bc
+   036B E5            [11]  565 	push	hl
+   036C FD E1         [14]  566 	pop	iy
+                            567 ;src/entities/enemy.c:95: nexty = collision_clamp_y_at((i16)enemy->x, nexty, enemy->h);
+   036E DD 7E FE      [19]  568 	ld	a, -2 (ix)
+   0371 C6 05         [ 7]  569 	add	a, #0x05
+   0373 DD 77 F6      [19]  570 	ld	-10 (ix), a
+   0376 DD 7E FF      [19]  571 	ld	a, -1 (ix)
+   0379 CE 00         [ 7]  572 	adc	a, #0x00
+   037B DD 77 F7      [19]  573 	ld	-9 (ix), a
+   037E E1            [10]  574 	pop	hl
+   037F E5            [11]  575 	push	hl
+   0380 7E            [ 7]  576 	ld	a, (hl)
+   0381 DD 6E FE      [19]  577 	ld	l,-2 (ix)
+   0384 DD 66 FF      [19]  578 	ld	h,-1 (ix)
+   0387 4E            [ 7]  579 	ld	c, (hl)
+   0388 06 00         [ 7]  580 	ld	b, #0x00
+   038A D5            [11]  581 	push	de
+   038B F5            [11]  582 	push	af
+   038C 33            [ 6]  583 	inc	sp
+   038D FD E5         [15]  584 	push	iy
+   038F C5            [11]  585 	push	bc
+   0390 CDr00r00      [17]  586 	call	_collision_clamp_y_at
+   0393 F1            [10]  587 	pop	af
+   0394 F1            [10]  588 	pop	af
+   0395 33            [ 6]  589 	inc	sp
+   0396 4D            [ 4]  590 	ld	c, l
+   0397 D1            [10]  591 	pop	de
+                            592 ;src/entities/enemy.c:96: enemy->y = (u8)nexty;
+   0398 DD 6E F9      [19]  593 	ld	l,-7 (ix)
+   039B DD 66 FA      [19]  594 	ld	h,-6 (ix)
+   039E 71            [ 7]  595 	ld	(hl), c
+                            596 ;src/entities/enemy.c:97: if (collision_is_on_ground_at((i16)enemy->x, (i16)enemy->y, enemy->h) && enemy->vy > 0) {
+   039F E1            [10]  597 	pop	hl
+   03A0 E5            [11]  598 	push	hl
+   03A1 7E            [ 7]  599 	ld	a, (hl)
+   03A2 06 00         [ 7]  600 	ld	b, #0x00
+   03A4 DD 6E FE      [19]  601 	ld	l,-2 (ix)
+   03A7 DD 66 FF      [19]  602 	ld	h,-1 (ix)
+   03AA 6E            [ 7]  603 	ld	l, (hl)
+   03AB DD 75 F6      [19]  604 	ld	-10 (ix), l
+   03AE DD 36 F7 00   [19]  605 	ld	-9 (ix), #0x00
+   03B2 D5            [11]  606 	push	de
+   03B3 F5            [11]  607 	push	af
+   03B4 33            [ 6]  608 	inc	sp
+   03B5 C5            [11]  609 	push	bc
+   03B6 DD 6E F6      [19]  610 	ld	l,-10 (ix)
+   03B9 DD 66 F7      [19]  611 	ld	h,-9 (ix)
+   03BC E5            [11]  612 	push	hl
+   03BD CDr00r00      [17]  613 	call	_collision_is_on_ground_at
+   03C0 F1            [10]  614 	pop	af
+   03C1 F1            [10]  615 	pop	af
+   03C2 33            [ 6]  616 	inc	sp
+   03C3 D1            [10]  617 	pop	de
+   03C4 7D            [ 4]  618 	ld	a, l
+   03C5 B7            [ 4]  619 	or	a, a
+   03C6 28 0E         [12]  620 	jr	Z,00121$
+   03C8 1A            [ 7]  621 	ld	a, (de)
+   03C9 4F            [ 4]  622 	ld	c, a
+   03CA AF            [ 4]  623 	xor	a, a
+   03CB 91            [ 4]  624 	sub	a, c
+   03CC E2rD1r03      [10]  625 	jp	PO, 00165$
+   03CF EE 80         [ 7]  626 	xor	a, #0x80
+   03D1                     627 00165$:
+   03D1 F2rD6r03      [10]  628 	jp	P, 00121$
+                            629 ;src/entities/enemy.c:98: enemy->vy = 0;
+   03D4 AF            [ 4]  630 	xor	a, a
+   03D5 12            [ 7]  631 	ld	(de), a
+   03D6                     632 00121$:
+   03D6 DD F9         [10]  633 	ld	sp, ix
+   03D8 DD E1         [14]  634 	pop	ix
+   03DA C9            [10]  635 	ret
+                            636 ;src/entities/enemy.c:102: void enemyrender(const Enemy* enemy) {
+                            637 ;	---------------------------------
+                            638 ; Function enemyrender
+                            639 ; ---------------------------------
+   03DB                     640 _enemyrender::
+   03DB DD E5         [15]  641 	push	ix
+   03DD DD 21 00 00   [14]  642 	ld	ix,#0
+   03E1 DD 39         [15]  643 	add	ix,sp
+                            644 ;src/entities/enemy.c:105: if (!enemy || !enemy->active) {
+   03E3 DD 7E 05      [19]  645 	ld	a, 5 (ix)
+   03E6 DD B6 04      [19]  646 	or	a,4 (ix)
+   03E9 28 3C         [12]  647 	jr	Z,00104$
+   03EB DD 4E 04      [19]  648 	ld	c,4 (ix)
+   03EE DD 46 05      [19]  649 	ld	b,5 (ix)
+   03F1 C5            [11]  650 	push	bc
+   03F2 FD E1         [14]  651 	pop	iy
+   03F4 FD 7E 06      [19]  652 	ld	a, 6 (iy)
+   03F7 B7            [ 4]  653 	or	a, a
+                            654 ;src/entities/enemy.c:106: return;
+   03F8 28 2D         [12]  655 	jr	Z,00104$
+                            656 ;src/entities/enemy.c:109: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, enemy->x, enemy->y);
+   03FA 69            [ 4]  657 	ld	l, c
+   03FB 60            [ 4]  658 	ld	h, b
+   03FC 23            [ 6]  659 	inc	hl
+   03FD 56            [ 7]  660 	ld	d, (hl)
+   03FE 0A            [ 7]  661 	ld	a, (bc)
+   03FF C5            [11]  662 	push	bc
+   0400 5F            [ 4]  663 	ld	e, a
+   0401 D5            [11]  664 	push	de
+   0402 21 00 C0      [10]  665 	ld	hl, #0xc000
+   0405 E5            [11]  666 	push	hl
+   0406 CDr00r00      [17]  667 	call	_cpct_getScreenPtr
+   0409 EB            [ 4]  668 	ex	de,hl
+   040A C1            [10]  669 	pop	bc
+                            670 ;src/entities/enemy.c:110: cpct_drawSolidBox(pvmem, 0x5C, enemy->w, enemy->h);
+   040B C5            [11]  671 	push	bc
+   040C FD E1         [14]  672 	pop	iy
+   040E FD 7E 05      [19]  673 	ld	a, 5 (iy)
+   0411 69            [ 4]  674 	ld	l, c
+   0412 60            [ 4]  675 	ld	h, b
+   0413 01 04 00      [10]  676 	ld	bc, #0x0004
+   0416 09            [11]  677 	add	hl, bc
+   0417 46            [ 7]  678 	ld	b, (hl)
+   0418 F5            [11]  679 	push	af
+   0419 33            [ 6]  680 	inc	sp
+   041A C5            [11]  681 	push	bc
+   041B 33            [ 6]  682 	inc	sp
+   041C 3E 5C         [ 7]  683 	ld	a, #0x5c
+   041E F5            [11]  684 	push	af
+   041F 33            [ 6]  685 	inc	sp
+   0420 D5            [11]  686 	push	de
+   0421 CDr00r00      [17]  687 	call	_cpct_drawSolidBox
+   0424 F1            [10]  688 	pop	af
+   0425 F1            [10]  689 	pop	af
+   0426 33            [ 6]  690 	inc	sp
+   0427                     691 00104$:
+   0427 DD E1         [14]  692 	pop	ix
+   0429 C9            [10]  693 	ret
+                            694 ;src/entities/enemy.c:113: u8 enemydamage(Enemy* enemy, u8 damage) {
+                            695 ;	---------------------------------
+                            696 ; Function enemydamage
+                            697 ; ---------------------------------
+   042A                     698 _enemydamage::
+   042A DD E5         [15]  699 	push	ix
+   042C DD 21 00 00   [14]  700 	ld	ix,#0
+   0430 DD 39         [15]  701 	add	ix,sp
+                            702 ;src/entities/enemy.c:114: if (!enemy || !enemy->active) {
+   0432 DD 7E 05      [19]  703 	ld	a, 5 (ix)
+   0435 DD B6 04      [19]  704 	or	a,4 (ix)
+   0438 28 0F         [12]  705 	jr	Z,00101$
+   043A DD 4E 04      [19]  706 	ld	c,4 (ix)
+   043D DD 46 05      [19]  707 	ld	b,5 (ix)
+   0440 21 06 00      [10]  708 	ld	hl, #0x0006
+   0443 09            [11]  709 	add	hl,bc
+   0444 EB            [ 4]  710 	ex	de,hl
+   0445 1A            [ 7]  711 	ld	a, (de)
+   0446 B7            [ 4]  712 	or	a, a
+   0447 20 04         [12]  713 	jr	NZ,00102$
+   0449                     714 00101$:
+                            715 ;src/entities/enemy.c:115: return 0;
+   0449 2E 00         [ 7]  716 	ld	l, #0x00
+   044B 18 1A         [12]  717 	jr	00106$
+   044D                     718 00102$:
+                            719 ;src/entities/enemy.c:118: if (damage >= enemy->health) {
+   044D 21 07 00      [10]  720 	ld	hl, #0x0007
+   0450 09            [11]  721 	add	hl, bc
+   0451 4E            [ 7]  722 	ld	c, (hl)
+   0452 DD 7E 06      [19]  723 	ld	a, 6 (ix)
+   0455 91            [ 4]  724 	sub	a, c
+   0456 38 08         [12]  725 	jr	C,00105$
+                            726 ;src/entities/enemy.c:119: enemy->health = 0;
+   0458 36 00         [10]  727 	ld	(hl), #0x00
+                            728 ;src/entities/enemy.c:120: enemy->active = 0;
+   045A AF            [ 4]  729 	xor	a, a
+   045B 12            [ 7]  730 	ld	(de), a
+                            731 ;src/entities/enemy.c:121: return 1;
+   045C 2E 01         [ 7]  732 	ld	l, #0x01
+   045E 18 07         [12]  733 	jr	00106$
+   0460                     734 00105$:
+                            735 ;src/entities/enemy.c:124: enemy->health = (u8)(enemy->health - damage);
+   0460 79            [ 4]  736 	ld	a, c
+   0461 DD 96 06      [19]  737 	sub	a, 6 (ix)
+   0464 77            [ 7]  738 	ld	(hl), a
+                            739 ;src/entities/enemy.c:125: return 0;
+   0465 2E 00         [ 7]  740 	ld	l, #0x00
+   0467                     741 00106$:
+   0467 DD E1         [14]  742 	pop	ix
+   0469 C9            [10]  743 	ret
+                            744 	.area _CODE
+                            745 	.area _INITIALIZER
+                            746 	.area _CABS (ABS)

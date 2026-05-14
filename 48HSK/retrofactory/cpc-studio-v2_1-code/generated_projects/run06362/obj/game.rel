@@ -1,0 +1,49 @@
+XL2
+H 9 areas E global symbols
+M game
+O -mz80
+S _tilemap_init Ref0000
+S .__.ABS. Def0000
+S _playerinit Ref0000
+S _tilemap_render Ref0000
+S _playerrender Ref0000
+S _playerupdate Ref0000
+S _cpct_setVideoMode Ref0000
+S _input_update Ref0000
+S _cpct_memset Ref0000
+S _cpct_disableFirmware Ref0000
+S _collision_init Ref0000
+A _CODE size 49 flags 0 addr 0
+S _game_init Def0000
+S _game_render Def0030
+S _game_update Def0024
+A _DATA size 6 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 01 00
+T 00 00
+R 00 00 01 00
+T 00 00
+R 00 00 00 00
+T 00 00 CD 00 00 2E 01 CD 00 00 21 00 40 E5 AF F5
+R 00 00 00 00 02 03 09 00 02 08 06 00
+T 0E 00 33 26 C0 E5 CD 00 00 CD 00 00 CD 00 00 21
+R 00 00 00 00 02 07 08 00 02 0A 00 00 02 0D 0A 00
+T 1C 00 00 00 E5 CD 00 00 F1 C9
+R 00 00 00 00 00 02 01 00 02 06 02 00
+T 24 00
+R 00 00 00 00
+T 24 00 CD 00 00 21 00 00 E5 CD 00 00 F1 C9
+R 00 00 00 00 02 03 07 00 00 06 01 00 02 0A 05 00
+T 30 00
+R 00 00 00 00
+T 30 00 21 00 40 E5 AF F5 33 26 C0 E5 CD 00 00 CD
+R 00 00 00 00 02 0D 08 00
+T 3E 00 00 00 21 00 00 E5 CD 00 00 F1 C9
+R 00 00 00 00 02 02 03 00 00 05 01 00 02 09 04 00

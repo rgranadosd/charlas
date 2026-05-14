@@ -1,0 +1,411 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module projectile
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _cpct_getScreenPtr
+                             12 	.globl _cpct_drawSolidBox
+                             13 	.globl _projectileinit
+                             14 	.globl _projectilefire
+                             15 	.globl _projectileupdate
+                             16 	.globl _projectilerender
+                             17 ;--------------------------------------------------------
+                             18 ; special function registers
+                             19 ;--------------------------------------------------------
+                             20 ;--------------------------------------------------------
+                             21 ; ram data
+                             22 ;--------------------------------------------------------
+                             23 	.area _DATA
+                             24 ;--------------------------------------------------------
+                             25 ; ram data
+                             26 ;--------------------------------------------------------
+                             27 	.area _INITIALIZED
+                             28 ;--------------------------------------------------------
+                             29 ; absolute external ram data
+                             30 ;--------------------------------------------------------
+                             31 	.area _DABS (ABS)
+                             32 ;--------------------------------------------------------
+                             33 ; global & static initialisations
+                             34 ;--------------------------------------------------------
+                             35 	.area _HOME
+                             36 	.area _GSINIT
+                             37 	.area _GSFINAL
+                             38 	.area _GSINIT
+                             39 ;--------------------------------------------------------
+                             40 ; Home
+                             41 ;--------------------------------------------------------
+                             42 	.area _HOME
+                             43 	.area _HOME
+                             44 ;--------------------------------------------------------
+                             45 ; code
+                             46 ;--------------------------------------------------------
+                             47 	.area _CODE
+                             48 ;src/entities/projectile.c:4: void projectileinit(Projectile* projectile) {
+                             49 ;	---------------------------------
+                             50 ; Function projectileinit
+                             51 ; ---------------------------------
+   0000                      52 _projectileinit::
+                             53 ;src/entities/projectile.c:5: if (!projectile) {
+   0000 21 03 00      [10]   54 	ld	hl, #2+1
+   0003 39            [11]   55 	add	hl, sp
+   0004 7E            [ 7]   56 	ld	a, (hl)
+   0005 2B            [ 6]   57 	dec	hl
+   0006 B6            [ 7]   58 	or	a,(hl)
+                             59 ;src/entities/projectile.c:6: return;
+   0007 C8            [11]   60 	ret	Z
+                             61 ;src/entities/projectile.c:9: projectile->x = 0;
+   0008 D1            [10]   62 	pop	de
+   0009 C1            [10]   63 	pop	bc
+   000A C5            [11]   64 	push	bc
+   000B D5            [11]   65 	push	de
+   000C AF            [ 4]   66 	xor	a, a
+   000D 02            [ 7]   67 	ld	(bc), a
+                             68 ;src/entities/projectile.c:10: projectile->y = 0;
+   000E 59            [ 4]   69 	ld	e, c
+   000F 50            [ 4]   70 	ld	d, b
+   0010 13            [ 6]   71 	inc	de
+   0011 AF            [ 4]   72 	xor	a, a
+   0012 12            [ 7]   73 	ld	(de), a
+                             74 ;src/entities/projectile.c:11: projectile->vx = 0;
+   0013 59            [ 4]   75 	ld	e, c
+   0014 50            [ 4]   76 	ld	d, b
+   0015 13            [ 6]   77 	inc	de
+   0016 13            [ 6]   78 	inc	de
+   0017 AF            [ 4]   79 	xor	a, a
+   0018 12            [ 7]   80 	ld	(de), a
+                             81 ;src/entities/projectile.c:12: projectile->vy = 0;
+   0019 59            [ 4]   82 	ld	e, c
+   001A 50            [ 4]   83 	ld	d, b
+   001B 13            [ 6]   84 	inc	de
+   001C 13            [ 6]   85 	inc	de
+   001D 13            [ 6]   86 	inc	de
+   001E AF            [ 4]   87 	xor	a, a
+   001F 12            [ 7]   88 	ld	(de), a
+                             89 ;src/entities/projectile.c:13: projectile->w = 2;
+   0020 21 04 00      [10]   90 	ld	hl, #0x0004
+   0023 09            [11]   91 	add	hl, bc
+   0024 36 02         [10]   92 	ld	(hl), #0x02
+                             93 ;src/entities/projectile.c:14: projectile->h = 2;
+   0026 21 05 00      [10]   94 	ld	hl, #0x0005
+   0029 09            [11]   95 	add	hl, bc
+   002A 36 02         [10]   96 	ld	(hl), #0x02
+                             97 ;src/entities/projectile.c:15: projectile->active = 0;
+   002C 21 06 00      [10]   98 	ld	hl, #0x0006
+   002F 09            [11]   99 	add	hl, bc
+   0030 36 00         [10]  100 	ld	(hl), #0x00
+                            101 ;src/entities/projectile.c:16: projectile->damage = 1;
+   0032 21 07 00      [10]  102 	ld	hl, #0x0007
+   0035 09            [11]  103 	add	hl, bc
+   0036 36 01         [10]  104 	ld	(hl), #0x01
+                            105 ;src/entities/projectile.c:17: projectile->lifetime = 0;
+   0038 21 08 00      [10]  106 	ld	hl, #0x0008
+   003B 09            [11]  107 	add	hl, bc
+   003C 36 00         [10]  108 	ld	(hl), #0x00
+                            109 ;src/entities/projectile.c:18: projectile->weapon = 0;
+   003E 21 09 00      [10]  110 	ld	hl, #0x0009
+   0041 09            [11]  111 	add	hl, bc
+   0042 36 00         [10]  112 	ld	(hl), #0x00
+   0044 C9            [10]  113 	ret
+                            114 ;src/entities/projectile.c:21: void projectilefire(Projectile* projectile, u8 x, u8 y, i8 dir, u8 weapon) {
+                            115 ;	---------------------------------
+                            116 ; Function projectilefire
+                            117 ; ---------------------------------
+   0045                     118 _projectilefire::
+   0045 DD E5         [15]  119 	push	ix
+   0047 DD 21 00 00   [14]  120 	ld	ix,#0
+   004B DD 39         [15]  121 	add	ix,sp
+   004D F5            [11]  122 	push	af
+   004E F5            [11]  123 	push	af
+                            124 ;src/entities/projectile.c:22: if (!projectile) {
+   004F DD 7E 05      [19]  125 	ld	a, 5 (ix)
+   0052 DD B6 04      [19]  126 	or	a,4 (ix)
+                            127 ;src/entities/projectile.c:23: return;
+   0055 CArFEr00      [10]  128 	jp	Z,00109$
+                            129 ;src/entities/projectile.c:26: projectile->x = x;
+   0058 DD 4E 04      [19]  130 	ld	c,4 (ix)
+   005B DD 46 05      [19]  131 	ld	b,5 (ix)
+   005E DD 7E 06      [19]  132 	ld	a, 6 (ix)
+   0061 02            [ 7]  133 	ld	(bc), a
+                            134 ;src/entities/projectile.c:27: projectile->y = y;
+   0062 59            [ 4]  135 	ld	e, c
+   0063 50            [ 4]  136 	ld	d, b
+   0064 13            [ 6]  137 	inc	de
+   0065 DD 7E 07      [19]  138 	ld	a, 7 (ix)
+   0068 12            [ 7]  139 	ld	(de), a
+                            140 ;src/entities/projectile.c:28: projectile->vx = dir;
+   0069 21 02 00      [10]  141 	ld	hl, #0x0002
+   006C 09            [11]  142 	add	hl,bc
+   006D E3            [19]  143 	ex	(sp), hl
+   006E E1            [10]  144 	pop	hl
+   006F E5            [11]  145 	push	hl
+   0070 DD 7E 08      [19]  146 	ld	a, 8 (ix)
+   0073 77            [ 7]  147 	ld	(hl), a
+                            148 ;src/entities/projectile.c:29: projectile->vy = 0;
+   0074 59            [ 4]  149 	ld	e, c
+   0075 50            [ 4]  150 	ld	d, b
+   0076 13            [ 6]  151 	inc	de
+   0077 13            [ 6]  152 	inc	de
+   0078 13            [ 6]  153 	inc	de
+   0079 AF            [ 4]  154 	xor	a, a
+   007A 12            [ 7]  155 	ld	(de), a
+                            156 ;src/entities/projectile.c:30: projectile->weapon = weapon;
+   007B 21 09 00      [10]  157 	ld	hl, #0x0009
+   007E 09            [11]  158 	add	hl, bc
+   007F DD 7E 09      [19]  159 	ld	a, 9 (ix)
+   0082 77            [ 7]  160 	ld	(hl), a
+                            161 ;src/entities/projectile.c:31: projectile->active = 1;
+   0083 21 06 00      [10]  162 	ld	hl, #0x0006
+   0086 09            [11]  163 	add	hl, bc
+   0087 36 01         [10]  164 	ld	(hl), #0x01
+                            165 ;src/entities/projectile.c:34: projectile->w = 3;
+   0089 21 04 00      [10]  166 	ld	hl, #0x0004
+   008C 09            [11]  167 	add	hl, bc
+                            168 ;src/entities/projectile.c:35: projectile->h = 2;
+   008D 79            [ 4]  169 	ld	a, c
+   008E C6 05         [ 7]  170 	add	a, #0x05
+   0090 5F            [ 4]  171 	ld	e, a
+   0091 78            [ 4]  172 	ld	a, b
+   0092 CE 00         [ 7]  173 	adc	a, #0x00
+   0094 57            [ 4]  174 	ld	d, a
+                            175 ;src/entities/projectile.c:36: projectile->damage = 1;
+   0095 79            [ 4]  176 	ld	a, c
+   0096 C6 07         [ 7]  177 	add	a, #0x07
+   0098 DD 77 FE      [19]  178 	ld	-2 (ix), a
+   009B 78            [ 4]  179 	ld	a, b
+   009C CE 00         [ 7]  180 	adc	a, #0x00
+   009E DD 77 FF      [19]  181 	ld	-1 (ix), a
+                            182 ;src/entities/projectile.c:37: projectile->lifetime = 45;
+   00A1 79            [ 4]  183 	ld	a, c
+   00A2 C6 08         [ 7]  184 	add	a, #0x08
+   00A4 4F            [ 4]  185 	ld	c, a
+   00A5 78            [ 4]  186 	ld	a, b
+   00A6 CE 00         [ 7]  187 	adc	a, #0x00
+   00A8 47            [ 4]  188 	ld	b, a
+                            189 ;src/entities/projectile.c:33: if (weapon == 0) {
+   00A9 DD 7E 09      [19]  190 	ld	a, 9 (ix)
+   00AC B7            [ 4]  191 	or	a, a
+   00AD 20 12         [12]  192 	jr	NZ,00107$
+                            193 ;src/entities/projectile.c:34: projectile->w = 3;
+   00AF 36 03         [10]  194 	ld	(hl), #0x03
+                            195 ;src/entities/projectile.c:35: projectile->h = 2;
+   00B1 3E 02         [ 7]  196 	ld	a, #0x02
+   00B3 12            [ 7]  197 	ld	(de), a
+                            198 ;src/entities/projectile.c:36: projectile->damage = 1;
+   00B4 DD 6E FE      [19]  199 	ld	l,-2 (ix)
+   00B7 DD 66 FF      [19]  200 	ld	h,-1 (ix)
+   00BA 36 01         [10]  201 	ld	(hl), #0x01
+                            202 ;src/entities/projectile.c:37: projectile->lifetime = 45;
+   00BC 3E 2D         [ 7]  203 	ld	a, #0x2d
+   00BE 02            [ 7]  204 	ld	(bc), a
+   00BF 18 3D         [12]  205 	jr	00109$
+   00C1                     206 00107$:
+                            207 ;src/entities/projectile.c:38: } else if (weapon == 1) {
+   00C1 DD 7E 09      [19]  208 	ld	a, 9 (ix)
+   00C4 3D            [ 4]  209 	dec	a
+   00C5 20 12         [12]  210 	jr	NZ,00104$
+                            211 ;src/entities/projectile.c:39: projectile->w = 2;
+   00C7 36 02         [10]  212 	ld	(hl), #0x02
+                            213 ;src/entities/projectile.c:40: projectile->h = 3;
+   00C9 3E 03         [ 7]  214 	ld	a, #0x03
+   00CB 12            [ 7]  215 	ld	(de), a
+                            216 ;src/entities/projectile.c:41: projectile->damage = 2;
+   00CC DD 6E FE      [19]  217 	ld	l,-2 (ix)
+   00CF DD 66 FF      [19]  218 	ld	h,-1 (ix)
+   00D2 36 02         [10]  219 	ld	(hl), #0x02
+                            220 ;src/entities/projectile.c:42: projectile->lifetime = 28;
+   00D4 3E 1C         [ 7]  221 	ld	a, #0x1c
+   00D6 02            [ 7]  222 	ld	(bc), a
+   00D7 18 25         [12]  223 	jr	00109$
+   00D9                     224 00104$:
+                            225 ;src/entities/projectile.c:44: projectile->w = 4;
+   00D9 36 04         [10]  226 	ld	(hl), #0x04
+                            227 ;src/entities/projectile.c:45: projectile->h = 3;
+   00DB 3E 03         [ 7]  228 	ld	a, #0x03
+   00DD 12            [ 7]  229 	ld	(de), a
+                            230 ;src/entities/projectile.c:46: projectile->damage = 3;
+   00DE DD 6E FE      [19]  231 	ld	l,-2 (ix)
+   00E1 DD 66 FF      [19]  232 	ld	h,-1 (ix)
+   00E4 36 03         [10]  233 	ld	(hl), #0x03
+                            234 ;src/entities/projectile.c:47: projectile->lifetime = 56;
+   00E6 3E 38         [ 7]  235 	ld	a, #0x38
+   00E8 02            [ 7]  236 	ld	(bc), a
+                            237 ;src/entities/projectile.c:48: projectile->vx = (i8)(dir > 0 ? 4 : -4);
+   00E9 C1            [10]  238 	pop	bc
+   00EA C5            [11]  239 	push	bc
+   00EB AF            [ 4]  240 	xor	a, a
+   00EC DD 96 08      [19]  241 	sub	a, 8 (ix)
+   00EF E2rF4r00      [10]  242 	jp	PO, 00131$
+   00F2 EE 80         [ 7]  243 	xor	a, #0x80
+   00F4                     244 00131$:
+   00F4 F2rFBr00      [10]  245 	jp	P, 00111$
+   00F7 3E 04         [ 7]  246 	ld	a, #0x04
+   00F9 18 02         [12]  247 	jr	00112$
+   00FB                     248 00111$:
+   00FB 3E FC         [ 7]  249 	ld	a, #0xfc
+   00FD                     250 00112$:
+   00FD 02            [ 7]  251 	ld	(bc), a
+   00FE                     252 00109$:
+   00FE DD F9         [10]  253 	ld	sp, ix
+   0100 DD E1         [14]  254 	pop	ix
+   0102 C9            [10]  255 	ret
+                            256 ;src/entities/projectile.c:52: void projectileupdate(Projectile* projectile) {
+                            257 ;	---------------------------------
+                            258 ; Function projectileupdate
+                            259 ; ---------------------------------
+   0103                     260 _projectileupdate::
+   0103 DD E5         [15]  261 	push	ix
+   0105 DD 21 00 00   [14]  262 	ld	ix,#0
+   0109 DD 39         [15]  263 	add	ix,sp
+   010B 3B            [ 6]  264 	dec	sp
+                            265 ;src/entities/projectile.c:53: if (!projectile || !projectile->active) {
+   010C DD 7E 05      [19]  266 	ld	a, 5 (ix)
+   010F DD B6 04      [19]  267 	or	a,4 (ix)
+   0112 28 4A         [12]  268 	jr	Z,00109$
+   0114 DD 5E 04      [19]  269 	ld	e,4 (ix)
+   0117 DD 56 05      [19]  270 	ld	d,5 (ix)
+   011A FD 21 06 00   [14]  271 	ld	iy, #0x0006
+   011E FD 19         [15]  272 	add	iy, de
+   0120 FD 7E 00      [19]  273 	ld	a, 0 (iy)
+   0123 B7            [ 4]  274 	or	a, a
+                            275 ;src/entities/projectile.c:54: return;
+   0124 28 38         [12]  276 	jr	Z,00109$
+                            277 ;src/entities/projectile.c:57: projectile->x = (u8)(projectile->x + projectile->vx);
+   0126 1A            [ 7]  278 	ld	a, (de)
+   0127 4F            [ 4]  279 	ld	c, a
+   0128 6B            [ 4]  280 	ld	l, e
+   0129 62            [ 4]  281 	ld	h, d
+   012A 23            [ 6]  282 	inc	hl
+   012B 23            [ 6]  283 	inc	hl
+   012C 6E            [ 7]  284 	ld	l, (hl)
+   012D 09            [11]  285 	add	hl, bc
+   012E 7D            [ 4]  286 	ld	a, l
+   012F 12            [ 7]  287 	ld	(de), a
+                            288 ;src/entities/projectile.c:58: projectile->y = (u8)(projectile->y + projectile->vy);
+   0130 4B            [ 4]  289 	ld	c, e
+   0131 42            [ 4]  290 	ld	b, d
+   0132 03            [ 6]  291 	inc	bc
+   0133 0A            [ 7]  292 	ld	a, (bc)
+   0134 DD 77 FF      [19]  293 	ld	-1 (ix), a
+   0137 6B            [ 4]  294 	ld	l, e
+   0138 62            [ 4]  295 	ld	h, d
+   0139 23            [ 6]  296 	inc	hl
+   013A 23            [ 6]  297 	inc	hl
+   013B 23            [ 6]  298 	inc	hl
+   013C 6E            [ 7]  299 	ld	l, (hl)
+   013D DD 7E FF      [19]  300 	ld	a, -1 (ix)
+   0140 85            [ 4]  301 	add	a, l
+   0141 02            [ 7]  302 	ld	(bc), a
+                            303 ;src/entities/projectile.c:60: if (projectile->lifetime) {
+   0142 21 08 00      [10]  304 	ld	hl, #0x0008
+   0145 19            [11]  305 	add	hl,de
+   0146 4D            [ 4]  306 	ld	c, l
+   0147 44            [ 4]  307 	ld	b, h
+   0148 0A            [ 7]  308 	ld	a, (bc)
+   0149 B7            [ 4]  309 	or	a, a
+   014A 28 03         [12]  310 	jr	Z,00105$
+                            311 ;src/entities/projectile.c:61: projectile->lifetime--;
+   014C C6 FF         [ 7]  312 	add	a, #0xff
+   014E 02            [ 7]  313 	ld	(bc), a
+   014F                     314 00105$:
+                            315 ;src/entities/projectile.c:64: if (projectile->x > 78 || projectile->lifetime == 0) {
+   014F 1A            [ 7]  316 	ld	a, (de)
+   0150 5F            [ 4]  317 	ld	e, a
+   0151 3E 4E         [ 7]  318 	ld	a, #0x4e
+   0153 93            [ 4]  319 	sub	a, e
+   0154 38 04         [12]  320 	jr	C,00106$
+   0156 0A            [ 7]  321 	ld	a, (bc)
+   0157 B7            [ 4]  322 	or	a, a
+   0158 20 04         [12]  323 	jr	NZ,00109$
+   015A                     324 00106$:
+                            325 ;src/entities/projectile.c:65: projectile->active = 0;
+   015A FD 36 00 00   [19]  326 	ld	0 (iy), #0x00
+   015E                     327 00109$:
+   015E 33            [ 6]  328 	inc	sp
+   015F DD E1         [14]  329 	pop	ix
+   0161 C9            [10]  330 	ret
+                            331 ;src/entities/projectile.c:69: void projectilerender(const Projectile* projectile) {
+                            332 ;	---------------------------------
+                            333 ; Function projectilerender
+                            334 ; ---------------------------------
+   0162                     335 _projectilerender::
+   0162 DD E5         [15]  336 	push	ix
+   0164 DD 21 00 00   [14]  337 	ld	ix,#0
+   0168 DD 39         [15]  338 	add	ix,sp
+   016A F5            [11]  339 	push	af
+                            340 ;src/entities/projectile.c:72: if (!projectile || !projectile->active) {
+   016B DD 7E 05      [19]  341 	ld	a, 5 (ix)
+   016E DD B6 04      [19]  342 	or	a,4 (ix)
+   0171 28 5B         [12]  343 	jr	Z,00104$
+   0173 DD 5E 04      [19]  344 	ld	e,4 (ix)
+   0176 DD 56 05      [19]  345 	ld	d,5 (ix)
+   0179 D5            [11]  346 	push	de
+   017A FD E1         [14]  347 	pop	iy
+   017C FD 7E 06      [19]  348 	ld	a, 6 (iy)
+   017F B7            [ 4]  349 	or	a, a
+                            350 ;src/entities/projectile.c:73: return;
+   0180 28 4C         [12]  351 	jr	Z,00104$
+                            352 ;src/entities/projectile.c:76: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, projectile->x, projectile->y);
+   0182 6B            [ 4]  353 	ld	l, e
+   0183 62            [ 4]  354 	ld	h, d
+   0184 23            [ 6]  355 	inc	hl
+   0185 46            [ 7]  356 	ld	b, (hl)
+   0186 1A            [ 7]  357 	ld	a, (de)
+   0187 D5            [11]  358 	push	de
+   0188 C5            [11]  359 	push	bc
+   0189 33            [ 6]  360 	inc	sp
+   018A F5            [11]  361 	push	af
+   018B 33            [ 6]  362 	inc	sp
+   018C 21 00 C0      [10]  363 	ld	hl, #0xc000
+   018F E5            [11]  364 	push	hl
+   0190 CDr00r00      [17]  365 	call	_cpct_getScreenPtr
+   0193 4D            [ 4]  366 	ld	c, l
+   0194 44            [ 4]  367 	ld	b, h
+   0195 D1            [10]  368 	pop	de
+                            369 ;src/entities/projectile.c:77: cpct_drawSolidBox(pvmem, projectile->weapon == 0 ? 0x0F : (projectile->weapon == 1 ? 0x6B : 0x5A), projectile->w, projectile->h);
+   0196 D5            [11]  370 	push	de
+   0197 FD E1         [14]  371 	pop	iy
+   0199 FD 7E 05      [19]  372 	ld	a, 5 (iy)
+   019C DD 77 FF      [19]  373 	ld	-1 (ix), a
+   019F D5            [11]  374 	push	de
+   01A0 FD E1         [14]  375 	pop	iy
+   01A2 FD 7E 04      [19]  376 	ld	a, 4 (iy)
+   01A5 DD 77 FE      [19]  377 	ld	-2 (ix), a
+   01A8 EB            [ 4]  378 	ex	de,hl
+   01A9 11 09 00      [10]  379 	ld	de, #0x0009
+   01AC 19            [11]  380 	add	hl, de
+   01AD 7E            [ 7]  381 	ld	a, (hl)
+   01AE B7            [ 4]  382 	or	a, a
+   01AF 20 04         [12]  383 	jr	NZ,00106$
+   01B1 16 0F         [ 7]  384 	ld	d, #0x0f
+   01B3 18 09         [12]  385 	jr	00107$
+   01B5                     386 00106$:
+   01B5 3D            [ 4]  387 	dec	a
+   01B6 20 04         [12]  388 	jr	NZ,00108$
+   01B8 16 6B         [ 7]  389 	ld	d, #0x6b
+   01BA 18 02         [12]  390 	jr	00109$
+   01BC                     391 00108$:
+   01BC 16 5A         [ 7]  392 	ld	d, #0x5a
+   01BE                     393 00109$:
+   01BE                     394 00107$:
+   01BE DD 66 FF      [19]  395 	ld	h, -1 (ix)
+   01C1 DD 6E FE      [19]  396 	ld	l, -2 (ix)
+   01C4 E5            [11]  397 	push	hl
+   01C5 D5            [11]  398 	push	de
+   01C6 33            [ 6]  399 	inc	sp
+   01C7 C5            [11]  400 	push	bc
+   01C8 CDr00r00      [17]  401 	call	_cpct_drawSolidBox
+   01CB F1            [10]  402 	pop	af
+   01CC F1            [10]  403 	pop	af
+   01CD 33            [ 6]  404 	inc	sp
+   01CE                     405 00104$:
+   01CE DD F9         [10]  406 	ld	sp, ix
+   01D0 DD E1         [14]  407 	pop	ix
+   01D2 C9            [10]  408 	ret
+                            409 	.area _CODE
+                            410 	.area _INITIALIZER
+                            411 	.area _CABS (ABS)

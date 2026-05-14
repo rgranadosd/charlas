@@ -10,6 +10,8 @@ from app.config import get_settings
 
 
 class OAuthService:
+    TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
+
     def __init__(self) -> None:
         self.settings = get_settings()
 
@@ -18,17 +20,19 @@ class OAuthService:
         return {"Authorization": f"Basic {token}"}
 
     def build_authorization_url(self, *, state: str, code_challenge: str, scopes: list[str]) -> str:
-        query = urlencode(
-            {
-                "response_type": "code",
-                "client_id": self.settings.obo_client_id,
-                "redirect_uri": self.settings.obo_redirect_uri,
-                "scope": " ".join(scopes),
-                "state": state,
-                "code_challenge": code_challenge,
-                "code_challenge_method": "S256",
-            }
-        )
+        params = {
+            "response_type": "code",
+            "client_id": self.settings.obo_client_id,
+            "redirect_uri": self.settings.obo_redirect_uri,
+            "scope": " ".join(scopes),
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+        prompt = self.settings.obo_authorization_prompt.strip()
+        if prompt:
+            params["prompt"] = prompt
+        query = urlencode(params)
         return f"{self.settings.wso2_authorize_endpoint}?{query}"
 
     async def request_client_credentials_token(
@@ -83,12 +87,23 @@ class OAuthService:
     ) -> dict[str, Any]:
         payload: dict[str, str] = {
             "grant_type": self.settings.obo_grant_type,
-            "code": code,
-            "redirect_uri": self.settings.obo_redirect_uri,
-            "code_verifier": code_verifier,
             "scope": self.settings.obo_scope,
             self.settings.obo_agent_token_parameter: agent_token,
         }
+
+        if self.settings.obo_grant_type == self.TOKEN_EXCHANGE_GRANT:
+            payload[self.settings.obo_subject_token_parameter] = code
+            if self.settings.obo_subject_token_type_parameter:
+                payload[self.settings.obo_subject_token_type_parameter] = (
+                    self.settings.obo_subject_token_type_value
+                )
+            # Some WSO2 setups still validate PKCE artifacts during exchange.
+            payload["code_verifier"] = code_verifier
+            payload["redirect_uri"] = self.settings.obo_redirect_uri
+        else:
+            payload["code"] = code
+            payload["redirect_uri"] = self.settings.obo_redirect_uri
+            payload["code_verifier"] = code_verifier
 
         if self.settings.obo_agent_token_type_parameter:
             payload[self.settings.obo_agent_token_type_parameter] = self.settings.obo_agent_token_type_value

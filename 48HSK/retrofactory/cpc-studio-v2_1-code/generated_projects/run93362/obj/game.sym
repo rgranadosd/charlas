@@ -1,0 +1,89 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+    __moduint                                                      **** GX
+    _collision_init                                                **** GX
+    _collision_is_on_trap                                          **** GX
+    _cpct_disableFirmware                                          **** GX
+    _cpct_drawSolidBox                                             **** GX
+    _cpct_getScreenPtr                                             **** GX
+    _cpct_memset                                                   **** GX
+    _cpct_setVideoMode                                             **** GX
+    _enemydamage                                                   **** GX
+    _enemyinit                                                     **** GX
+    _enemyrender                                                   **** GX
+    _enemyspawn                                                    **** GX
+    _enemyupdate                                                   **** GX
+  1 _g_aliveenemies                                                0087 R
+  1 _g_boss                                                        0092 R
+  1 _g_bossactive                                                  009C R
+  1 _g_bossphase                                                   009D R
+  1 _g_checkpointactive                                            0091 R
+  1 _g_checkpointx                                                 008F R
+  1 _g_checkpointy                                                 0090 R
+  1 _g_currentwave                                                 0086 R
+  1 _g_damagecooldown                                              0089 R
+  1 _g_enemies                                                     0009 R
+  1 _g_framecounter                                                008D R
+  1 _g_gameover                                                    008C R
+  1 _g_lives                                                       0081 R
+  1 _g_player                                                      0000 R
+  1 _g_projectiles                                                 0045 R
+  1 _g_score                                                       0082 R
+  1 _g_shootcooldown                                               008A R
+  1 _g_timeleft                                                    0084 R
+  1 _g_victory                                                     008B R
+  1 _g_wavecooldown                                                0088 R
+  1 _g_weapondisplay                                               0085 R
+  0 _game_init                                                     02A6 GR
+  0 _game_render                                                   08E1 GR
+  0 _game_update                                                   0354 GR
+    _hudinit                                                       **** GX
+    _hudrender                                                     **** GX
+    _hudupdate                                                     **** GX
+    _input_is_shoot_just_pressed                                   **** GX
+    _input_update                                                  **** GX
+    _playerinit                                                    **** GX
+    _playerrender                                                  **** GX
+    _playerupdate                                                  **** GX
+    _projectilefire                                                **** GX
+    _projectileinit                                                **** GX
+    _projectilerender                                              **** GX
+    _projectileupdate                                              **** GX
+  0 _rect_overlap                                                  0019 R
+  0 _register_player_hit                                           0284 R
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+  0 _reset_player_to_checkpoint                                    0000 R
+  0 _spawn_boss                                                    01A6 R
+  0 _spawn_wave                                                    00A6 R
+    _tilemap_goal_x                                                **** GX
+    _tilemap_ground_y                                              **** GX
+    _tilemap_init                                                  **** GX
+    _tilemap_render                                                **** GX
+  0 _try_fire_projectile                                           01EB R
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 3.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size  A1A   flags    0
+   1 _DATA                                      size   9E   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    0   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+

@@ -110,6 +110,7 @@ class OBOService:
                     "client_id": self.settings.obo_client_id,
                     "redirect_uri": self.settings.obo_redirect_uri,
                     "scope": scopes,
+                    "prompt": self.settings.obo_authorization_prompt,
                     "state": state,
                     "code_verifier_preview": truncate_value(code_verifier),
                     "code_challenge": code_challenge,
@@ -181,11 +182,26 @@ class OBOService:
         )
         artifact = await self._enrich_opaque_token_artifact(artifact)
         claims = artifact.get("claims", {})
+        delegated_actor = extract_delegated_agent_id(claims)
+
+        if self.settings.obo_require_act_claim and not delegated_actor:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "WSO2 emitted OBO_TOKEN without act.sub",
+                    "oauth_response": result["body"],
+                    "request_payload": result["request_payload"],
+                    "token_subject": extract_subject(claims),
+                    "token_actor": extract_actor(claims),
+                    "note": "Configura WSO2 para emitir act.sub en el token delegado OBO. El backend no rellenara claims derivados.",
+                },
+            )
+
         session_store.set_obo_token(
             session_id,
             artifact=artifact,
             delegated_user_id=extract_subject(claims),
-            delegated_agent_id=extract_delegated_agent_id(claims),
+            delegated_agent_id=delegated_actor,
         )
         session_store.append_trace(
             session_id,

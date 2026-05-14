@@ -111,14 +111,35 @@ EXPECTED_AUDIENCE=<resource-api-audience-if-your-jwt-uses-aud>
 Si el token endpoint de tu WSO2 IS 7.2 requiere nombres de parametros distintos para el flujo OBO, ajusta este bloque en `backend/.env`:
 
 ```env
-OBO_GRANT_TYPE=authorization_code
+OBO_GRANT_TYPE=urn:ietf:params:oauth:grant-type:token-exchange
+OBO_AUTHORIZATION_PROMPT=consent
 OBO_AGENT_TOKEN_PARAMETER=actor_token
 OBO_AGENT_TOKEN_TYPE_PARAMETER=actor_token_type
 OBO_AGENT_TOKEN_TYPE_VALUE=urn:ietf:params:oauth:token-type:access_token
+OBO_SUBJECT_TOKEN_PARAMETER=subject_token
+OBO_SUBJECT_TOKEN_TYPE_PARAMETER=subject_token_type
+OBO_SUBJECT_TOKEN_TYPE_VALUE=urn:ietf:params:oauth:token-type:authorization_code
 OBO_EXTRA_TOKEN_PARAMS_JSON={}
+OBO_REQUIRE_ACT_CLAIM=true
 ```
 
 Ese mapeo se consume en `backend/app/services/oauth_service.py`.
+
+Con `OBO_REQUIRE_ACT_CLAIM=true`, si WSO2 no emite `act.sub` en el `OBO_TOKEN`, el backend devolvera error para evitar claims derivados y mantener el laboratorio fiel al emisor real.
+
+Para forzar que WSO2 muestre consentimiento (y no reutilice uno ya recordado), configura:
+
+```env
+OBO_AUTHORIZATION_PROMPT=consent
+```
+
+Si ademas quieres forzar autenticacion interactiva en cada intento, usa:
+
+```env
+OBO_AUTHORIZATION_PROMPT=login consent
+```
+
+Si tu tenant usa un flujo legacy basado en `authorization_code` para OBO, puedes volver a `OBO_GRANT_TYPE=authorization_code` y ajustar los nombres de parametros del bloque anterior.
 
 ## 7. Verificacion recomendada
 

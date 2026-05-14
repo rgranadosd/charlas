@@ -33,8 +33,8 @@ from app.schemas.outputs import (
     QAOutput,
     TechOutputV2,
 )
-from app.services.contract_validation_service import adapt_tech_output, validate_contract
-from app.services.project_service import generate_project
+from app.services.contract_validation_service import adapttechoutput, validatecontract
+from app.services.project_service import generateproject
 from app.state.studio_state import StudioState
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -274,7 +274,7 @@ def tech_node(state: StudioState):
         _to_dict(state.get("design")) or None,
         _to_dict(state.get("art")) or None,
     )
-    tech = adapt_tech_output(TechOutputV2.model_validate(raw))
+    tech = adapttechoutput(TechOutputV2.model_validate(raw))
     return {
         "tech": tech
     }
@@ -282,7 +282,7 @@ def tech_node(state: StudioState):
 
 def contractvalidationnode(state: StudioState):
     print("-> contractvalidationnode", file=sys.stderr)
-    validation = validate_contract(_to_dict(state.get("tech")))
+    validation = validatecontract(_to_dict(state.get("tech")))
     return {
         "contractvalidation": validation,
         "contract_validation": validation,
@@ -292,13 +292,19 @@ def contractvalidationnode(state: StudioState):
 def _route_after_contractvalidation(state: StudioState):
     raw = state.get("contractvalidation") or state.get("contract_validation")
     payload = _to_dict(raw)
+    print(f"-> contract_validation payload: {payload}", file=sys.stderr)
 
     try:
         validation = ContractValidationOutput.model_validate(payload)
     except Exception:
+        print("-> contract_validation status: <invalid>", file=sys.stderr)
+        print("-> route_after_contractvalidation => compose_node", file=sys.stderr)
         return "compose_node"
 
-    return "integration_node" if validation.status == "pass" else "compose_node"
+    print(f"-> contract_validation status: {validation.status}", file=sys.stderr)
+    route = "integration_node" if validation.status == "pass" else "compose_node"
+    print(f"-> route_after_contractvalidation => {route}", file=sys.stderr)
+    return route
 
 
 def integration_node(state: StudioState):
@@ -329,7 +335,7 @@ def integration_node(state: StudioState):
         "scaffold": scaffold,
     }
 
-    path = generate_project(str(integration_project_dir), payload)
+    path = generateproject(str(integration_project_dir), payload)
 
     notes = integration.integration_notes or (
         f"Generated {len(integration.files)} valid source files."
@@ -478,6 +484,7 @@ def qa_node(state: StudioState):
 
 
 def compose_node(state: StudioState):
+    print("-> compose_node", file=sys.stderr)
     parts = ["# CPC Studio Output", ""]
     if state.get("orchestrator"):
         parts += ["## Orchestrator", _json_block("spec", state["orchestrator"]), ""]
@@ -514,7 +521,9 @@ def compose_node(state: StudioState):
     if state.get("qa"):
         parts += ["## QA", _json_block("qa", state["qa"]), ""]
 
-    return {"final_output": "\n".join(parts).strip()}
+    result = "\n".join(parts).strip()
+    print(f"-> compose_node final_output_len={len(result)}", file=sys.stderr)
+    return {"final_output": result}
 
 
 builder = StateGraph(StudioState)
