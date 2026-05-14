@@ -97,6 +97,64 @@ class ContractValidationServiceUnitTests(unittest.TestCase):
         self.assertGreater(len(result.issues), 0)
         self.assertIn("MISSING_LOCAL_INCLUDE", _issue_codes(result))
 
+    def test_include_alias_por_guion_bajo_resuelve_header_generado(self):
+        payload = copy.deepcopy(_valid_payload())
+
+        payload["scaffold"]["allowed_files"].extend(
+            [
+                "src/systems/hud.c",
+                "src/systems/hud.h",
+                "src/data/assets/fontgothic.h",
+            ]
+        )
+        payload["scaffold"]["create_if_missing"].extend(
+            [
+                "src/systems/hud.c",
+                "src/systems/hud.h",
+                "src/data/assets/fontgothic.h",
+            ]
+        )
+
+        payload["integration_blueprint"]["planned_files"].extend(
+            [
+                "src/systems/hud.c",
+                "src/systems/hud.h",
+                "src/data/assets/fontgothic.h",
+            ]
+        )
+        payload["integration_blueprint"]["owned_files"].extend(
+            [
+                "src/systems/hud.c",
+                "src/systems/hud.h",
+                "src/data/assets/fontgothic.h",
+            ]
+        )
+        payload["integration_blueprint"]["asset_file_map"]["font_gothic"] = [
+            "src/data/assets/fontgothic.h"
+        ]
+
+        payload["asset_contract"] = {
+            "required_assets": ["tileset_main", "font_gothic"],
+            "declared_assets": ["tileset_main", "font_gothic"],
+            "defined_assets": ["tileset_main", "font_gothic"],
+        }
+
+        payload["module_contracts"].append(
+            {
+                "module": "src/systems/hud.c",
+                "header": "src/systems/hud.h",
+                "local_includes": ["font_gothic.h"],
+                "required_assets": ["font_gothic"],
+                "critical": False,
+                "integrated": True,
+            }
+        )
+
+        result = validate_contract(payload)
+
+        self.assertEqual(result.status, "pass")
+        self.assertNotIn("MISSING_LOCAL_INCLUDE", _issue_codes(result))
+
     def test_simbolo_requerido_no_exportado_reporta_error(self):
         payload = copy.deepcopy(_valid_payload())
         payload["module_contracts"][1]["exports"] = ["game_init", "game_update"]

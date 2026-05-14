@@ -94,3 +94,7 @@ def generate_project(base_dir: str, payload: dict) -> str:
         write_text(target, content)
 
     return str(base)
+
+
+# Backward-compatible alias for legacy import names.
+generateproject = generate_project

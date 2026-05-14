@@ -9,6 +9,7 @@ import { TokenCard } from "./TokenCard";
 interface ArtifactInspectorProps {
   session: SessionResponse | null;
   selectedStepOrder: number | null;
+  showHeader?: boolean;
 }
 
 interface CollapsibleInspectorPanelProps {
@@ -132,7 +133,11 @@ const STEP_EXPLANATIONS: Record<number, { title: string; body: string }> = {
   },
 };
 
-export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspectorProps) {
+export function ArtifactInspector({
+  session,
+  selectedStepOrder,
+  showHeader = true,
+}: ArtifactInspectorProps) {
   const user = session?.artifacts.user;
   const agent = session?.artifacts.agent;
   const delegation = session?.artifacts.delegation;
@@ -183,6 +188,14 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
               ? agent.claims
               : user?.claims ?? {};
 
+    const userSubject = user?.subject ?? null;
+    const agentSubject = agent?.subject ?? null;
+    const oboSubject = obo?.subject ?? null;
+    const userSubMatchesAgentSub =
+      userSubject !== null && agentSubject !== null && userSubject === agentSubject;
+    const agentSubMatchesOboSub =
+      agentSubject !== null && oboSubject !== null && agentSubject === oboSubject;
+
   let visiblePanelIndex = 0;
   const getDefaultExpanded = () => {
     const next = visiblePanelIndex === 0;
@@ -193,14 +206,15 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
   return (
     <aside className="inspector-column">
       <div className="inspector-sticky">
-        <div className="inspector-title-row">
-          <div>
-            <p className="eyebrow">Artifact Inspector</p>
-            <h2>Protocol State</h2>
-            {selectedStepLabel ? <p className="muted">Mostrando datos de: {selectedStepOrder}. {selectedStepLabel}</p> : null}
+        {showHeader ? (
+          <div className="inspector-title-row">
+            <div>
+              <h2>Inspector</h2>
+              {selectedStepLabel ? <p className="muted">Mostrando datos de: {selectedStepOrder}. {selectedStepLabel}</p> : null}
+            </div>
+            <StatusBadge label={session ? "available" : "not-started"} />
           </div>
-          <StatusBadge label={session ? "available" : "not-started"} />
-        </div>
+        ) : null}
 
         {showUser && user ? (
           <TokenCard
@@ -256,14 +270,32 @@ export function ArtifactInspector({ session, selectedStepOrder }: ArtifactInspec
               <dd>{formatInlineValue(agent?.audience)}</dd>
             </div>
           </dl>
-          {session?.sub_matches_client_id ? (
+          {session?.sub_matches_client_id || userSubMatchesAgentSub || agentSubMatchesOboSub ? (
             <div className="identity-badge-row">
-              <span
-                className="semantic-badge"
-                title="Coinciden en este token, pero no deben interpretarse como el agent_id lógico."
-              >
-                sub matches client_id
-              </span>
+              {session?.sub_matches_client_id ? (
+                <span
+                  className="semantic-badge semantic-badge--warning"
+                  title="Coinciden en este token, pero no deben interpretarse como el agent_id lógico."
+                >
+                  Atencion: sub coincide con client_id
+                </span>
+              ) : null}
+              {userSubMatchesAgentSub ? (
+                <span
+                  className="semantic-badge semantic-badge--warning"
+                  title="USER_TOKEN y AGENT_TOKEN comparten el mismo sub. Revisa el contexto del grant para no mezclar identidades."
+                >
+                  Atencion: USER_TOKEN y AGENT_TOKEN comparten sub
+                </span>
+              ) : null}
+              {agentSubMatchesOboSub ? (
+                <span
+                  className="semantic-badge semantic-badge--warning"
+                  title="AGENT_TOKEN y OBO_TOKEN comparten sub. En OBO, el actor delegado debe revisarse en act.sub."
+                >
+                  Atencion: AGENT_TOKEN y OBO_TOKEN comparten sub
+                </span>
+              ) : null}
             </div>
           ) : null}
           <div className="identity-callout">

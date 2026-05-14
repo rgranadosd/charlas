@@ -1,0 +1,47 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+    _collision_clamp_y_at                                          **** GX
+    _collision_is_on_ground_at                                     **** GX
+    _collision_is_on_ladder                                        **** GX
+    _cpct_drawSolidBox                                             **** GX
+    _cpct_getScreenPtr                                             **** GX
+    _input_is_down_pressed                                         **** GX
+    _input_is_jump_just_pressed                                    **** GX
+    _input_is_jump_pressed                                         **** GX
+    _input_is_left_pressed                                         **** GX
+    _input_is_right_pressed                                        **** GX
+    _input_is_up_pressed                                           **** GX
+  0 _kplayeracceleration                                           0041 R
+  0 _kplayerdeceleration                                           0042 R
+  0 _kplayergravity                                                0043 R
+  0 _kplayerjumpboost                                              0046 R
+  0 _kplayerjumpvelocity                                           0045 R
+  0 _kplayermaxfall                                                0044 R
+  0 _kplayermovespeed                                              0040 R
+  0 _playerinit                                                    0000 GR
+  0 _playerrender                                                  03DC GR
+  0 _playerupdate                                                  0047 GR
+
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size  421   flags    0
+   1 _DATA                                      size    0   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    0   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+

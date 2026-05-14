@@ -71,7 +71,10 @@ class Settings:
         self.obo_scope = os.getenv(
             "OBO_SCOPE", "openid profile email files.read files.write files.share"
         )
-        self.obo_grant_type = os.getenv("OBO_GRANT_TYPE", "authorization_code")
+        self.obo_authorization_prompt = os.getenv("OBO_AUTHORIZATION_PROMPT", "consent")
+        self.obo_grant_type = os.getenv(
+            "OBO_GRANT_TYPE", "urn:ietf:params:oauth:grant-type:token-exchange"
+        )
         self.obo_agent_token_parameter = os.getenv("OBO_AGENT_TOKEN_PARAMETER", "actor_token")
         self.obo_agent_token_type_parameter = os.getenv(
             "OBO_AGENT_TOKEN_TYPE_PARAMETER", "actor_token_type"
@@ -79,7 +82,16 @@ class Settings:
         self.obo_agent_token_type_value = os.getenv(
             "OBO_AGENT_TOKEN_TYPE_VALUE", "urn:ietf:params:oauth:token-type:access_token"
         )
+        self.obo_subject_token_parameter = os.getenv("OBO_SUBJECT_TOKEN_PARAMETER", "subject_token")
+        self.obo_subject_token_type_parameter = os.getenv(
+            "OBO_SUBJECT_TOKEN_TYPE_PARAMETER", "subject_token_type"
+        )
+        self.obo_subject_token_type_value = os.getenv(
+            "OBO_SUBJECT_TOKEN_TYPE_VALUE",
+            "urn:ietf:params:oauth:token-type:authorization_code",
+        )
         self.obo_extra_token_params = _as_json_dict(os.getenv("OBO_EXTRA_TOKEN_PARAMS_JSON", "{}"))
+        self.obo_require_act_claim = _as_bool(os.getenv("OBO_REQUIRE_ACT_CLAIM"), True)
 
         self.resource_api_base_url = os.getenv("RESOURCE_API_BASE_URL", "http://localhost:8001")
         self.resource_api_timeout_seconds = float(os.getenv("RESOURCE_API_TIMEOUT_SECONDS", "15"))

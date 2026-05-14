@@ -7,11 +7,6 @@ import { TraceViewer } from "../components/TraceViewer";
 import { authConfigValidationError } from "../config/env";
 import { useBackendSession } from "../hooks/useBackendSession";
 
-interface DashboardPageProps {
-  theme: "light" | "dark";
-  onToggleTheme: () => void;
-}
-
 function deriveSuggestedStepOrder(isAuthenticated: boolean, session: ReturnType<typeof useBackendSession>["session"]): number {
   const agentAvailable = session?.artifacts.agent.available ?? false;
   const userAccessDone =
@@ -41,7 +36,7 @@ function deriveSuggestedStepOrder(isAuthenticated: boolean, session: ReturnType<
   return guided.find((step) => !step.done)?.order ?? 7;
 }
 
-export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
+export function DashboardPage() {
   const { state, signIn, signOut, getAccessToken, getBasicUserInfo, getDecodedIDToken } = useAuthContext();
   const backend = useBackendSession();
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -49,6 +44,8 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
   const [idClaims, setIdClaims] = useState<Record<string, unknown>>({});
   const [lastSyncedToken, setLastSyncedToken] = useState<string | null>(null);
   const [selectedStepOrder, setSelectedStepOrder] = useState<number | null>(null);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [consentWindowError, setConsentWindowError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -112,29 +109,59 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
   }, []);
 
   function openConsentWindow() {
+    setConsentWindowError(null);
     const authUrl = backend.session?.artifacts.delegation.authorization_url.raw;
     if (!authUrl) {
+      setConsentWindowError("No hay URL de consentimiento disponible. Ejecuta antes 'Iniciar delegacion OBO'.");
       return;
     }
-    window.open(authUrl, "obo-consent", "popup=yes,width=680,height=800");
+    const popup = window.open(authUrl, "obo-consent", "popup=yes,width=680,height=800");
+    if (!popup) {
+      setConsentWindowError(
+        "El navegador bloqueo la ventana emergente de consentimiento. Habilita popups para este sitio.",
+      );
+      return;
+    }
+    popup.focus();
   }
 
   const canStartUserLogin = !authConfigValidationError;
-  const panelError = backend.error ?? authConfigValidationError;
+  const panelError = consentWindowError ?? backend.error ?? authConfigValidationError;
+  const mainColumnClassName = isInspectorCollapsed
+    ? "col-12 col-xl-11 col-xxl-11"
+    : "col-12 col-xl-7 col-xxl-8";
+  const inspectorColumnClassName = isInspectorCollapsed
+    ? "col-12 col-xl-1 col-xxl-1 inspector-host is-collapsed"
+    : "col-12 col-xl-5 col-xxl-4 inspector-host";
 
   return (
     <div className="app-shell container-fluid py-2 px-2 px-lg-3">
       <div className="row g-2 g-xl-3 align-items-start">
-        <main className="col-12 col-xl-7 col-xxl-8">
+        <main className={mainColumnClassName}>
           <div className="center-column">
             <header className="hero-panel panel">
-              <div>
-                <h1>On-Behalf-Of Protocol Lab</h1>
-              </div>
-              <div className="hero-actions">
-                <button type="button" className="ghost-button" onClick={onToggleTheme}>
-                  Theme: {theme}
-                </button>
+              <div className="hero-branding">
+                <a
+                  className="hero-logo-link"
+                  href="https://wso2.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open WSO2 homepage"
+                >
+                  <img
+                    className="hero-logo"
+                    src="https://wso2.cachefly.net/wso2/sites/all/image_resources/logos/WSO2-Logo-Black.webp"
+                    alt="WSO2 logo"
+                    loading="lazy"
+                  />
+                </a>
+                <div className="hero-copy">
+                  <p className="eyebrow">WSO2 Identity Server 7.2</p>
+                  <h1>On-Behalf-Of Protocol Lab</h1>
+                  <p className="hero-subtitle">
+                    Flujo didactico con identidad de usuario, agente y delegacion OBO con trazas completas.
+                  </p>
+                </div>
               </div>
             </header>
 
@@ -171,9 +198,33 @@ export function DashboardPage({ theme, onToggleTheme }: DashboardPageProps) {
           </div>
         </main>
 
-        <div className="col-12 col-xl-5 col-xxl-4">
-          <ArtifactInspector session={backend.session} selectedStepOrder={selectedStepOrder} />
-        </div>
+        <aside className={inspectorColumnClassName}>
+          <section className={`panel inspector-dock ${isInspectorCollapsed ? "is-collapsed" : ""}`}>
+            <div className="panel__header inspector-dock__header">
+              <div className="inspector-dock__title-row">
+                <h2 className="inspector-dock__title">Inspector</h2>
+                <p className="muted inspector-dock__subtitle">Estado del protocolo y artefactos</p>
+              </div>
+              <button
+                type="button"
+                className="collapse-toggle inspector-dock__toggle"
+                onClick={() => setIsInspectorCollapsed((current) => !current)}
+                aria-expanded={!isInspectorCollapsed}
+                aria-label={isInspectorCollapsed ? "Expandir inspector" : "Colapsar inspector"}
+                title={isInspectorCollapsed ? "Expandir inspector" : "Colapsar inspector"}
+              >
+                {isInspectorCollapsed ? "◀" : "▶"}
+              </button>
+            </div>
+            <div className="inspector-dock__body">
+              <ArtifactInspector
+                session={backend.session}
+                selectedStepOrder={selectedStepOrder}
+                showHeader={false}
+              />
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   );
