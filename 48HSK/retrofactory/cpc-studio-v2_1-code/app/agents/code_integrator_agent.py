@@ -49,6 +49,123 @@ MANDATORY_RUNTIME_MODULES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Video mode + palette resolution.
+# Values come from the upstream agents (cpctelera_tech_agent.video_mode and
+# art_agent.palette_strategy / palette_hw). Stubs MUST use these helpers so
+# the generated code is internally consistent (mode N <-> palette size N
+# <-> byte fill macros for mode N).
+# ---------------------------------------------------------------------------
+
+PALETTE_SIZE_BY_MODE = {0: 16, 1: 4, 2: 2}
+
+# CPCtelera HW palette indexes (0..26). Curated baselines per mode.
+DEFAULT_PALETTE_HW_BY_MODE: dict[int, list[int]] = {
+    0: [0, 1, 2, 3, 6, 7, 9, 10, 11, 12, 13, 15, 16, 18, 24, 26],
+    1: [0, 6, 11, 26],   # black, red, sky-blue, white
+    2: [0, 26],          # black, white
+}
+
+# Semantic pen roles -> in-palette pen index per mode.
+# Mode 1 only has 4 pens, so several roles collapse onto the same pen.
+_PEN_TABLE: dict[int, dict[str, int]] = {
+    0: {
+        "bg": 0, "ground": 1, "platform": 2, "decor": 3, "goal": 5,
+        "player": 6, "enemy": 4, "pickup": 7,
+        "victory_bg": 8, "victory_fg": 5, "gameover_bg": 1, "gameover_fg": 6,
+        "checkpoint": 9, "boss_bar_bg": 1, "boss_bar_fg": 5,
+        "enemy_kind0": 4, "enemy_kind1": 14, "enemy_kind2": 10, "enemy_kind3": 12,
+        "projectile_basic": 15, "projectile_upgraded": 11, "projectile_special": 5,
+    },
+    1: {
+        "bg": 0, "ground": 1, "platform": 1, "decor": 1, "goal": 2,
+        "player": 2, "enemy": 3, "pickup": 2,
+        "victory_bg": 2, "victory_fg": 3, "gameover_bg": 3, "gameover_fg": 2,
+        "checkpoint": 2, "boss_bar_bg": 3, "boss_bar_fg": 2,
+        "enemy_kind0": 3, "enemy_kind1": 3, "enemy_kind2": 3, "enemy_kind3": 3,
+        "projectile_basic": 3, "projectile_upgraded": 2, "projectile_special": 3,
+    },
+    2: {
+        "bg": 0, "ground": 1, "platform": 1, "decor": 1, "goal": 1,
+        "player": 1, "enemy": 1, "pickup": 1,
+        "victory_bg": 1, "victory_fg": 1, "gameover_bg": 1, "gameover_fg": 1,
+        "checkpoint": 1, "boss_bar_bg": 1, "boss_bar_fg": 1,
+        "enemy_kind0": 1, "enemy_kind1": 1, "enemy_kind2": 1, "enemy_kind3": 1,
+        "projectile_basic": 1, "projectile_upgraded": 1, "projectile_special": 1,
+    },
+}
+
+
+def _resolve_video_mode(tech_output: dict | None) -> int:
+    """Map tech_output.video_mode (string) to integer 0/1/2. Default 1.
+
+    Accepts: "0", "Mode 0", "MODE_0", "mode-0", "mode0", "M0", etc.
+    """
+    if not tech_output:
+        return 1
+    raw = str(tech_output.get("video_mode", "")).strip().lower()
+    if not raw:
+        return 1
+    # Normalise: strip everything except digits and the word 'mode'.
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits in {"0"}:
+        return 0
+    if digits in {"2"}:
+        return 2
+    if digits in {"1"}:
+        return 1
+    # Fallback: look for substrings.
+    if "mode 0" in raw or "mode_0" in raw or "mode-0" in raw or "mode0" in raw:
+        return 0
+    if "mode 2" in raw or "mode_2" in raw or "mode-2" in raw or "mode2" in raw:
+        return 2
+    return 1
+
+
+def _resolve_palette_hw(art_output: dict | None, mode: int) -> list[int]:
+    """Return palette as HW indexes (0..26), sized per mode."""
+    size = PALETTE_SIZE_BY_MODE.get(mode, 4)
+    palette: list[int] = []
+    if art_output:
+        raw = art_output.get("palette_hw")
+        if isinstance(raw, list):
+            for value in raw:
+                try:
+                    pen = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= pen <= 26:
+                    palette.append(pen)
+    if not palette:
+        palette = list(DEFAULT_PALETTE_HW_BY_MODE.get(mode, DEFAULT_PALETTE_HW_BY_MODE[1]))
+    if len(palette) < size:
+        palette = (palette + DEFAULT_PALETTE_HW_BY_MODE.get(mode, []))[:size]
+    return palette[:size]
+
+
+def _pen(role: str, mode: int) -> int:
+    """Resolve a semantic pen role to the in-palette pen index for the mode."""
+    table = _PEN_TABLE.get(mode, _PEN_TABLE[1])
+    return table.get(role, 1)
+
+
+def _fill_byte_expr(pen: int, mode: int) -> str:
+    """Return a C expression evaluating to a screen byte fully filled with `pen`.
+
+    Uses CPCtelera macros so the value is computed by the C preprocessor at
+    compile time; this avoids hardcoded 0xXX literals that only happen to be
+    correct for one specific mode."""
+    if mode == 0:
+        return f"cpct_px2byteM0({pen}, {pen})"
+    if mode == 2:
+        return f"cpct_px2byteM2({pen}, {pen}, {pen}, {pen}, {pen}, {pen}, {pen}, {pen})"
+    return f"cpct_px2byteM1({pen}, {pen}, {pen}, {pen})"
+
+
+def _fill_for(role: str, mode: int) -> str:
+    return _fill_byte_expr(_pen(role, mode), mode)
+
+
 def _build_game_h_stub() -> str:
     return "\n".join(
         [
@@ -65,7 +182,7 @@ def _build_game_h_stub() -> str:
     )
 
 
-def _build_game_c_stub() -> str:
+def _build_game_c_stub(mode: int = 1) -> str:
     return "\n".join(
         [
             render_c_include("game.h"),
@@ -77,6 +194,7 @@ def _build_game_c_stub() -> str:
             render_c_include("entities/enemy.h"),
             render_c_include("entities/projectile.h"),
             render_c_include("systems/hud.h"),
+            render_c_include("data/level1.h"),
             "",
             "#define MAX_ENEMIES 6",
             "#define MAX_PROJECTILES 6",
@@ -199,7 +317,9 @@ def _build_game_c_stub() -> str:
             "    u8 i;",
             "",
             "    cpct_disableFirmware();",
-            "    cpct_setVideoMode(1);",
+            f"    cpct_setVideoMode({mode});",
+            "    cpct_setPalette((u8*)gpalette, GPALETTE_SIZE);",
+            "    cpct_setBorder(gpalette[0]);",
             "    cpct_clearScreen(0x00);",
             "    tilemap_init();",
             "    collision_init();",
@@ -363,24 +483,24 @@ def _build_game_c_stub() -> str:
             "",
             "    if (g_bossactive) {",
             "        enemyrender(&g_boss);",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), 0x44, 32, 2);",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), 0x5C, (u8)(g_boss.health * 3), 2);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), {_fill_for('boss_bar_bg', mode)}, 32, 2);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), {_fill_for('boss_bar_fg', mode)}, (u8)(g_boss.health * 3), 2);",
             "    }",
             "",
             "    if (!g_pickuptaken) {",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 36, (u8)(tilemap_ground_y() - 8)), 0xEE, 4, 4);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 36, (u8)(tilemap_ground_y() - 8)), {_fill_for('pickup', mode)}, 4, 4);",
             "    }",
             "    playerrender(&g_player);",
             "    hudrender();",
             "",
             "    if (g_victory) {",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), 0x5A, 32, 12);",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), 0x5C, 24, 8);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), {_fill_for('victory_bg', mode)}, 32, 12);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), {_fill_for('victory_fg', mode)}, 24, 8);",
             "    } else if (g_gameover) {",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), 0x44, 32, 12);",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), 0x4C, 24, 8);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), {_fill_for('gameover_bg', mode)}, 32, 12);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), {_fill_for('gameover_fg', mode)}, 24, 8);",
             "    } else if (g_checkpointactive) {",
-            "        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_checkpointx, (u8)(g_checkpointy - 8)), 0x3A, 2, 8);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_checkpointx, (u8)(g_checkpointy - 8)), {_fill_for('checkpoint', mode)}, 2, 8);",
             "    }",
             "}",
             "",
@@ -502,7 +622,11 @@ def _build_projectile_h_stub() -> str:
     )
 
 
-def _build_enemy_c_stub() -> str:
+def _build_enemy_c_stub(mode: int = 1) -> str:
+    enemy0 = _fill_for('enemy_kind0', mode)
+    enemy1 = _fill_for('enemy_kind1', mode)
+    enemy2 = _fill_for('enemy_kind2', mode)
+    enemy3 = _fill_for('enemy_kind3', mode)
     return "\n".join(
         [
             render_c_include("entities/enemy.h"),
@@ -596,9 +720,12 @@ def _build_enemy_c_stub() -> str:
             "        nextx = 2;",
             "        enemy->vx = 1;",
             "    }",
-            "    if (nextx > 74) {",
-            "        nextx = 74;",
-            "        enemy->vx = -1;",
+            "    {",
+            "        i16 maxx = (i16)(80 - (i16)enemy->w);",
+            "        if (nextx > maxx) {",
+            "            nextx = maxx;",
+            "            enemy->vx = -1;",
+            "        }",
             "    }",
             "    enemy->x = (u8)nextx;",
             "",
@@ -620,10 +747,10 @@ def _build_enemy_c_stub() -> str:
             "        return;",
             "    }",
             "",
-            "    if (enemy->kind == 3) colour = 0x4C;",
-            "    else if (enemy->kind == 2) colour = 0x5A;",
-            "    else if (enemy->kind == 1) colour = 0x4E;",
-            "    else colour = 0x5C;",
+            "    if (enemy->kind == 3) colour = " + enemy3 + ";",
+            "    else if (enemy->kind == 2) colour = " + enemy2 + ";",
+            "    else if (enemy->kind == 1) colour = " + enemy1 + ";",
+            "    else colour = " + enemy0 + ";",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, enemy->x, enemy->y);",
             "    cpct_drawSolidBox(pvmem, colour, enemy->w, enemy->h);",
@@ -648,7 +775,10 @@ def _build_enemy_c_stub() -> str:
     )
 
 
-def _build_projectile_c_stub() -> str:
+def _build_projectile_c_stub(mode: int = 1) -> str:
+    proj_basic = _fill_for('projectile_basic', mode)
+    proj_up = _fill_for('projectile_upgraded', mode)
+    proj_special = _fill_for('projectile_special', mode)
     return "\n".join(
         [
             render_c_include("entities/projectile.h"),
@@ -727,14 +857,14 @@ def _build_projectile_c_stub() -> str:
             "    }",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, projectile->x, projectile->y);",
-            "    cpct_drawSolidBox(pvmem, projectile->weapon == 0 ? 0x0F : (projectile->weapon == 1 ? 0x6B : 0x5A), projectile->w, projectile->h);",
+            "    cpct_drawSolidBox(pvmem, projectile->weapon == 0 ? " + proj_basic + " : (projectile->weapon == 1 ? " + proj_up + " : " + proj_special + "), projectile->w, projectile->h);",
             "}",
             "",
         ]
     )
 
 
-def _build_player_c_stub() -> str:
+def _build_player_c_stub(mode: int = 1) -> str:
     return "\n".join(
         [
             render_c_include("entities/player.h"),
@@ -835,7 +965,7 @@ def _build_player_c_stub() -> str:
             "    }",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, player->x, player->y);",
-            "    cpct_drawSolidBox(pvmem, 0x4F, player->w, player->h);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('player', mode)}, player->w, player->h);",
             "}",
             "",
         ]
@@ -1039,7 +1169,7 @@ def _build_tilemap_h_stub() -> str:
     )
 
 
-def _build_tilemap_c_stub() -> str:
+def _build_tilemap_c_stub(mode: int = 1) -> str:
     return "\n".join(
         [
             render_c_include("systems/tilemap.h"),
@@ -1063,16 +1193,16 @@ def _build_tilemap_c_stub() -> str:
             "void tilemap_render(void) {",
             "    u8* pvmem;",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 0, gtilegroundy);",
-            "    cpct_drawSolidBox(pvmem, 0x11, 80, 8);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('ground', mode)}, 80, 8);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 24, gtileplatformy);",
-            "    cpct_drawSolidBox(pvmem, 0x33, 32, 4);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('platform', mode)}, 32, 4);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 56, gtilegroundy - 2);",
-            "    cpct_drawSolidBox(pvmem, 0x66, 16, 2);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('decor', mode)}, 16, 2);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, ggoalx, gtilegroundy - 16);",
-            "    cpct_drawSolidBox(pvmem, 0x5F, 2, 16);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('goal', mode)}, 2, 16);",
             "}",
             "",
             "u8 tilemap_ground_y(void) {",
@@ -1125,7 +1255,8 @@ def _build_tilemap_c_stub() -> str:
     )
 
 
-def _build_level1_h_stub() -> str:
+def _build_level1_h_stub(mode: int = 1) -> str:
+    palette_size = PALETTE_SIZE_BY_MODE.get(mode, 4)
     return "\n".join(
         [
             "#ifndef DATA_LEVEL1_H",
@@ -1133,9 +1264,11 @@ def _build_level1_h_stub() -> str:
             "",
             render_c_include("<cpctelera.h>"),
             "",
+            f"#define GPALETTE_SIZE {palette_size}",
+            "",
             "extern const u8 level1tilemap[];",
             "extern const u8 level1tileproperties[];",
-            "extern const u8 gpalette16[16];",
+            "extern const u8 gpalette[GPALETTE_SIZE];",
             "extern const u16 level1tilemapwidth;",
             "extern const u16 level1tilemapheight;",
             "",
@@ -1145,7 +1278,14 @@ def _build_level1_h_stub() -> str:
     )
 
 
-def _build_level1_c_stub() -> str:
+def _build_level1_c_stub(mode: int = 1, palette_hw: list[int] | None = None) -> str:
+    if palette_hw is None:
+        palette_hw = _resolve_palette_hw(None, mode)
+    palette_size = PALETTE_SIZE_BY_MODE.get(mode, 4)
+    palette_hw = list(palette_hw)[:palette_size]
+    if len(palette_hw) < palette_size:
+        palette_hw = (palette_hw + DEFAULT_PALETTE_HW_BY_MODE.get(mode, []))[:palette_size]
+    palette_lines = ["    " + ", ".join(str(v) for v in palette_hw)]
     return "\n".join(
         [
             '#include "data/level1.h"',
@@ -1161,11 +1301,8 @@ def _build_level1_c_stub() -> str:
             "",
             "const u8 level1tileproperties[] = { 0, 1 };",
             "",
-            "const u8 gpalette16[16] = {",
-            "    0x54, 0x44, 0x55, 0x5C,",
-            "    0x58, 0x5D, 0x4C, 0x45,",
-            "    0x4D, 0x56, 0x46, 0x57,",
-            "    0x5E, 0x40, 0x5F, 0x4E",
+            "const u8 gpalette[GPALETTE_SIZE] = {",
+            *palette_lines,
             "};",
             "",
         ]
@@ -1289,12 +1426,12 @@ def _build_hud_c_stub() -> str:
             "    u8 timetemp;",
             "",
             "    for (i = 0; i < currenthealth; ++i) {",
-            "        pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 2 + (i * 8), 2);",
+            "        pvmem = cpct_getScreenPtr(CPCT_VMEM_START, (i * 8), 2);",
             "        cpct_drawSprite((u8*)hudhealth, pvmem, 8, 8);",
             "    }",
             "",
             "    scoretemp = currentscore;",
-            "    hud_draw_digits(scoretemp, 5, 88, 2);",
+            "    hud_draw_digits(scoretemp, 4, 24, 2);",
             "",
             "    timetemp = currenttime;",
             "    hud_draw_digits((u16)timetemp, 3, 56, 2);",
@@ -1728,14 +1865,21 @@ def _is_allowed(path: str, allowed_files: set[str]) -> bool:
     return not allowed_files or path in allowed_files
 
 
-def ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> dict[str, str]:
+def ensure_core_game_module(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None = None,
+    art_output: dict | None = None,
+) -> dict[str, str]:
     normalized = dict(files)
+    mode = _resolve_video_mode(tech_output)
+    palette_hw = _resolve_palette_hw(art_output, mode)
 
     if _is_allowed(GAME_H_PATH, allowed_files):
         normalized[GAME_H_PATH] = _build_game_h_stub()
 
     if _is_allowed(GAME_C_PATH, allowed_files):
-        normalized[GAME_C_PATH] = _build_game_c_stub()
+        normalized[GAME_C_PATH] = _build_game_c_stub(mode)
 
     if _is_allowed(MAIN_C_PATH, allowed_files):
         normalized[MAIN_C_PATH] = _build_main_c_stub()
@@ -1744,25 +1888,19 @@ def ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> d
         normalized[PLAYER_H_PATH] = _build_player_h_stub()
 
     if _is_allowed(PLAYER_C_PATH, allowed_files):
-        normalized[PLAYER_C_PATH] = _build_player_c_stub()
+        normalized[PLAYER_C_PATH] = _build_player_c_stub(mode)
 
-    if _is_allowed(ENEMY_H_PATH, allowed_files):
-        normalized[ENEMY_H_PATH] = _build_enemy_h_stub()
-
-    if _is_allowed(ENEMY_C_PATH, allowed_files) and ENEMY_C_PATH not in normalized:
-        normalized[ENEMY_C_PATH] = _build_enemy_c_stub()
-
-    if _is_allowed(PROJECTILE_H_PATH, allowed_files):
-        normalized[PROJECTILE_H_PATH] = _build_projectile_h_stub()
-
-    if _is_allowed(PROJECTILE_C_PATH, allowed_files):
-        normalized[PROJECTILE_C_PATH] = _build_projectile_c_stub()
+    # Always enforce these runtime modules because game.c depends on them.
+    normalized[ENEMY_H_PATH] = _build_enemy_h_stub()
+    normalized[ENEMY_C_PATH] = _build_enemy_c_stub(mode)
+    normalized[PROJECTILE_H_PATH] = _build_projectile_h_stub()
+    normalized[PROJECTILE_C_PATH] = _build_projectile_c_stub(mode)
 
     if _is_allowed(LEVEL1_H_PATH, allowed_files):
-        normalized[LEVEL1_H_PATH] = _build_level1_h_stub()
+        normalized[LEVEL1_H_PATH] = _build_level1_h_stub(mode)
 
     if _is_allowed(LEVEL1_C_PATH, allowed_files):
-        normalized[LEVEL1_C_PATH] = _build_level1_c_stub()
+        normalized[LEVEL1_C_PATH] = _build_level1_c_stub(mode, palette_hw)
 
     if _is_allowed(TILESET_BASE_H_PATH, allowed_files):
         normalized[TILESET_BASE_H_PATH] = _build_fixed_asset_header(TILESET_BASE_H_PATH, "tilesetbase_data")
@@ -1806,7 +1944,7 @@ def ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> d
         normalized[TILEMAP_H_PATH] = _build_tilemap_h_stub()
 
     if _is_allowed(TILEMAP_C_PATH, allowed_files):
-        normalized[TILEMAP_C_PATH] = _build_tilemap_c_stub()
+        normalized[TILEMAP_C_PATH] = _build_tilemap_c_stub(mode)
 
     # scene_game is no longer the central game loop module.
     normalized.pop("src/scene_game.c", None)
@@ -1814,9 +1952,14 @@ def ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> d
     return normalized
 
 
-def _ensure_core_game_module(files: dict[str, str], allowed_files: set[str]) -> dict[str, str]:
+def _ensure_core_game_module(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None = None,
+    art_output: dict | None = None,
+) -> dict[str, str]:
     # Backward-compatible alias.
-    return ensure_core_game_module(files, allowed_files)
+    return ensure_core_game_module(files, allowed_files, tech_output, art_output)
 
 
 def _enforce_compile_safe_c_files(
@@ -1893,25 +2036,30 @@ def _build_generic_source_stub(path: str, files: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def _fallback_stub_for_path(path: str, files: dict[str, str]) -> str:
+def _fallback_stub_for_path(
+    path: str,
+    files: dict[str, str],
+    mode: int = 1,
+    palette_hw: list[int] | None = None,
+) -> str:
     stub_builders: dict[str, callable] = {
         MAIN_C_PATH: _build_main_c_stub,
         GAME_H_PATH: _build_game_h_stub,
-        GAME_C_PATH: _build_game_c_stub,
+        GAME_C_PATH: lambda: _build_game_c_stub(mode),
         PLAYER_H_PATH: _build_player_h_stub,
-        PLAYER_C_PATH: _build_player_c_stub,
+        PLAYER_C_PATH: lambda: _build_player_c_stub(mode),
         ENEMY_H_PATH: _build_enemy_h_stub,
-        ENEMY_C_PATH: _build_enemy_c_stub,
+        ENEMY_C_PATH: lambda: _build_enemy_c_stub(mode),
         PROJECTILE_H_PATH: _build_projectile_h_stub,
-        PROJECTILE_C_PATH: _build_projectile_c_stub,
+        PROJECTILE_C_PATH: lambda: _build_projectile_c_stub(mode),
         INPUT_H_PATH: _build_input_h_stub,
         INPUT_C_PATH: _build_input_c_stub,
         COLLISION_H_PATH: _build_collision_h_stub,
         COLLISION_C_PATH: _build_collision_c_stub,
         TILEMAP_H_PATH: _build_tilemap_h_stub,
-        TILEMAP_C_PATH: _build_tilemap_c_stub,
-        LEVEL1_H_PATH: _build_level1_h_stub,
-        LEVEL1_C_PATH: _build_level1_c_stub,
+        TILEMAP_C_PATH: lambda: _build_tilemap_c_stub(mode),
+        LEVEL1_H_PATH: lambda: _build_level1_h_stub(mode),
+        LEVEL1_C_PATH: lambda: _build_level1_c_stub(mode, palette_hw),
         TILESET_BASE_H_PATH: lambda: _build_fixed_asset_header(TILESET_BASE_H_PATH, "tilesetbase_data"),
         TILESET_BASE_C_PATH: lambda: _build_fixed_asset_source("data/tileset/base.h", "tilesetbase_data"),
         PLAYERKNIGHT_H_PATH: lambda: _build_fixed_asset_header(PLAYERKNIGHT_H_PATH, "sprplayerknight_data"),
@@ -1936,10 +2084,14 @@ def _fallback_stub_for_path(path: str, files: dict[str, str]) -> str:
 def _repair_invalid_generated_files(
     files: dict[str, str],
     allowed_files: set[str],
+    tech_output: dict | None = None,
+    art_output: dict | None = None,
 ) -> tuple[dict[str, str], list[str], list[str]]:
     repaired = dict(files)
     repaired_paths: list[str] = []
     remaining_issues = detect_c_generation_issues(repaired)
+    mode = _resolve_video_mode(tech_output)
+    palette_hw = _resolve_palette_hw(art_output, mode)
 
     for _ in range(2):
         if not remaining_issues:
@@ -1952,7 +2104,7 @@ def _repair_invalid_generated_files(
             if not _is_allowed(path, allowed_files):
                 continue
 
-            replacement = _fallback_stub_for_path(path, repaired)
+            replacement = _fallback_stub_for_path(path, repaired, mode, palette_hw)
             if not replacement:
                 continue
 
@@ -2009,12 +2161,12 @@ def run(
 
     files = normalize_files_payload(payload, allowed_files)
     files_before_core = dict(files)
-    files = ensure_core_game_module(files, allowed_files)
+    files = ensure_core_game_module(files, allowed_files, tech_output, art_output)
     files = ensure_required_asset_files(files, tech_output, allowed_files)
     files, sanitized_asset_headers = _sanitize_asset_headers(files, allowed_files)
     files, sanitized_enemy_sources = _sanitize_enemy_source_files(files, allowed_files)
     files, dropped_unsafe_c = _enforce_compile_safe_c_files(files, allowed_files, tech_output)
-    files, repaired_invalid_files, prebuild_validation_errors = _repair_invalid_generated_files(files, allowed_files)
+    files, repaired_invalid_files, prebuild_validation_errors = _repair_invalid_generated_files(files, allowed_files, tech_output, art_output)
 
     if not files:
         if contract_mode and contract_owned_files:

@@ -7,6 +7,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CPCTELERA_HOME = PROJECT_ROOT / "tools" / "cpctelera" / "cpctelera"
 GENERATED_PROJECTS = PROJECT_ROOT / "generated_projects"
 CPCT_MKPROJECT = CPCTELERA_HOME / "tools" / "scripts" / "cpct_mkproject"
+IDSK = CPCTELERA_HOME / "tools" / "iDSK-0.13" / "bin" / "iDSK"
+LOADER_TEMPLATE = (
+    PROJECT_ROOT / "tools" / "cpctelera" / "examples" / "games" / "platformClimber" / "assets" / "dsk_files" / "PCLIMBER.BAS"
+)
+BLANK_SCREEN_SIZE = 16 * 1024
 DEFAULT_PROJECT_NAME = "latestcp"
 
 
@@ -90,6 +95,61 @@ def _build_output(
         "artifacts": artifacts or [],
         "build_notes": build_notes,
     }
+
+
+def _inject_disk_loader(target_path: Path, project_name: str, env: dict[str, str]) -> str:
+    dsk_path = target_path / f"{project_name}.dsk"
+    if not dsk_path.exists() or not IDSK.exists() or not LOADER_TEMPLATE.exists():
+        return ""
+
+    loader_dir = target_path / "dsk_files"
+    loader_dir.mkdir(parents=True, exist_ok=True)
+
+    disc_path = loader_dir / "DISC.BAS"
+    screen_path = loader_dir / "SCREEN.SCR"
+    game_path = loader_dir / "GAME.BIN"
+    export_dir = target_path / "obj" / "loader_tmp"
+
+    try:
+        shutil.copy2(LOADER_TEMPLATE, disc_path)
+        screen_path.write_bytes(bytes(BLANK_SCREEN_SIZE))
+
+        if export_dir.exists():
+            shutil.rmtree(export_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        exported_name = f"{project_name.upper()}.BIN"
+        subprocess.run(
+            [str(IDSK), str(dsk_path), "-g", exported_name],
+            cwd=str(export_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            env=env,
+            check=True,
+        )
+        shutil.copy2(export_dir / exported_name, game_path)
+
+        for command in (
+            [str(IDSK), str(dsk_path), "-i", str(disc_path), "-f"],
+            [str(IDSK), str(dsk_path), "-i", str(screen_path), "-c", "C000", "-e", "C000", "-t", "1", "-f"],
+            [str(IDSK), str(dsk_path), "-i", str(game_path), "-f"],
+        ):
+            subprocess.run(
+                command,
+                cwd=str(target_path),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+                env=env,
+                check=True,
+            )
+
+        return "Added DISC.BAS, SCREEN.SCR, and GAME.BIN to the DSK for direct BASIC loading."
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Loader injection failed: {exc}"
+    finally:
+        shutil.rmtree(export_dir, ignore_errors=True)
 
 
 def run(project_path: str | None) -> tuple[dict, str]:
@@ -186,6 +246,10 @@ def run(project_path: str | None) -> tuple[dict, str]:
     artifacts_ok = expected_cdt.exists() and expected_dsk.exists()
     success = result.returncode == 0 and artifacts_ok
 
+    loader_note = ""
+    if success:
+        loader_note = _inject_disk_loader(target_path, project_name, env)
+
     artifacts = []
     for ext in ("*.dsk", "*.cdt", "*.bin", "*.sna"):
         artifacts += [str(p.relative_to(target_path)) for p in target_path.rglob(ext)]
@@ -204,6 +268,8 @@ def run(project_path: str | None) -> tuple[dict, str]:
         notes = f"Build completed successfully in {target_path}."
         if artifacts:
             notes += f" Produced: {', '.join(artifacts)}."
+        if loader_note:
+            notes += f" {loader_note}"
     else:
         if result.returncode == 0 and not artifacts_ok:
             notes = (

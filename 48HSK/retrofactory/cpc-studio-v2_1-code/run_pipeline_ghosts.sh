@@ -74,4 +74,29 @@ head -n 40 "${STDOUT_FILE}" >&2 || true
 printf '\n===== stderr tail =====\n' >&2
 tail -n 80 "${STDERR_FILE}" >&2 || true
 
+# Launch Caprice32 with the generated DSK
+if [[ "${cmd_exit}" -eq 0 ]]; then
+  GENERATED_DSK=$(python -c "import json; d=json.load(open('${STDOUT_FILE}')); p=d.get('generated_project_path',''); print(p+'/'+p.split('/')[-1]+'.dsk') if p else print('')" 2>/dev/null || true)
+  if [[ -z "${GENERATED_DSK}" ]]; then
+    GENERATED_DSK=$(ls -td "${ROOT}"/generated_projects/run*/*.dsk 2>/dev/null | head -1 || true)
+  fi
+  if [[ -n "${GENERATED_DSK}" && -f "${GENERATED_DSK}" ]]; then
+    log "[INFO] launching Caprice32 with ${GENERATED_DSK}"
+    DSK_BASENAME="$(basename "${GENERATED_DSK}" .dsk)"
+    CAP32_CFG="/tmp/cap32.cfg"
+    if [[ ! -f "${CAP32_CFG}" ]]; then
+      cp /Applications/Caprice32.app/Contents/Resources/cap32.cfg "${CAP32_CFG}"
+      sed -i '' 's|rom_path=.*|rom_path=/Applications/Caprice32.app/Contents/Resources/rom|' "${CAP32_CFG}"
+    fi
+    /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+      -c "${CAP32_CFG}" \
+      -a '|disc' \
+      -a "run\"${DSK_BASENAME}.bin\"" \
+      "${GENERATED_DSK}" &
+    disown
+  else
+    log "[WARN] no DSK found, skipping emulator launch"
+  fi
+fi
+
 exit "${cmd_exit}"
