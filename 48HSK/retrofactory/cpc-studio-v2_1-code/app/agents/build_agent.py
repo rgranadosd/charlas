@@ -111,6 +111,10 @@ def _inject_disk_loader(target_path: Path, project_name: str, env: dict[str, str
     export_dir = target_path / "obj" / "loader_tmp"
 
     try:
+        # Use the verbatim tokenized BASIC loader template; the actual boot is
+        # driven by the Caprice32 autocmd (|disc + run"<name>.bin"), so DISC.BAS
+        # is essentially a placeholder ensuring DSK structure parity with the
+        # known-good stable build.
         shutil.copy2(LOADER_TEMPLATE, disc_path)
         screen_path.write_bytes(bytes(BLANK_SCREEN_SIZE))
 

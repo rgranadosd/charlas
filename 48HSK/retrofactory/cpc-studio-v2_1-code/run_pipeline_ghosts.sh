@@ -77,7 +77,7 @@ tail -n 80 "${STDERR_FILE}" >&2 || true
 # Launch Caprice32 with the generated DSK
 if [[ "${cmd_exit}" -eq 0 ]]; then
   GENERATED_DSK=$(python -c "import json; d=json.load(open('${STDOUT_FILE}')); p=d.get('generated_project_path',''); print(p+'/'+p.split('/')[-1]+'.dsk') if p else print('')" 2>/dev/null || true)
-  if [[ -z "${GENERATED_DSK}" ]]; then
+  if [[ -z "${GENERATED_DSK}" || ! -f "${GENERATED_DSK}" ]]; then
     GENERATED_DSK=$(ls -td "${ROOT}"/generated_projects/run*/*.dsk 2>/dev/null | head -1 || true)
   fi
   if [[ -n "${GENERATED_DSK}" && -f "${GENERATED_DSK}" ]]; then
