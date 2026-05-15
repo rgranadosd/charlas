@@ -772,6 +772,13 @@ def _resolve_include(owner_file: str, include_path: str, universe: set[str]) -> 
     if include in universe:
         return include
 
+    # Tolerate LLM-emitted includes that omit the leading "src/" prefix
+    # (e.g. "entities/player.h" instead of "src/entities/player.h").
+    if not include.startswith("src/"):
+        prefixed = normalize_src_path_token("src/" + include)
+        if prefixed and prefixed in universe:
+            return prefixed
+
     owner_dir = PurePosixPath(owner_file).parent.as_posix() if owner_file else ""
     if owner_dir and owner_dir != ".":
         joined = normalize_src_path_token(str(PurePosixPath(owner_dir) / include))
@@ -794,6 +801,22 @@ def _resolve_include(owner_file: str, include_path: str, universe: set[str]) -> 
             return slug_matches[0]
 
     return ""
+
+
+def _looks_like_c_type_symbol(symbol: str) -> bool:
+    """Heuristic: detect names that are clearly C type identifiers (struct / typedef / enum tags),
+    which live only in headers and cannot be 'defined in a .c file' the way functions are.
+
+    By project convention (and CPCtelera convention) functions are snake_case (all lowercase
+    with underscores). Types are PascalCase or contain uppercase letters. We only treat a token
+    as a type if its first character is an ASCII uppercase letter — this avoids false positives
+    on lowercase function names while still excluding things like ``Player``, ``GameState``,
+    ``CollisionBox``, ``InputAction``.
+    """
+    if not symbol:
+        return False
+    first = symbol[0]
+    return first.isascii() and first.isupper()
 
 
 def _module_symbol_maps_from_blueprint(tech: TechOutput) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -820,7 +843,10 @@ def _module_symbol_maps_from_blueprint(tech: TechOutput) -> tuple[dict[str, set[
             if source_defined:
                 add(contract.module, source_defined, defined_symbols)
         if contract.header and contract.declared_symbols:
-            add(contract.header, contract.declared_symbols, declared_symbols)
+            # Skip type-like names (PascalCase): they live only in headers.
+            function_decls = [s for s in contract.declared_symbols if not _looks_like_c_type_symbol(s)]
+            if function_decls:
+                add(contract.header, function_decls, declared_symbols)
 
     if isinstance(files_map, dict):
         for owner_file, content in files_map.items():
@@ -848,7 +874,9 @@ def _module_symbol_maps_from_blueprint(tech: TechOutput) -> tuple[dict[str, set[
             if owner.endswith(".c"):
                 add(owner, normalized, defined_symbols)
             elif owner.endswith(".h"):
-                add(owner, normalized, declared_symbols)
+                # Filter out type-like names (PascalCase): they live only in headers.
+                function_like = [s for s in normalized if not _looks_like_c_type_symbol(s)]
+                add(owner, function_like, declared_symbols)
 
     return defined_symbols, declared_symbols
 
