@@ -1,0 +1,231 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000007  l__INITIALIZED                  
+     00000007  l__INITIALIZER                  
+     000000AD  l__DATA                         
+     00001E92  l__CODE                         
+     00004000  s__CODE                         
+     00005E92  s__DATA                         
+     00005F3F  s__INITIALIZED                  
+     00005F46  s__GSFINAL                      
+     00005F46  s__GSINIT                       
+     00005F46  s__HOME                         
+     00005F46  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00001E92 =        7826. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     000042B3  _game_init                         game
+     00004383  _game_update                       game
+     000049A9  _game_render                       game
+     00004B5C  _cpc_entry_wrapper                 main
+     00004B5C  cpc_run_address                    main
+     00004B73  _main                              main
+     00004B85  _collision_init                    collision
+     00004BA7  _collision_is_on_ground            collision
+     00004BC1  _collision_is_on_ground_at         collision
+     00004C26  _collision_clamp_y_to_ground       collision
+     00004C40  _collision_clamp_y_at              collision
+     00004CD7  _collision_is_on_trap              collision
+     00004CFC  _collision_is_on_ladder            collision
+     00004E91  _hudinit                           hud
+     00004EAC  _hudupdate                         hud
+     00004EDD  _hudrender                         hud
+     00004F9C  _input_update                      input
+     00004FED  _input_is_left_pressed             input
+     00004FF5  _input_is_right_pressed            input
+     00004FFD  _input_is_up_pressed               input
+     00005005  _input_is_down_pressed             input
+     0000500D  _input_is_jump_pressed             input
+     00005015  _input_is_jump_just_pressed        input
+     00005027  _input_is_shoot_pressed            input
+     0000502F  _input_is_shoot_just_pressed       input
+     00005041  _tilemap_init                      tilemap
+     0000506D  _tilemap_render                    tilemap
+     0000510E  _tilemap_ground_y                  tilemap
+     00005116  _tilemap_platform_y_at             tilemap
+     00005148  _tilemap_is_trap                   tilemap
+     000051AC  _tilemap_is_ladder                 tilemap
+     000051AF  _tilemap_is_hidden_zone            tilemap
+     000051B2  _tilemap_goal_x                    tilemap
+     000051BA  _level1tilemapwidth                level1
+     000051BC  _level1tilemapheight               level1
+     000051BE  _level1tilemap                     level1
+     000051DC  _level1tileproperties              level1
+     000051DE  _gpalette                          level1
+     000051EE  _tilesetbase_data                  base
+     000051EF  _tileset_background_data           tilesetbackground
+     000051F0  _tileset_platforms_data            tilesetplatforms
+     000051F1  _sprites_enemies_data              itesenemies
+     000051F2  _sprites_player_data               itesplayer
+     000051F3  _sprites_projectiles_data          itesprojectiles
+     000051F4  _sprplayerknight_data              playerknight
+     000051F5  _hud_elements_data                 elements
+     000051F6  _hudhealthbar_data                 healthbar
+     000051F7  _enemyinit                         enemy
+     0000523C  _enemyspawn                        enemy
+     00005414  _enemyupdate                       enemy
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00001E92 =        7826. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00005620  _enemyrender                       enemy
+     000056B2  _enemydamage                       enemy
+     000056F2  _playerinit                        player
+     00005732  _playerupdate                      player
+     0000597E  _playerrender                      player
+     000059D6  _projectileinit                    projectile
+     00005A1B  _projectilefire                    projectile
+     00005AD2  _projectileupdate                  projectile
+     00005B31  _projectilerender                  projectile
+     00005BB9  __divuint                          
+     00005BC1  __divuchar                         
+     00005BC8  __divu8                            
+     00005BCB  __divu16                           
+     00005BFA  _cpct_isKeyPressed                 cpct_keyboard
+     00005BFA  cpct_isKeyPressed_asm              cpct_keyboard
+     00005C06  _cpct_scanKeyboard_f               cpct_keyboard
+     00005C06  cpct_scanKeyboard_f_asm            cpct_keyboard
+     00005C70  _cpct_setPalette                   cpct_video
+     00005C87  _cpct_setPALColour                 cpct_video
+     00005C93  _cpct_drawSprite                   cpct_sprites
+     00005D38  __moduchar                         
+     00005D44  __moduint                          
+     00005D4F  _cpct_keyboardStatusBuffer         cpct_keyboard
+     00005D59  _cpct_waitVSYNC                    cpct_video
+     00005D59  cpct_waitVSYNC_asm                 cpct_video
+     00005D61  _cpct_setVideoMode                 cpct_video
+     00005D6F  _cpct_px2byteM0                    cpct_sprites
+     00005D8B  _cpct_memset                       cpct_memutils
+     00005D99  _cpct_disableFirmware              cpct_firmware
+     00005D99  _cpct_removeInterruptHandler       cpct_firmware
+     00005D99  cpct_disableFirmware_asm           cpct_firmware
+     00005D99  cpct_removeInterruptHandler_asm    cpct_firmware
+     00005DA9  _cpct_drawSolidBox                 cpct_sprites
+     00005E61  _cpct_mode_rom_status              cpct_firmware
+     00005E62  _cpct_getScreenPtr                 cpct_video
+     00005E82  dc_mode0_ct                        cpct_strings
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               00005E92    000000AD =         173. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_INITIALIZED                        00005F3F    00000007 =           7. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_INITIALIZER                        00005F46    00000007 =           7. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 7.
+
+Files Linked                              [ module(s) ]
+
+obj/game.rel                              [ game ]
+obj/main.rel                              [ main ]
+obj/systems/collision.rel                 [ collision ]
+obj/systems/hud.rel                       [ hud ]
+obj/systems/input.rel                     [ input ]
+obj/systems/tilemap.rel                   [ tilemap ]
+obj/data/level1.rel                       [ level1 ]
+obj/data/tileset/base.rel                 [ base ]
+obj/data/tileset/tilesetbackground.rel    [ tilesetbackground ]
+obj/data/tileset/tilesetplatforms.rel     [ tilesetplatforms ]
+obj/data/sprites/itesenemies.rel          [ itesenemies ]
+obj/data/sprites/itesplayer.rel           [ itesplayer ]
+obj/data/sprites/itesprojectiles.rel      [ itesprojectiles ]
+obj/data/sprites/playerknight.rel         [ playerknight ]
+obj/data/hud/elements.rel                 [ elements ]
+obj/data/hud/healthbar.rel                [ healthbar ]
+obj/entities/enemy.rel                    [ enemy ]
+obj/entities/player.rel                   [ player ]
+obj/entities/projectile.rel               [ projectile ]
+
+
+Libraries Linked                          [ object file ]
+
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ divunsigned.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ modunsigned.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_px2byteM0_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memset_cbinding.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSolidBox_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 8.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

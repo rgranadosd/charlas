@@ -1,0 +1,351 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module collision
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _tilemap_is_ladder
+                             12 	.globl _tilemap_is_trap
+                             13 	.globl _tilemap_platform_y_at
+                             14 	.globl _tilemap_ground_y
+                             15 	.globl _collision_init
+                             16 	.globl _collision_is_on_ground
+                             17 	.globl _collision_is_on_ground_at
+                             18 	.globl _collision_clamp_y_to_ground
+                             19 	.globl _collision_clamp_y_at
+                             20 	.globl _collision_is_on_trap
+                             21 	.globl _collision_is_on_ladder
+                             22 ;--------------------------------------------------------
+                             23 ; special function registers
+                             24 ;--------------------------------------------------------
+                             25 ;--------------------------------------------------------
+                             26 ; ram data
+                             27 ;--------------------------------------------------------
+                             28 	.area _DATA
+                             29 ;--------------------------------------------------------
+                             30 ; ram data
+                             31 ;--------------------------------------------------------
+                             32 	.area _INITIALIZED
+   0000                      33 _ggroundy:
+   0000                      34 	.ds 2
+   0002                      35 _gplatformy:
+   0002                      36 	.ds 2
+                             37 ;--------------------------------------------------------
+                             38 ; absolute external ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _DABS (ABS)
+                             41 ;--------------------------------------------------------
+                             42 ; global & static initialisations
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _GSINIT
+                             46 	.area _GSFINAL
+                             47 	.area _GSINIT
+                             48 ;--------------------------------------------------------
+                             49 ; Home
+                             50 ;--------------------------------------------------------
+                             51 	.area _HOME
+                             52 	.area _HOME
+                             53 ;--------------------------------------------------------
+                             54 ; code
+                             55 ;--------------------------------------------------------
+                             56 	.area _CODE
+                             57 ;src/systems/collision.c:7: void collision_init(void) {
+                             58 ;	---------------------------------
+                             59 ; Function collision_init
+                             60 ; ---------------------------------
+   0000                      61 _collision_init::
+                             62 ;src/systems/collision.c:8: ggroundy = (i16)tilemap_ground_y();
+   0000 CDr00r00      [17]   63 	call	_tilemap_ground_y
+   0003 FD 21r00r00   [14]   64 	ld	iy, #_ggroundy
+   0007 FD 75 00      [19]   65 	ld	0 (iy), l
+   000A FD 36 01 00   [19]   66 	ld	1 (iy), #0x00
+                             67 ;src/systems/collision.c:9: gplatformy = (i16)tilemap_platform_y_at(32);
+   000E 21 20 00      [10]   68 	ld	hl, #0x0020
+   0011 E5            [11]   69 	push	hl
+   0012 CDr00r00      [17]   70 	call	_tilemap_platform_y_at
+   0015 F1            [10]   71 	pop	af
+   0016 FD 21r02r00   [14]   72 	ld	iy, #_gplatformy
+   001A FD 75 00      [19]   73 	ld	0 (iy), l
+   001D FD 36 01 00   [19]   74 	ld	1 (iy), #0x00
+   0021 C9            [10]   75 	ret
+                             76 ;src/systems/collision.c:12: u8 collision_is_on_ground(i16 y, u8 h) {
+                             77 ;	---------------------------------
+                             78 ; Function collision_is_on_ground
+                             79 ; ---------------------------------
+   0022                      80 _collision_is_on_ground::
+                             81 ;src/systems/collision.c:13: return collision_is_on_ground_at(0, y, h);
+   0022 21 04 00      [10]   82 	ld	hl, #4+0
+   0025 39            [11]   83 	add	hl, sp
+   0026 7E            [ 7]   84 	ld	a, (hl)
+   0027 F5            [11]   85 	push	af
+   0028 33            [ 6]   86 	inc	sp
+   0029 21 03 00      [10]   87 	ld	hl, #3
+   002C 39            [11]   88 	add	hl, sp
+   002D 4E            [ 7]   89 	ld	c, (hl)
+   002E 23            [ 6]   90 	inc	hl
+   002F 46            [ 7]   91 	ld	b, (hl)
+   0030 C5            [11]   92 	push	bc
+   0031 21 00 00      [10]   93 	ld	hl, #0x0000
+   0034 E5            [11]   94 	push	hl
+   0035 CDr3Cr00      [17]   95 	call	_collision_is_on_ground_at
+   0038 F1            [10]   96 	pop	af
+   0039 F1            [10]   97 	pop	af
+   003A 33            [ 6]   98 	inc	sp
+   003B C9            [10]   99 	ret
+                            100 ;src/systems/collision.c:16: u8 collision_is_on_ground_at(i16 x, i16 y, u8 h) {
+                            101 ;	---------------------------------
+                            102 ; Function collision_is_on_ground_at
+                            103 ; ---------------------------------
+   003C                     104 _collision_is_on_ground_at::
+   003C DD E5         [15]  105 	push	ix
+   003E DD 21 00 00   [14]  106 	ld	ix,#0
+   0042 DD 39         [15]  107 	add	ix,sp
+                            108 ;src/systems/collision.c:20: support = (i16)tilemap_ground_y();
+   0044 CDr00r00      [17]  109 	call	_tilemap_ground_y
+   0047 4D            [ 4]  110 	ld	c, l
+   0048 06 00         [ 7]  111 	ld	b, #0x00
+                            112 ;src/systems/collision.c:21: gplatformy = (i16)tilemap_platform_y_at(x);
+   004A C5            [11]  113 	push	bc
+   004B DD 6E 04      [19]  114 	ld	l,4 (ix)
+   004E DD 66 05      [19]  115 	ld	h,5 (ix)
+   0051 E5            [11]  116 	push	hl
+   0052 CDr00r00      [17]  117 	call	_tilemap_platform_y_at
+   0055 F1            [10]  118 	pop	af
+   0056 C1            [10]  119 	pop	bc
+   0057 FD 21r02r00   [14]  120 	ld	iy, #_gplatformy
+   005B FD 75 00      [19]  121 	ld	0 (iy), l
+   005E FD 36 01 00   [19]  122 	ld	1 (iy), #0x00
+                            123 ;src/systems/collision.c:22: if (gplatformy != 255 && y + (i16)h <= gplatformy + 2) {
+   0062 DD 5E 08      [19]  124 	ld	e, 8 (ix)
+   0065 16 00         [ 7]  125 	ld	d, #0x00
+   0067 DD 7E 06      [19]  126 	ld	a, 6 (ix)
+   006A 83            [ 4]  127 	add	a, e
+   006B 5F            [ 4]  128 	ld	e, a
+   006C DD 7E 07      [19]  129 	ld	a, 7 (ix)
+   006F 8A            [ 4]  130 	adc	a, d
+   0070 57            [ 4]  131 	ld	d, a
+   0071 FD 7E 00      [19]  132 	ld	a, 0 (iy)
+   0074 3C            [ 4]  133 	inc	a
+   0075 FD B6 01      [19]  134 	or	a, 1 (iy)
+   0078 28 15         [12]  135 	jr	Z,00102$
+   007A 2Ar02r00      [16]  136 	ld	hl, (_gplatformy)
+   007D 23            [ 6]  137 	inc	hl
+   007E 23            [ 6]  138 	inc	hl
+   007F 7D            [ 4]  139 	ld	a, l
+   0080 93            [ 4]  140 	sub	a, e
+   0081 7C            [ 4]  141 	ld	a, h
+   0082 9A            [ 4]  142 	sbc	a, d
+   0083 E2r88r00      [10]  143 	jp	PO, 00115$
+   0086 EE 80         [ 7]  144 	xor	a, #0x80
+   0088                     145 00115$:
+   0088 FAr8Fr00      [10]  146 	jp	M, 00102$
+                            147 ;src/systems/collision.c:23: support = gplatformy;
+   008B ED 4Br02r00   [20]  148 	ld	bc, (_gplatformy)
+   008F                     149 00102$:
+                            150 ;src/systems/collision.c:26: feet = y + (i16)h;
+                            151 ;src/systems/collision.c:27: return (u8)(feet >= support);
+   008F 7B            [ 4]  152 	ld	a, e
+   0090 91            [ 4]  153 	sub	a, c
+   0091 7A            [ 4]  154 	ld	a, d
+   0092 98            [ 4]  155 	sbc	a, b
+   0093 E2r98r00      [10]  156 	jp	PO, 00116$
+   0096 EE 80         [ 7]  157 	xor	a, #0x80
+   0098                     158 00116$:
+   0098 07            [ 4]  159 	rlca
+   0099 E6 01         [ 7]  160 	and	a,#0x01
+   009B EE 01         [ 7]  161 	xor	a, #0x01
+   009D 6F            [ 4]  162 	ld	l, a
+   009E DD E1         [14]  163 	pop	ix
+   00A0 C9            [10]  164 	ret
+                            165 ;src/systems/collision.c:30: i16 collision_clamp_y_to_ground(i16 y, u8 h) {
+                            166 ;	---------------------------------
+                            167 ; Function collision_clamp_y_to_ground
+                            168 ; ---------------------------------
+   00A1                     169 _collision_clamp_y_to_ground::
+                            170 ;src/systems/collision.c:31: return collision_clamp_y_at(0, y, h);
+   00A1 21 04 00      [10]  171 	ld	hl, #4+0
+   00A4 39            [11]  172 	add	hl, sp
+   00A5 7E            [ 7]  173 	ld	a, (hl)
+   00A6 F5            [11]  174 	push	af
+   00A7 33            [ 6]  175 	inc	sp
+   00A8 21 03 00      [10]  176 	ld	hl, #3
+   00AB 39            [11]  177 	add	hl, sp
+   00AC 4E            [ 7]  178 	ld	c, (hl)
+   00AD 23            [ 6]  179 	inc	hl
+   00AE 46            [ 7]  180 	ld	b, (hl)
+   00AF C5            [11]  181 	push	bc
+   00B0 21 00 00      [10]  182 	ld	hl, #0x0000
+   00B3 E5            [11]  183 	push	hl
+   00B4 CDrBBr00      [17]  184 	call	_collision_clamp_y_at
+   00B7 F1            [10]  185 	pop	af
+   00B8 F1            [10]  186 	pop	af
+   00B9 33            [ 6]  187 	inc	sp
+   00BA C9            [10]  188 	ret
+                            189 ;src/systems/collision.c:34: i16 collision_clamp_y_at(i16 x, i16 y, u8 h) {
+                            190 ;	---------------------------------
+                            191 ; Function collision_clamp_y_at
+                            192 ; ---------------------------------
+   00BB                     193 _collision_clamp_y_at::
+   00BB DD E5         [15]  194 	push	ix
+   00BD DD 21 00 00   [14]  195 	ld	ix,#0
+   00C1 DD 39         [15]  196 	add	ix,sp
+                            197 ;src/systems/collision.c:38: ggroundy = (i16)tilemap_ground_y();
+   00C3 CDr00r00      [17]  198 	call	_tilemap_ground_y
+   00C6 FD 21r00r00   [14]  199 	ld	iy, #_ggroundy
+   00CA FD 75 00      [19]  200 	ld	0 (iy), l
+   00CD FD 36 01 00   [19]  201 	ld	1 (iy), #0x00
+                            202 ;src/systems/collision.c:39: maxy = ggroundy - (i16)h;
+   00D1 DD 4E 08      [19]  203 	ld	c, 8 (ix)
+   00D4 06 00         [ 7]  204 	ld	b, #0x00
+   00D6 FD 7E 00      [19]  205 	ld	a, 0 (iy)
+   00D9 91            [ 4]  206 	sub	a, c
+   00DA 5F            [ 4]  207 	ld	e, a
+   00DB FD 7E 01      [19]  208 	ld	a, 1 (iy)
+   00DE 98            [ 4]  209 	sbc	a, b
+   00DF 57            [ 4]  210 	ld	d, a
+                            211 ;src/systems/collision.c:40: gplatformy = (i16)tilemap_platform_y_at(x);
+   00E0 C5            [11]  212 	push	bc
+   00E1 D5            [11]  213 	push	de
+   00E2 DD 6E 04      [19]  214 	ld	l,4 (ix)
+   00E5 DD 66 05      [19]  215 	ld	h,5 (ix)
+   00E8 E5            [11]  216 	push	hl
+   00E9 CDr00r00      [17]  217 	call	_tilemap_platform_y_at
+   00EC F1            [10]  218 	pop	af
+   00ED D1            [10]  219 	pop	de
+   00EE C1            [10]  220 	pop	bc
+   00EF FD 21r02r00   [14]  221 	ld	iy, #_gplatformy
+   00F3 FD 75 00      [19]  222 	ld	0 (iy), l
+   00F6 FD 36 01 00   [19]  223 	ld	1 (iy), #0x00
+                            224 ;src/systems/collision.c:41: if (gplatformy != 255) {
+   00FA FD 7E 00      [19]  225 	ld	a, 0 (iy)
+   00FD 3C            [ 4]  226 	inc	a
+   00FE FD B6 01      [19]  227 	or	a, 1 (iy)
+   0101 28 32         [12]  228 	jr	Z,00105$
+                            229 ;src/systems/collision.c:42: platformmaxy = gplatformy - (i16)h;
+   0103 FD 7E 00      [19]  230 	ld	a, 0 (iy)
+   0106 91            [ 4]  231 	sub	a, c
+   0107 4F            [ 4]  232 	ld	c, a
+   0108 FD 7E 01      [19]  233 	ld	a, 1 (iy)
+   010B 98            [ 4]  234 	sbc	a, b
+   010C 47            [ 4]  235 	ld	b, a
+                            236 ;src/systems/collision.c:45: if (y > platformmaxy && y < gplatformy) {
+   010D 79            [ 4]  237 	ld	a, c
+   010E DD 96 06      [19]  238 	sub	a, 6 (ix)
+   0111 78            [ 4]  239 	ld	a, b
+   0112 DD 9E 07      [19]  240 	sbc	a, 7 (ix)
+   0115 E2r1Ar01      [10]  241 	jp	PO, 00127$
+   0118 EE 80         [ 7]  242 	xor	a, #0x80
+   011A                     243 00127$:
+   011A F2r35r01      [10]  244 	jp	P, 00105$
+   011D 21r02r00      [10]  245 	ld	hl, #_gplatformy
+   0120 DD 7E 06      [19]  246 	ld	a, 6 (ix)
+   0123 96            [ 7]  247 	sub	a, (hl)
+   0124 DD 7E 07      [19]  248 	ld	a, 7 (ix)
+   0127 23            [ 6]  249 	inc	hl
+   0128 9E            [ 7]  250 	sbc	a, (hl)
+   0129 E2r2Er01      [10]  251 	jp	PO, 00128$
+   012C EE 80         [ 7]  252 	xor	a, #0x80
+   012E                     253 00128$:
+   012E F2r35r01      [10]  254 	jp	P, 00105$
+                            255 ;src/systems/collision.c:46: return platformmaxy;
+   0131 69            [ 4]  256 	ld	l, c
+   0132 60            [ 4]  257 	ld	h, b
+   0133 18 19         [12]  258 	jr	00108$
+   0135                     259 00105$:
+                            260 ;src/systems/collision.c:50: if (y > maxy) {
+   0135 7B            [ 4]  261 	ld	a, e
+   0136 DD 96 06      [19]  262 	sub	a, 6 (ix)
+   0139 7A            [ 4]  263 	ld	a, d
+   013A DD 9E 07      [19]  264 	sbc	a, 7 (ix)
+   013D E2r42r01      [10]  265 	jp	PO, 00129$
+   0140 EE 80         [ 7]  266 	xor	a, #0x80
+   0142                     267 00129$:
+   0142 F2r48r01      [10]  268 	jp	P, 00107$
+                            269 ;src/systems/collision.c:51: return maxy;
+   0145 EB            [ 4]  270 	ex	de,hl
+   0146 18 06         [12]  271 	jr	00108$
+   0148                     272 00107$:
+                            273 ;src/systems/collision.c:53: return y;
+   0148 DD 6E 06      [19]  274 	ld	l,6 (ix)
+   014B DD 66 07      [19]  275 	ld	h,7 (ix)
+   014E                     276 00108$:
+   014E DD E1         [14]  277 	pop	ix
+   0150 C9            [10]  278 	ret
+                            279 ;src/systems/collision.c:56: u8 collision_is_on_trap(i16 x, i16 y, u8 w, u8 h) {
+                            280 ;	---------------------------------
+                            281 ; Function collision_is_on_trap
+                            282 ; ---------------------------------
+   0151                     283 _collision_is_on_trap::
+                            284 ;src/systems/collision.c:57: return tilemap_is_trap(x, y, w, h);
+   0151 21 07 00      [10]  285 	ld	hl, #7+0
+   0154 39            [11]  286 	add	hl, sp
+   0155 7E            [ 7]  287 	ld	a, (hl)
+   0156 F5            [11]  288 	push	af
+   0157 33            [ 6]  289 	inc	sp
+   0158 21 07 00      [10]  290 	ld	hl, #7+0
+   015B 39            [11]  291 	add	hl, sp
+   015C 7E            [ 7]  292 	ld	a, (hl)
+   015D F5            [11]  293 	push	af
+   015E 33            [ 6]  294 	inc	sp
+   015F 21 06 00      [10]  295 	ld	hl, #6
+   0162 39            [11]  296 	add	hl, sp
+   0163 4E            [ 7]  297 	ld	c, (hl)
+   0164 23            [ 6]  298 	inc	hl
+   0165 46            [ 7]  299 	ld	b, (hl)
+   0166 C5            [11]  300 	push	bc
+   0167 21 06 00      [10]  301 	ld	hl, #6
+   016A 39            [11]  302 	add	hl, sp
+   016B 4E            [ 7]  303 	ld	c, (hl)
+   016C 23            [ 6]  304 	inc	hl
+   016D 46            [ 7]  305 	ld	b, (hl)
+   016E C5            [11]  306 	push	bc
+   016F CDr00r00      [17]  307 	call	_tilemap_is_trap
+   0172 F1            [10]  308 	pop	af
+   0173 F1            [10]  309 	pop	af
+   0174 F1            [10]  310 	pop	af
+   0175 C9            [10]  311 	ret
+                            312 ;src/systems/collision.c:60: u8 collision_is_on_ladder(i16 x, i16 y, u8 w, u8 h) {
+                            313 ;	---------------------------------
+                            314 ; Function collision_is_on_ladder
+                            315 ; ---------------------------------
+   0176                     316 _collision_is_on_ladder::
+                            317 ;src/systems/collision.c:61: return tilemap_is_ladder(x, y, w, h);
+   0176 21 07 00      [10]  318 	ld	hl, #7+0
+   0179 39            [11]  319 	add	hl, sp
+   017A 7E            [ 7]  320 	ld	a, (hl)
+   017B F5            [11]  321 	push	af
+   017C 33            [ 6]  322 	inc	sp
+   017D 21 07 00      [10]  323 	ld	hl, #7+0
+   0180 39            [11]  324 	add	hl, sp
+   0181 7E            [ 7]  325 	ld	a, (hl)
+   0182 F5            [11]  326 	push	af
+   0183 33            [ 6]  327 	inc	sp
+   0184 21 06 00      [10]  328 	ld	hl, #6
+   0187 39            [11]  329 	add	hl, sp
+   0188 4E            [ 7]  330 	ld	c, (hl)
+   0189 23            [ 6]  331 	inc	hl
+   018A 46            [ 7]  332 	ld	b, (hl)
+   018B C5            [11]  333 	push	bc
+   018C 21 06 00      [10]  334 	ld	hl, #6
+   018F 39            [11]  335 	add	hl, sp
+   0190 4E            [ 7]  336 	ld	c, (hl)
+   0191 23            [ 6]  337 	inc	hl
+   0192 46            [ 7]  338 	ld	b, (hl)
+   0193 C5            [11]  339 	push	bc
+   0194 CDr00r00      [17]  340 	call	_tilemap_is_ladder
+   0197 F1            [10]  341 	pop	af
+   0198 F1            [10]  342 	pop	af
+   0199 F1            [10]  343 	pop	af
+   019A C9            [10]  344 	ret
+                            345 	.area _CODE
+                            346 	.area _INITIALIZER
+   0000                     347 __xinit__ggroundy:
+   0000 A0 00               348 	.dw #0x00a0
+   0002                     349 __xinit__gplatformy:
+   0002 FF 00               350 	.dw #0x00ff
+                            351 	.area _CABS (ABS)

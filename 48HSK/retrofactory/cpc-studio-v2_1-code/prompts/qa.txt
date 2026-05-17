@@ -19,6 +19,14 @@ REGLAS:
   - existe objetivo básico
 - Sé concreto.
 
+CHECKS VISUALES CRÍTICOS (verificados en producción):
+- Sprite invisible: si el sprite usa pen 0 como fill → aparece como fondo. Preguntar si los sprites se ven o son invisibles.
+- Flickering total: si el game loop usa cpct_clearScreen_f8 → ~21ms de pantalla en blanco por frame (> 1 frame a 50Hz). Usar patrón erase-redraw.
+- Flickering de sprite concreto: si waitVSYNC está DESPUÉS de render, o si el sprite se dibuja al final del loop cuando el haz ya pasó su Y. El jugador en y≈104 debe dibujarse PRIMERO en game_render().
+- Teclas no funcionan: si input_update() no incluye Joy0_Left/Right/Up/Down → flechas del PC no funcionan en Caprice32.
+- Entidades fuera de pantalla: si spawn_x + sprite_w > 79 → entidad invisible o corrupción VRAM.
+- 0FPS silencioso: si cpct_disableFirmware() se llama antes de cpct_setVideoMode() → juego no arranca.
+
 SALIDA OBLIGATORIA:
 {
   "status": "pass|fail",

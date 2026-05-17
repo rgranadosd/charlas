@@ -1,3 +1,0 @@
-#include "data/assets/enemysprites.h"
-
-const u8 enemy_sprites_data[] = { 0x00 };

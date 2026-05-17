@@ -1,0 +1,29 @@
+XL2
+H 9 areas 4 global symbols
+M projectilesprites
+O -mz80
+S .__.ABS. Def0000
+A _CODE size 10 flags 0 addr 0
+S _imp_fireball Def000C
+S _crossbow_bolt Def0008
+S _lance_projectile Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 00 18 3C 7E 00 00 00 00
+R 00 00 00 00
+T 08 00
+R 00 00 00 00
+T 08 00 3C 7E 00 00
+R 00 00 00 00
+T 0C 00
+R 00 00 00 00
+T 0C 00 3C 00 00 00
+R 00 00 00 00

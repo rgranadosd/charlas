@@ -1,0 +1,577 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module hud
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _cpct_getScreenPtr
+                             12 	.globl _cpct_drawSprite
+                             13 	.globl _hudinit
+                             14 	.globl _hudupdate
+                             15 	.globl _hudrender
+                             16 ;--------------------------------------------------------
+                             17 ; special function registers
+                             18 ;--------------------------------------------------------
+                             19 ;--------------------------------------------------------
+                             20 ; ram data
+                             21 ;--------------------------------------------------------
+                             22 	.area _DATA
+   0000                      23 _currenthealth:
+   0000                      24 	.ds 1
+   0001                      25 _currentscore:
+   0001                      26 	.ds 2
+   0003                      27 _currenttime:
+   0003                      28 	.ds 1
+   0004                      29 _currentlives:
+   0004                      30 	.ds 1
+   0005                      31 _currentweapon:
+   0005                      32 	.ds 1
+                             33 ;--------------------------------------------------------
+                             34 ; ram data
+                             35 ;--------------------------------------------------------
+                             36 	.area _INITIALIZED
+                             37 ;--------------------------------------------------------
+                             38 ; absolute external ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _DABS (ABS)
+                             41 ;--------------------------------------------------------
+                             42 ; global & static initialisations
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _GSINIT
+                             46 	.area _GSFINAL
+                             47 	.area _GSINIT
+                             48 ;--------------------------------------------------------
+                             49 ; Home
+                             50 ;--------------------------------------------------------
+                             51 	.area _HOME
+                             52 	.area _HOME
+                             53 ;--------------------------------------------------------
+                             54 ; code
+                             55 ;--------------------------------------------------------
+                             56 	.area _CODE
+                             57 ;src/systems/hud.c:13: static const u8* hud_get_number_sprite(u8 n) {
+                             58 ;	---------------------------------
+                             59 ; Function hud_get_number_sprite
+                             60 ; ---------------------------------
+   0000                      61 _hud_get_number_sprite:
+                             62 ;src/systems/hud.c:15: return _hud_dummy_sprite;
+   0000 21r04r00      [10]   63 	ld	hl, #__hud_dummy_sprite
+   0003 C9            [10]   64 	ret
+   0004                      65 __hud_dummy_sprite:
+   0004 00                   66 	.db #0x00	; 0
+   0005 00                   67 	.db 0x00
+   0006 00                   68 	.db 0x00
+   0007 00                   69 	.db 0x00
+   0008 00                   70 	.db 0x00
+   0009 00                   71 	.db 0x00
+   000A 00                   72 	.db 0x00
+   000B 00                   73 	.db 0x00
+   000C 00                   74 	.db 0x00
+   000D 00                   75 	.db 0x00
+   000E 00                   76 	.db 0x00
+   000F 00                   77 	.db 0x00
+   0010 00                   78 	.db 0x00
+   0011 00                   79 	.db 0x00
+   0012 00                   80 	.db 0x00
+   0013 00                   81 	.db 0x00
+   0014 00                   82 	.db 0x00
+   0015 00                   83 	.db 0x00
+   0016 00                   84 	.db 0x00
+   0017 00                   85 	.db 0x00
+   0018 00                   86 	.db 0x00
+   0019 00                   87 	.db 0x00
+   001A 00                   88 	.db 0x00
+   001B 00                   89 	.db 0x00
+   001C 00                   90 	.db 0x00
+   001D 00                   91 	.db 0x00
+   001E 00                   92 	.db 0x00
+   001F 00                   93 	.db 0x00
+   0020 00                   94 	.db 0x00
+   0021 00                   95 	.db 0x00
+   0022 00                   96 	.db 0x00
+   0023 00                   97 	.db 0x00
+   0024 00                   98 	.db 0x00
+   0025 00                   99 	.db 0x00
+   0026 00                  100 	.db 0x00
+   0027 00                  101 	.db 0x00
+   0028 00                  102 	.db 0x00
+   0029 00                  103 	.db 0x00
+   002A 00                  104 	.db 0x00
+   002B 00                  105 	.db 0x00
+   002C 00                  106 	.db 0x00
+   002D 00                  107 	.db 0x00
+   002E 00                  108 	.db 0x00
+   002F 00                  109 	.db 0x00
+   0030 00                  110 	.db 0x00
+   0031 00                  111 	.db 0x00
+   0032 00                  112 	.db 0x00
+   0033 00                  113 	.db 0x00
+   0034 00                  114 	.db 0x00
+   0035 00                  115 	.db 0x00
+   0036 00                  116 	.db 0x00
+   0037 00                  117 	.db 0x00
+   0038 00                  118 	.db 0x00
+   0039 00                  119 	.db 0x00
+   003A 00                  120 	.db 0x00
+   003B 00                  121 	.db 0x00
+   003C 00                  122 	.db 0x00
+   003D 00                  123 	.db 0x00
+   003E 00                  124 	.db 0x00
+   003F 00                  125 	.db 0x00
+   0040 00                  126 	.db 0x00
+   0041 00                  127 	.db 0x00
+   0042 00                  128 	.db 0x00
+   0043 00                  129 	.db 0x00
+                            130 ;src/systems/hud.c:20: static void hud_draw_digits(u16 value, u8 digits, u8 startx, u8 y) {
+                            131 ;	---------------------------------
+                            132 ; Function hud_draw_digits
+                            133 ; ---------------------------------
+   0044                     134 _hud_draw_digits:
+   0044 DD E5         [15]  135 	push	ix
+   0046 DD 21 00 00   [14]  136 	ld	ix,#0
+   004A DD 39         [15]  137 	add	ix,sp
+   004C 3B            [ 6]  138 	dec	sp
+                            139 ;src/systems/hud.c:26: divisor = 1;
+   004D 01 01 00      [10]  140 	ld	bc, #0x0001
+                            141 ;src/systems/hud.c:27: for (i = 1; i < digits; ++i) {
+   0050 1E 01         [ 7]  142 	ld	e, #0x01
+   0052                     143 00106$:
+   0052 7B            [ 4]  144 	ld	a, e
+   0053 DD 96 06      [19]  145 	sub	a, 6 (ix)
+   0056 30 0B         [12]  146 	jr	NC,00101$
+                            147 ;src/systems/hud.c:28: divisor *= 10;
+   0058 69            [ 4]  148 	ld	l, c
+   0059 60            [ 4]  149 	ld	h, b
+   005A 29            [11]  150 	add	hl, hl
+   005B 29            [11]  151 	add	hl, hl
+   005C 09            [11]  152 	add	hl, bc
+   005D 29            [11]  153 	add	hl, hl
+   005E 4D            [ 4]  154 	ld	c, l
+   005F 44            [ 4]  155 	ld	b, h
+                            156 ;src/systems/hud.c:27: for (i = 1; i < digits; ++i) {
+   0060 1C            [ 4]  157 	inc	e
+   0061 18 EF         [12]  158 	jr	00106$
+   0063                     159 00101$:
+                            160 ;src/systems/hud.c:31: for (i = 0; i < digits; ++i) {
+   0063 DD 36 FF 00   [19]  161 	ld	-1 (ix), #0x00
+   0067                     162 00109$:
+   0067 DD 7E FF      [19]  163 	ld	a, -1 (ix)
+   006A DD 96 06      [19]  164 	sub	a, 6 (ix)
+   006D D2rECr00      [10]  165 	jp	NC, 00111$
+                            166 ;src/systems/hud.c:32: digit = (u8)(value / divisor);
+   0070 C5            [11]  167 	push	bc
+   0071 C5            [11]  168 	push	bc
+   0072 DD 6E 04      [19]  169 	ld	l,4 (ix)
+   0075 DD 66 05      [19]  170 	ld	h,5 (ix)
+   0078 E5            [11]  171 	push	hl
+   0079 CDr00r00      [17]  172 	call	__divuint
+   007C F1            [10]  173 	pop	af
+   007D F1            [10]  174 	pop	af
+   007E 5D            [ 4]  175 	ld	e, l
+   007F C1            [10]  176 	pop	bc
+                            177 ;src/systems/hud.c:33: value = (u16)(value % divisor);
+   0080 C5            [11]  178 	push	bc
+   0081 D5            [11]  179 	push	de
+   0082 C5            [11]  180 	push	bc
+   0083 DD 6E 04      [19]  181 	ld	l,4 (ix)
+   0086 DD 66 05      [19]  182 	ld	h,5 (ix)
+   0089 E5            [11]  183 	push	hl
+   008A CDr00r00      [17]  184 	call	__moduint
+   008D F1            [10]  185 	pop	af
+   008E F1            [10]  186 	pop	af
+   008F D1            [10]  187 	pop	de
+   0090 C1            [10]  188 	pop	bc
+   0091 DD 75 04      [19]  189 	ld	4 (ix), l
+   0094 DD 74 05      [19]  190 	ld	5 (ix), h
+                            191 ;src/systems/hud.c:35: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, startx + (i * 8), y);
+   0097 DD 7E FF      [19]  192 	ld	a, -1 (ix)
+   009A 07            [ 4]  193 	rlca
+   009B 07            [ 4]  194 	rlca
+   009C 07            [ 4]  195 	rlca
+   009D E6 F8         [ 7]  196 	and	a, #0xf8
+   009F 57            [ 4]  197 	ld	d, a
+   00A0 DD 7E 07      [19]  198 	ld	a, 7 (ix)
+   00A3 82            [ 4]  199 	add	a, d
+   00A4 57            [ 4]  200 	ld	d, a
+   00A5 C5            [11]  201 	push	bc
+   00A6 D5            [11]  202 	push	de
+   00A7 DD 7E 08      [19]  203 	ld	a, 8 (ix)
+   00AA F5            [11]  204 	push	af
+   00AB 33            [ 6]  205 	inc	sp
+   00AC D5            [11]  206 	push	de
+   00AD 33            [ 6]  207 	inc	sp
+   00AE 21 00 C0      [10]  208 	ld	hl, #0xc000
+   00B1 E5            [11]  209 	push	hl
+   00B2 CDr00r00      [17]  210 	call	_cpct_getScreenPtr
+   00B5 D1            [10]  211 	pop	de
+   00B6 C1            [10]  212 	pop	bc
+                            213 ;src/systems/hud.c:36: cpct_drawSprite((u8*)hud_get_number_sprite(digit), pvmem, 8, 8);
+   00B7 E5            [11]  214 	push	hl
+   00B8 C5            [11]  215 	push	bc
+   00B9 7B            [ 4]  216 	ld	a, e
+   00BA F5            [11]  217 	push	af
+   00BB 33            [ 6]  218 	inc	sp
+   00BC CDr00r00      [17]  219 	call	_hud_get_number_sprite
+   00BF 33            [ 6]  220 	inc	sp
+   00C0 EB            [ 4]  221 	ex	de,hl
+   00C1 C1            [10]  222 	pop	bc
+   00C2 E1            [10]  223 	pop	hl
+   00C3 D5            [11]  224 	push	de
+   00C4 FD E1         [14]  225 	pop	iy
+   00C6 C5            [11]  226 	push	bc
+   00C7 11 08 08      [10]  227 	ld	de, #0x0808
+   00CA D5            [11]  228 	push	de
+   00CB E5            [11]  229 	push	hl
+   00CC FD E5         [15]  230 	push	iy
+   00CE CDr00r00      [17]  231 	call	_cpct_drawSprite
+   00D1 C1            [10]  232 	pop	bc
+                            233 ;src/systems/hud.c:38: if (divisor > 1) {
+   00D2 3E 01         [ 7]  234 	ld	a, #0x01
+   00D4 B9            [ 4]  235 	cp	a, c
+   00D5 3E 00         [ 7]  236 	ld	a, #0x00
+   00D7 98            [ 4]  237 	sbc	a, b
+   00D8 30 0C         [12]  238 	jr	NC,00110$
+                            239 ;src/systems/hud.c:39: divisor /= 10;
+   00DA 21 0A 00      [10]  240 	ld	hl, #0x000a
+   00DD E5            [11]  241 	push	hl
+   00DE C5            [11]  242 	push	bc
+   00DF CDr00r00      [17]  243 	call	__divuint
+   00E2 F1            [10]  244 	pop	af
+   00E3 F1            [10]  245 	pop	af
+   00E4 4D            [ 4]  246 	ld	c, l
+   00E5 44            [ 4]  247 	ld	b, h
+   00E6                     248 00110$:
+                            249 ;src/systems/hud.c:31: for (i = 0; i < digits; ++i) {
+   00E6 DD 34 FF      [23]  250 	inc	-1 (ix)
+   00E9 C3r67r00      [10]  251 	jp	00109$
+   00EC                     252 00111$:
+   00EC 33            [ 6]  253 	inc	sp
+   00ED DD E1         [14]  254 	pop	ix
+   00EF C9            [10]  255 	ret
+   00F0                     256 _hudhealth:
+   00F0 00                  257 	.db #0x00	; 0
+   00F1 00                  258 	.db 0x00
+   00F2 00                  259 	.db 0x00
+   00F3 00                  260 	.db 0x00
+   00F4 00                  261 	.db 0x00
+   00F5 00                  262 	.db 0x00
+   00F6 00                  263 	.db 0x00
+   00F7 00                  264 	.db 0x00
+   00F8 00                  265 	.db 0x00
+   00F9 00                  266 	.db 0x00
+   00FA 00                  267 	.db 0x00
+   00FB 00                  268 	.db 0x00
+   00FC 00                  269 	.db 0x00
+   00FD 00                  270 	.db 0x00
+   00FE 00                  271 	.db 0x00
+   00FF 00                  272 	.db 0x00
+   0100 00                  273 	.db 0x00
+   0101 00                  274 	.db 0x00
+   0102 00                  275 	.db 0x00
+   0103 00                  276 	.db 0x00
+   0104 00                  277 	.db 0x00
+   0105 00                  278 	.db 0x00
+   0106 00                  279 	.db 0x00
+   0107 00                  280 	.db 0x00
+   0108 00                  281 	.db 0x00
+   0109 00                  282 	.db 0x00
+   010A 00                  283 	.db 0x00
+   010B 00                  284 	.db 0x00
+   010C 00                  285 	.db 0x00
+   010D 00                  286 	.db 0x00
+   010E 00                  287 	.db 0x00
+   010F 00                  288 	.db 0x00
+   0110 00                  289 	.db 0x00
+   0111 00                  290 	.db 0x00
+   0112 00                  291 	.db 0x00
+   0113 00                  292 	.db 0x00
+   0114 00                  293 	.db 0x00
+   0115 00                  294 	.db 0x00
+   0116 00                  295 	.db 0x00
+   0117 00                  296 	.db 0x00
+   0118 00                  297 	.db 0x00
+   0119 00                  298 	.db 0x00
+   011A 00                  299 	.db 0x00
+   011B 00                  300 	.db 0x00
+   011C 00                  301 	.db 0x00
+   011D 00                  302 	.db 0x00
+   011E 00                  303 	.db 0x00
+   011F 00                  304 	.db 0x00
+   0120 00                  305 	.db 0x00
+   0121 00                  306 	.db 0x00
+   0122 00                  307 	.db 0x00
+   0123 00                  308 	.db 0x00
+   0124 00                  309 	.db 0x00
+   0125 00                  310 	.db 0x00
+   0126 00                  311 	.db 0x00
+   0127 00                  312 	.db 0x00
+   0128 00                  313 	.db 0x00
+   0129 00                  314 	.db 0x00
+   012A 00                  315 	.db 0x00
+   012B 00                  316 	.db 0x00
+   012C 00                  317 	.db 0x00
+   012D 00                  318 	.db 0x00
+   012E 00                  319 	.db 0x00
+   012F 00                  320 	.db 0x00
+   0130                     321 _hudlives:
+   0130 00                  322 	.db #0x00	; 0
+   0131 00                  323 	.db 0x00
+   0132 00                  324 	.db 0x00
+   0133 00                  325 	.db 0x00
+   0134 00                  326 	.db 0x00
+   0135 00                  327 	.db 0x00
+   0136 00                  328 	.db 0x00
+   0137 00                  329 	.db 0x00
+   0138 00                  330 	.db 0x00
+   0139 00                  331 	.db 0x00
+   013A 00                  332 	.db 0x00
+   013B 00                  333 	.db 0x00
+   013C 00                  334 	.db 0x00
+   013D 00                  335 	.db 0x00
+   013E 00                  336 	.db 0x00
+   013F 00                  337 	.db 0x00
+   0140 00                  338 	.db 0x00
+   0141 00                  339 	.db 0x00
+   0142 00                  340 	.db 0x00
+   0143 00                  341 	.db 0x00
+   0144 00                  342 	.db 0x00
+   0145 00                  343 	.db 0x00
+   0146 00                  344 	.db 0x00
+   0147 00                  345 	.db 0x00
+   0148 00                  346 	.db 0x00
+   0149 00                  347 	.db 0x00
+   014A 00                  348 	.db 0x00
+   014B 00                  349 	.db 0x00
+   014C 00                  350 	.db 0x00
+   014D 00                  351 	.db 0x00
+   014E 00                  352 	.db 0x00
+   014F 00                  353 	.db 0x00
+   0150 00                  354 	.db 0x00
+   0151 00                  355 	.db 0x00
+   0152 00                  356 	.db 0x00
+   0153 00                  357 	.db 0x00
+   0154 00                  358 	.db 0x00
+   0155 00                  359 	.db 0x00
+   0156 00                  360 	.db 0x00
+   0157 00                  361 	.db 0x00
+   0158 00                  362 	.db 0x00
+   0159 00                  363 	.db 0x00
+   015A 00                  364 	.db 0x00
+   015B 00                  365 	.db 0x00
+   015C 00                  366 	.db 0x00
+   015D 00                  367 	.db 0x00
+   015E 00                  368 	.db 0x00
+   015F 00                  369 	.db 0x00
+   0160 00                  370 	.db 0x00
+   0161 00                  371 	.db 0x00
+   0162 00                  372 	.db 0x00
+   0163 00                  373 	.db 0x00
+   0164 00                  374 	.db 0x00
+   0165 00                  375 	.db 0x00
+   0166 00                  376 	.db 0x00
+   0167 00                  377 	.db 0x00
+   0168 00                  378 	.db 0x00
+   0169 00                  379 	.db 0x00
+   016A 00                  380 	.db 0x00
+   016B 00                  381 	.db 0x00
+   016C 00                  382 	.db 0x00
+   016D 00                  383 	.db 0x00
+   016E 00                  384 	.db 0x00
+   016F 00                  385 	.db 0x00
+                            386 ;src/systems/hud.c:44: void hudinit(void) {
+                            387 ;	---------------------------------
+                            388 ; Function hudinit
+                            389 ; ---------------------------------
+   0170                     390 _hudinit::
+                            391 ;src/systems/hud.c:45: currenthealth = 3;
+   0170 21r00r00      [10]  392 	ld	hl,#_currenthealth + 0
+   0173 36 03         [10]  393 	ld	(hl), #0x03
+                            394 ;src/systems/hud.c:46: currentscore  = 0;
+   0175 21 00 00      [10]  395 	ld	hl, #0x0000
+   0178 22r01r00      [16]  396 	ld	(_currentscore), hl
+                            397 ;src/systems/hud.c:47: currenttime   = 90;
+   017B 21r03r00      [10]  398 	ld	hl,#_currenttime + 0
+   017E 36 5A         [10]  399 	ld	(hl), #0x5a
+                            400 ;src/systems/hud.c:48: currentlives  = 3;
+   0180 21r04r00      [10]  401 	ld	hl,#_currentlives + 0
+   0183 36 03         [10]  402 	ld	(hl), #0x03
+                            403 ;src/systems/hud.c:49: currentweapon = 0;
+   0185 21r05r00      [10]  404 	ld	hl,#_currentweapon + 0
+   0188 36 00         [10]  405 	ld	(hl), #0x00
+   018A C9            [10]  406 	ret
+                            407 ;src/systems/hud.c:52: void hudupdate(u8 lives, u16 score, u8 time, u8 weapon) {
+                            408 ;	---------------------------------
+                            409 ; Function hudupdate
+                            410 ; ---------------------------------
+   018B                     411 _hudupdate::
+                            412 ;src/systems/hud.c:53: currenthealth = lives;
+   018B 21 02 00      [10]  413 	ld	hl, #2+0
+   018E 39            [11]  414 	add	hl, sp
+   018F 7E            [ 7]  415 	ld	a, (hl)
+   0190 32r00r00      [13]  416 	ld	(#_currenthealth + 0),a
+                            417 ;src/systems/hud.c:54: currentscore  = score;
+   0193 21 03 00      [10]  418 	ld	hl, #3+0
+   0196 39            [11]  419 	add	hl, sp
+   0197 7E            [ 7]  420 	ld	a, (hl)
+   0198 32r01r00      [13]  421 	ld	(#_currentscore + 0),a
+   019B 21 04 00      [10]  422 	ld	hl, #3+1
+   019E 39            [11]  423 	add	hl, sp
+   019F 7E            [ 7]  424 	ld	a, (hl)
+   01A0 32r02r00      [13]  425 	ld	(#_currentscore + 1),a
+                            426 ;src/systems/hud.c:55: currenttime   = time;
+   01A3 21 05 00      [10]  427 	ld	hl, #5+0
+   01A6 39            [11]  428 	add	hl, sp
+   01A7 7E            [ 7]  429 	ld	a, (hl)
+   01A8 32r03r00      [13]  430 	ld	(#_currenttime + 0),a
+                            431 ;src/systems/hud.c:56: currentlives  = lives;
+   01AB 21 02 00      [10]  432 	ld	hl, #2+0
+   01AE 39            [11]  433 	add	hl, sp
+   01AF 7E            [ 7]  434 	ld	a, (hl)
+   01B0 32r04r00      [13]  435 	ld	(#_currentlives + 0),a
+                            436 ;src/systems/hud.c:57: currentweapon = weapon;
+   01B3 21 06 00      [10]  437 	ld	hl, #6+0
+   01B6 39            [11]  438 	add	hl, sp
+   01B7 7E            [ 7]  439 	ld	a, (hl)
+   01B8 32r05r00      [13]  440 	ld	(#_currentweapon + 0),a
+   01BB C9            [10]  441 	ret
+                            442 ;src/systems/hud.c:60: void hudrender(void) {
+                            443 ;	---------------------------------
+                            444 ; Function hudrender
+                            445 ; ---------------------------------
+   01BC                     446 _hudrender::
+                            447 ;src/systems/hud.c:66: for (i = 0; i < currenthealth; ++i) {
+   01BC 0E 00         [ 7]  448 	ld	c, #0x00
+   01BE                     449 00103$:
+   01BE 21r00r00      [10]  450 	ld	hl, #_currenthealth
+                            451 ;src/systems/hud.c:67: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, (i * 8), 2);
+   01C1 79            [ 4]  452 	ld	a,c
+   01C2 BE            [ 7]  453 	cp	a,(hl)
+   01C3 30 24         [12]  454 	jr	NC,00101$
+   01C5 07            [ 4]  455 	rlca
+   01C6 07            [ 4]  456 	rlca
+   01C7 07            [ 4]  457 	rlca
+   01C8 E6 F8         [ 7]  458 	and	a, #0xf8
+   01CA 47            [ 4]  459 	ld	b, a
+   01CB C5            [11]  460 	push	bc
+   01CC 3E 02         [ 7]  461 	ld	a, #0x02
+   01CE F5            [11]  462 	push	af
+   01CF 33            [ 6]  463 	inc	sp
+   01D0 C5            [11]  464 	push	bc
+   01D1 33            [ 6]  465 	inc	sp
+   01D2 21 00 C0      [10]  466 	ld	hl, #0xc000
+   01D5 E5            [11]  467 	push	hl
+   01D6 CDr00r00      [17]  468 	call	_cpct_getScreenPtr
+   01D9 11 08 08      [10]  469 	ld	de, #0x0808
+   01DC D5            [11]  470 	push	de
+   01DD E5            [11]  471 	push	hl
+   01DE 21rF0r00      [10]  472 	ld	hl, #_hudhealth
+   01E1 E5            [11]  473 	push	hl
+   01E2 CDr00r00      [17]  474 	call	_cpct_drawSprite
+   01E5 C1            [10]  475 	pop	bc
+                            476 ;src/systems/hud.c:66: for (i = 0; i < currenthealth; ++i) {
+   01E6 0C            [ 4]  477 	inc	c
+   01E7 18 D5         [12]  478 	jr	00103$
+   01E9                     479 00101$:
+                            480 ;src/systems/hud.c:71: scoretemp = currentscore;
+   01E9 2Ar01r00      [16]  481 	ld	hl, (_currentscore)
+                            482 ;src/systems/hud.c:72: hud_draw_digits(scoretemp, 4, 24, 2);
+   01EC 01 18 02      [10]  483 	ld	bc, #0x0218
+   01EF C5            [11]  484 	push	bc
+   01F0 3E 04         [ 7]  485 	ld	a, #0x04
+   01F2 F5            [11]  486 	push	af
+   01F3 33            [ 6]  487 	inc	sp
+   01F4 E5            [11]  488 	push	hl
+   01F5 CDr44r00      [17]  489 	call	_hud_draw_digits
+   01F8 F1            [10]  490 	pop	af
+   01F9 F1            [10]  491 	pop	af
+   01FA 33            [ 6]  492 	inc	sp
+                            493 ;src/systems/hud.c:74: timetemp = currenttime;
+   01FB 21r03r00      [10]  494 	ld	hl,#_currenttime + 0
+   01FE 4E            [ 7]  495 	ld	c, (hl)
+                            496 ;src/systems/hud.c:75: hud_draw_digits((u16)timetemp, 3, 56, 2);
+   01FF 06 00         [ 7]  497 	ld	b, #0x00
+   0201 21 38 02      [10]  498 	ld	hl, #0x0238
+   0204 E5            [11]  499 	push	hl
+   0205 3E 03         [ 7]  500 	ld	a, #0x03
+   0207 F5            [11]  501 	push	af
+   0208 33            [ 6]  502 	inc	sp
+   0209 C5            [11]  503 	push	bc
+   020A CDr44r00      [17]  504 	call	_hud_draw_digits
+   020D F1            [10]  505 	pop	af
+                            506 ;src/systems/hud.c:77: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 2, 180);
+   020E 33            [ 6]  507 	inc	sp
+   020F 21 02 B4      [10]  508 	ld	hl,#0xb402
+   0212 E3            [19]  509 	ex	(sp),hl
+   0213 21 00 C0      [10]  510 	ld	hl, #0xc000
+   0216 E5            [11]  511 	push	hl
+   0217 CDr00r00      [17]  512 	call	_cpct_getScreenPtr
+                            513 ;src/systems/hud.c:78: cpct_drawSprite((u8*)hudlives, pvmem, 8, 8);
+   021A 01r30r01      [10]  514 	ld	bc, #_hudlives+0
+   021D 11 08 08      [10]  515 	ld	de, #0x0808
+   0220 D5            [11]  516 	push	de
+   0221 E5            [11]  517 	push	hl
+   0222 C5            [11]  518 	push	bc
+   0223 CDr00r00      [17]  519 	call	_cpct_drawSprite
+                            520 ;src/systems/hud.c:80: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 12, 180);
+   0226 21 0C B4      [10]  521 	ld	hl, #0xb40c
+   0229 E5            [11]  522 	push	hl
+   022A 21 00 C0      [10]  523 	ld	hl, #0xc000
+   022D E5            [11]  524 	push	hl
+   022E CDr00r00      [17]  525 	call	_cpct_getScreenPtr
+                            526 ;src/systems/hud.c:81: cpct_drawSprite((u8*)hud_get_number_sprite(currentlives % 10), pvmem, 8, 8);
+   0231 E5            [11]  527 	push	hl
+   0232 3E 0A         [ 7]  528 	ld	a, #0x0a
+   0234 F5            [11]  529 	push	af
+   0235 33            [ 6]  530 	inc	sp
+   0236 3Ar04r00      [13]  531 	ld	a, (_currentlives)
+   0239 F5            [11]  532 	push	af
+   023A 33            [ 6]  533 	inc	sp
+   023B CDr00r00      [17]  534 	call	__moduchar
+   023E F1            [10]  535 	pop	af
+   023F 55            [ 4]  536 	ld	d, l
+   0240 D5            [11]  537 	push	de
+   0241 33            [ 6]  538 	inc	sp
+   0242 CDr00r00      [17]  539 	call	_hud_get_number_sprite
+   0245 33            [ 6]  540 	inc	sp
+   0246 C1            [10]  541 	pop	bc
+   0247 11 08 08      [10]  542 	ld	de, #0x0808
+   024A D5            [11]  543 	push	de
+   024B C5            [11]  544 	push	bc
+   024C E5            [11]  545 	push	hl
+   024D CDr00r00      [17]  546 	call	_cpct_drawSprite
+                            547 ;src/systems/hud.c:83: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 70, 180);
+   0250 21 46 B4      [10]  548 	ld	hl, #0xb446
+   0253 E5            [11]  549 	push	hl
+   0254 21 00 C0      [10]  550 	ld	hl, #0xc000
+   0257 E5            [11]  551 	push	hl
+   0258 CDr00r00      [17]  552 	call	_cpct_getScreenPtr
+                            553 ;src/systems/hud.c:84: cpct_drawSprite((u8*)hud_get_number_sprite(currentweapon % 10), pvmem, 8, 8);
+   025B E5            [11]  554 	push	hl
+   025C 3E 0A         [ 7]  555 	ld	a, #0x0a
+   025E F5            [11]  556 	push	af
+   025F 33            [ 6]  557 	inc	sp
+   0260 3Ar05r00      [13]  558 	ld	a, (_currentweapon)
+   0263 F5            [11]  559 	push	af
+   0264 33            [ 6]  560 	inc	sp
+   0265 CDr00r00      [17]  561 	call	__moduchar
+   0268 F1            [10]  562 	pop	af
+   0269 55            [ 4]  563 	ld	d, l
+   026A D5            [11]  564 	push	de
+   026B 33            [ 6]  565 	inc	sp
+   026C CDr00r00      [17]  566 	call	_hud_get_number_sprite
+   026F 33            [ 6]  567 	inc	sp
+   0270 C1            [10]  568 	pop	bc
+   0271 11 08 08      [10]  569 	ld	de, #0x0808
+   0274 D5            [11]  570 	push	de
+   0275 C5            [11]  571 	push	bc
+   0276 E5            [11]  572 	push	hl
+   0277 CDr00r00      [17]  573 	call	_cpct_drawSprite
+   027A C9            [10]  574 	ret
+                            575 	.area _CODE
+                            576 	.area _INITIALIZER
+                            577 	.area _CABS (ABS)

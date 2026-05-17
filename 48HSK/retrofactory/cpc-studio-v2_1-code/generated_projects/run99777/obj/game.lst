@@ -1,0 +1,1912 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module game
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _hudrender
+                             12 	.globl _hudupdate
+                             13 	.globl _hudinit
+                             14 	.globl _projectilerender
+                             15 	.globl _projectileupdate
+                             16 	.globl _projectilefire
+                             17 	.globl _projectileinit
+                             18 	.globl _enemydamage
+                             19 	.globl _enemyrender
+                             20 	.globl _enemyupdate
+                             21 	.globl _enemyspawn
+                             22 	.globl _enemyinit
+                             23 	.globl _playerrender
+                             24 	.globl _playerupdate
+                             25 	.globl _playerinit
+                             26 	.globl _collision_is_on_trap
+                             27 	.globl _collision_init
+                             28 	.globl _input_is_shoot_just_pressed
+                             29 	.globl _input_update
+                             30 	.globl _tilemap_goal_x
+                             31 	.globl _tilemap_ground_y
+                             32 	.globl _tilemap_render
+                             33 	.globl _tilemap_init
+                             34 	.globl _cpct_getScreenPtr
+                             35 	.globl _cpct_setPALColour
+                             36 	.globl _cpct_setPalette
+                             37 	.globl _cpct_setVideoMode
+                             38 	.globl _cpct_drawSolidBox
+                             39 	.globl _cpct_px2byteM0
+                             40 	.globl _cpct_memset
+                             41 	.globl _cpct_disableFirmware
+                             42 	.globl _game_init
+                             43 	.globl _game_update
+                             44 	.globl _game_render
+                             45 ;--------------------------------------------------------
+                             46 ; special function registers
+                             47 ;--------------------------------------------------------
+                             48 ;--------------------------------------------------------
+                             49 ; ram data
+                             50 ;--------------------------------------------------------
+                             51 	.area _DATA
+   0000                      52 _g_player:
+   0000                      53 	.ds 9
+   0009                      54 _g_enemies:
+   0009                      55 	.ds 66
+   004B                      56 _g_projectiles:
+   004B                      57 	.ds 60
+   0087                      58 _g_lives:
+   0087                      59 	.ds 1
+   0088                      60 _g_score:
+   0088                      61 	.ds 2
+   008A                      62 _g_timeleft:
+   008A                      63 	.ds 1
+   008B                      64 _g_weapondisplay:
+   008B                      65 	.ds 1
+   008C                      66 _g_currentwave:
+   008C                      67 	.ds 1
+   008D                      68 _g_aliveenemies:
+   008D                      69 	.ds 1
+   008E                      70 _g_wavecooldown:
+   008E                      71 	.ds 1
+   008F                      72 _g_damagecooldown:
+   008F                      73 	.ds 1
+   0090                      74 _g_shootcooldown:
+   0090                      75 	.ds 1
+   0091                      76 _g_victory:
+   0091                      77 	.ds 1
+   0092                      78 _g_gameover:
+   0092                      79 	.ds 1
+   0093                      80 _g_framecounter:
+   0093                      81 	.ds 2
+   0095                      82 _g_checkpointx:
+   0095                      83 	.ds 1
+   0096                      84 _g_checkpointy:
+   0096                      85 	.ds 1
+   0097                      86 _g_checkpointactive:
+   0097                      87 	.ds 1
+   0098                      88 _g_boss:
+   0098                      89 	.ds 11
+   00A3                      90 _g_bossactive:
+   00A3                      91 	.ds 1
+   00A4                      92 _g_bossphase:
+   00A4                      93 	.ds 1
+   00A5                      94 _g_weaponlevel:
+   00A5                      95 	.ds 1
+   00A6                      96 _g_pickuptaken:
+   00A6                      97 	.ds 1
+                             98 ;--------------------------------------------------------
+                             99 ; ram data
+                            100 ;--------------------------------------------------------
+                            101 	.area _INITIALIZED
+                            102 ;--------------------------------------------------------
+                            103 ; absolute external ram data
+                            104 ;--------------------------------------------------------
+                            105 	.area _DABS (ABS)
+                            106 ;--------------------------------------------------------
+                            107 ; global & static initialisations
+                            108 ;--------------------------------------------------------
+                            109 	.area _HOME
+                            110 	.area _GSINIT
+                            111 	.area _GSFINAL
+                            112 	.area _GSINIT
+                            113 ;--------------------------------------------------------
+                            114 ; Home
+                            115 ;--------------------------------------------------------
+                            116 	.area _HOME
+                            117 	.area _HOME
+                            118 ;--------------------------------------------------------
+                            119 ; code
+                            120 ;--------------------------------------------------------
+                            121 	.area _CODE
+                            122 ;src/game.c:41: static void reset_player_to_checkpoint(void) {
+                            123 ;	---------------------------------
+                            124 ; Function reset_player_to_checkpoint
+                            125 ; ---------------------------------
+   0000                     126 _reset_player_to_checkpoint:
+                            127 ;src/game.c:42: g_player.x = g_checkpointx;
+   0000 21r00r00      [10]  128 	ld	hl, #_g_player
+   0003 3Ar95r00      [13]  129 	ld	a,(#_g_checkpointx + 0)
+   0006 77            [ 7]  130 	ld	(hl), a
+                            131 ;src/game.c:43: g_player.y = g_checkpointy;
+   0007 21r01r00      [10]  132 	ld	hl, #(_g_player + 0x0001)
+   000A 3Ar96r00      [13]  133 	ld	a,(#_g_checkpointy + 0)
+   000D 77            [ 7]  134 	ld	(hl), a
+                            135 ;src/game.c:44: g_player.vx = 0;
+   000E 21r02r00      [10]  136 	ld	hl, #(_g_player + 0x0002)
+   0011 36 00         [10]  137 	ld	(hl), #0x00
+                            138 ;src/game.c:45: g_player.vy = 0;
+   0013 21r03r00      [10]  139 	ld	hl, #(_g_player + 0x0003)
+   0016 36 00         [10]  140 	ld	(hl), #0x00
+   0018 C9            [10]  141 	ret
+                            142 ;src/game.c:48: static u8 rect_overlap(i16 ax, i16 ay, u8 aw, u8 ah, i16 bx, i16 by, u8 bw, u8 bh) {
+                            143 ;	---------------------------------
+                            144 ; Function rect_overlap
+                            145 ; ---------------------------------
+   0019                     146 _rect_overlap:
+   0019 DD E5         [15]  147 	push	ix
+   001B DD 21 00 00   [14]  148 	ld	ix,#0
+   001F DD 39         [15]  149 	add	ix,sp
+                            150 ;src/game.c:49: if (ax + aw <= bx) return 0;
+   0021 DD 4E 08      [19]  151 	ld	c, 8 (ix)
+   0024 06 00         [ 7]  152 	ld	b, #0x00
+   0026 DD 6E 04      [19]  153 	ld	l,4 (ix)
+   0029 DD 66 05      [19]  154 	ld	h,5 (ix)
+   002C 09            [11]  155 	add	hl, bc
+   002D DD 7E 0A      [19]  156 	ld	a, 10 (ix)
+   0030 95            [ 4]  157 	sub	a, l
+   0031 DD 7E 0B      [19]  158 	ld	a, 11 (ix)
+   0034 9C            [ 4]  159 	sbc	a, h
+   0035 E2r3Ar00      [10]  160 	jp	PO, 00127$
+   0038 EE 80         [ 7]  161 	xor	a, #0x80
+   003A                     162 00127$:
+   003A FAr41r00      [10]  163 	jp	M, 00102$
+   003D 2E 00         [ 7]  164 	ld	l, #0x00
+   003F 18 62         [12]  165 	jr	00109$
+   0041                     166 00102$:
+                            167 ;src/game.c:50: if (bx + bw <= ax) return 0;
+   0041 DD 4E 0E      [19]  168 	ld	c, 14 (ix)
+   0044 06 00         [ 7]  169 	ld	b, #0x00
+   0046 DD 6E 0A      [19]  170 	ld	l,10 (ix)
+   0049 DD 66 0B      [19]  171 	ld	h,11 (ix)
+   004C 09            [11]  172 	add	hl, bc
+   004D DD 7E 04      [19]  173 	ld	a, 4 (ix)
+   0050 95            [ 4]  174 	sub	a, l
+   0051 DD 7E 05      [19]  175 	ld	a, 5 (ix)
+   0054 9C            [ 4]  176 	sbc	a, h
+   0055 E2r5Ar00      [10]  177 	jp	PO, 00128$
+   0058 EE 80         [ 7]  178 	xor	a, #0x80
+   005A                     179 00128$:
+   005A FAr61r00      [10]  180 	jp	M, 00104$
+   005D 2E 00         [ 7]  181 	ld	l, #0x00
+   005F 18 42         [12]  182 	jr	00109$
+   0061                     183 00104$:
+                            184 ;src/game.c:51: if (ay + ah <= by) return 0;
+   0061 DD 4E 09      [19]  185 	ld	c, 9 (ix)
+   0064 06 00         [ 7]  186 	ld	b, #0x00
+   0066 DD 6E 06      [19]  187 	ld	l,6 (ix)
+   0069 DD 66 07      [19]  188 	ld	h,7 (ix)
+   006C 09            [11]  189 	add	hl, bc
+   006D DD 7E 0C      [19]  190 	ld	a, 12 (ix)
+   0070 95            [ 4]  191 	sub	a, l
+   0071 DD 7E 0D      [19]  192 	ld	a, 13 (ix)
+   0074 9C            [ 4]  193 	sbc	a, h
+   0075 E2r7Ar00      [10]  194 	jp	PO, 00129$
+   0078 EE 80         [ 7]  195 	xor	a, #0x80
+   007A                     196 00129$:
+   007A FAr81r00      [10]  197 	jp	M, 00106$
+   007D 2E 00         [ 7]  198 	ld	l, #0x00
+   007F 18 22         [12]  199 	jr	00109$
+   0081                     200 00106$:
+                            201 ;src/game.c:52: if (by + bh <= ay) return 0;
+   0081 DD 4E 0F      [19]  202 	ld	c, 15 (ix)
+   0084 06 00         [ 7]  203 	ld	b, #0x00
+   0086 DD 6E 0C      [19]  204 	ld	l,12 (ix)
+   0089 DD 66 0D      [19]  205 	ld	h,13 (ix)
+   008C 09            [11]  206 	add	hl, bc
+   008D DD 7E 06      [19]  207 	ld	a, 6 (ix)
+   0090 95            [ 4]  208 	sub	a, l
+   0091 DD 7E 07      [19]  209 	ld	a, 7 (ix)
+   0094 9C            [ 4]  210 	sbc	a, h
+   0095 E2r9Ar00      [10]  211 	jp	PO, 00130$
+   0098 EE 80         [ 7]  212 	xor	a, #0x80
+   009A                     213 00130$:
+   009A FArA1r00      [10]  214 	jp	M, 00108$
+   009D 2E 00         [ 7]  215 	ld	l, #0x00
+   009F 18 02         [12]  216 	jr	00109$
+   00A1                     217 00108$:
+                            218 ;src/game.c:53: return 1;
+   00A1 2E 01         [ 7]  219 	ld	l, #0x01
+   00A3                     220 00109$:
+   00A3 DD E1         [14]  221 	pop	ix
+   00A5 C9            [10]  222 	ret
+                            223 ;src/game.c:56: static void spawn_wave(u8 wave) {
+                            224 ;	---------------------------------
+                            225 ; Function spawn_wave
+                            226 ; ---------------------------------
+   00A6                     227 _spawn_wave:
+   00A6 DD E5         [15]  228 	push	ix
+   00A8 DD 21 00 00   [14]  229 	ld	ix,#0
+   00AC DD 39         [15]  230 	add	ix,sp
+   00AE F5            [11]  231 	push	af
+   00AF F5            [11]  232 	push	af
+   00B0 3B            [ 6]  233 	dec	sp
+                            234 ;src/game.c:60: for (i = 0; i < MAX_ENEMIES; ++i) {
+   00B1 01r09r00      [10]  235 	ld	bc, #_g_enemies+0
+   00B4 1E 00         [ 7]  236 	ld	e, #0x00
+   00B6                     237 00117$:
+                            238 ;src/game.c:61: enemyinit(&g_enemies[i]);
+   00B6 D5            [11]  239 	push	de
+   00B7 16 00         [ 7]  240 	ld	d,#0x00
+   00B9 6B            [ 4]  241 	ld	l, e
+   00BA 62            [ 4]  242 	ld	h, d
+   00BB 29            [11]  243 	add	hl, hl
+   00BC 29            [11]  244 	add	hl, hl
+   00BD 19            [11]  245 	add	hl, de
+   00BE 29            [11]  246 	add	hl, hl
+   00BF 19            [11]  247 	add	hl, de
+   00C0 D1            [10]  248 	pop	de
+   00C1 09            [11]  249 	add	hl, bc
+   00C2 C5            [11]  250 	push	bc
+   00C3 D5            [11]  251 	push	de
+   00C4 E5            [11]  252 	push	hl
+   00C5 CDr00r00      [17]  253 	call	_enemyinit
+   00C8 F1            [10]  254 	pop	af
+   00C9 D1            [10]  255 	pop	de
+   00CA C1            [10]  256 	pop	bc
+                            257 ;src/game.c:60: for (i = 0; i < MAX_ENEMIES; ++i) {
+   00CB 1C            [ 4]  258 	inc	e
+   00CC 7B            [ 4]  259 	ld	a, e
+   00CD D6 06         [ 7]  260 	sub	a, #0x06
+   00CF 38 E5         [12]  261 	jr	C,00117$
+                            262 ;src/game.c:65: else if (wave == 1) count = 3;
+   00D1 DD 7E 04      [19]  263 	ld	a, 4 (ix)
+   00D4 3D            [ 4]  264 	dec	a
+   00D5 20 04         [12]  265 	jr	NZ,00190$
+   00D7 3E 01         [ 7]  266 	ld	a,#0x01
+   00D9 18 01         [12]  267 	jr	00191$
+   00DB                     268 00190$:
+   00DB AF            [ 4]  269 	xor	a,a
+   00DC                     270 00191$:
+   00DC 5F            [ 4]  271 	ld	e, a
+                            272 ;src/game.c:64: if (wave == 0) count = 2;
+   00DD DD 7E 04      [19]  273 	ld	a, 4 (ix)
+   00E0 B7            [ 4]  274 	or	a, a
+   00E1 20 06         [12]  275 	jr	NZ,00106$
+   00E3 DD 36 FB 02   [19]  276 	ld	-5 (ix), #0x02
+   00E7 18 0E         [12]  277 	jr	00107$
+   00E9                     278 00106$:
+                            279 ;src/game.c:65: else if (wave == 1) count = 3;
+   00E9 7B            [ 4]  280 	ld	a, e
+   00EA B7            [ 4]  281 	or	a, a
+   00EB 28 06         [12]  282 	jr	Z,00103$
+   00ED DD 36 FB 03   [19]  283 	ld	-5 (ix), #0x03
+   00F1 18 04         [12]  284 	jr	00107$
+   00F3                     285 00103$:
+                            286 ;src/game.c:66: else count = 4;
+   00F3 DD 36 FB 04   [19]  287 	ld	-5 (ix), #0x04
+   00F7                     288 00107$:
+                            289 ;src/game.c:68: if (count > MAX_ENEMIES) count = MAX_ENEMIES;
+   00F7 3E 06         [ 7]  290 	ld	a, #0x06
+   00F9 DD 96 FB      [19]  291 	sub	a, -5 (ix)
+   00FC 30 04         [12]  292 	jr	NC,00148$
+   00FE DD 36 FB 06   [19]  293 	ld	-5 (ix), #0x06
+                            294 ;src/game.c:70: for (i = 0; i < count; ++i) {
+   0102                     295 00148$:
+   0102 DD 73 FF      [19]  296 	ld	-1 (ix), e
+   0105 DD 36 FC 00   [19]  297 	ld	-4 (ix), #0x00
+   0109                     298 00120$:
+   0109 DD 7E FC      [19]  299 	ld	a, -4 (ix)
+   010C DD 96 FB      [19]  300 	sub	a, -5 (ix)
+   010F D2r9Dr01      [10]  301 	jp	NC, 00116$
+                            302 ;src/game.c:73: if (wave == 0) type = 0;
+   0112 DD 7E 04      [19]  303 	ld	a, 4 (ix)
+   0115 B7            [ 4]  304 	or	a,a
+   0116 20 03         [12]  305 	jr	NZ,00114$
+   0118 5F            [ 4]  306 	ld	e,a
+   0119 18 27         [12]  307 	jr	00115$
+   011B                     308 00114$:
+                            309 ;src/game.c:74: else if (wave == 1) type = (u8)((i == 0) ? 1 : 0);
+   011B DD 7E FF      [19]  310 	ld	a, -1 (ix)
+   011E B7            [ 4]  311 	or	a, a
+   011F 28 0E         [12]  312 	jr	Z,00111$
+   0121 DD 7E FC      [19]  313 	ld	a, -4 (ix)
+   0124 B7            [ 4]  314 	or	a, a
+   0125 20 04         [12]  315 	jr	NZ,00124$
+   0127 1E 01         [ 7]  316 	ld	e, #0x01
+   0129 18 17         [12]  317 	jr	00115$
+   012B                     318 00124$:
+   012B 1E 00         [ 7]  319 	ld	e, #0x00
+   012D 18 13         [12]  320 	jr	00115$
+   012F                     321 00111$:
+                            322 ;src/game.c:75: else type = (u8)((i == 0 || i == 3) ? 2 : 1);
+   012F DD 7E FC      [19]  323 	ld	a, -4 (ix)
+   0132 B7            [ 4]  324 	or	a, a
+   0133 28 07         [12]  325 	jr	Z,00129$
+   0135 DD 7E FC      [19]  326 	ld	a, -4 (ix)
+   0138 D6 03         [ 7]  327 	sub	a, #0x03
+   013A 20 04         [12]  328 	jr	NZ,00126$
+   013C                     329 00129$:
+   013C 1E 02         [ 7]  330 	ld	e, #0x02
+   013E 18 02         [12]  331 	jr	00127$
+   0140                     332 00126$:
+   0140 1E 01         [ 7]  333 	ld	e, #0x01
+   0142                     334 00127$:
+   0142                     335 00115$:
+                            336 ;src/game.c:77: spawn_y = (type == 2) ? 84 : 112;
+   0142 7B            [ 4]  337 	ld	a, e
+   0143 D6 02         [ 7]  338 	sub	a, #0x02
+   0145 20 04         [12]  339 	jr	NZ,00131$
+   0147 16 54         [ 7]  340 	ld	d, #0x54
+   0149 18 02         [12]  341 	jr	00132$
+   014B                     342 00131$:
+   014B 16 70         [ 7]  343 	ld	d, #0x70
+   014D                     344 00132$:
+                            345 ;src/game.c:78: enemyspawn(&g_enemies[i], (u8)(46 + (i * 8)), spawn_y, type, (u8)((i & 1) ? 1 : 0));
+   014D DD CB FC 46   [20]  346 	bit	0, -4 (ix)
+   0151 28 06         [12]  347 	jr	Z,00133$
+   0153 DD 36 FE 01   [19]  348 	ld	-2 (ix), #0x01
+   0157 18 04         [12]  349 	jr	00134$
+   0159                     350 00133$:
+   0159 DD 36 FE 00   [19]  351 	ld	-2 (ix), #0x00
+   015D                     352 00134$:
+   015D DD 7E FC      [19]  353 	ld	a, -4 (ix)
+   0160 07            [ 4]  354 	rlca
+   0161 07            [ 4]  355 	rlca
+   0162 07            [ 4]  356 	rlca
+   0163 E6 F8         [ 7]  357 	and	a, #0xf8
+   0165 C6 2E         [ 7]  358 	add	a, #0x2e
+   0167 DD 77 FD      [19]  359 	ld	-3 (ix), a
+   016A D5            [11]  360 	push	de
+   016B DD 5E FC      [19]  361 	ld	e,-4 (ix)
+   016E 16 00         [ 7]  362 	ld	d,#0x00
+   0170 6B            [ 4]  363 	ld	l, e
+   0171 62            [ 4]  364 	ld	h, d
+   0172 29            [11]  365 	add	hl, hl
+   0173 29            [11]  366 	add	hl, hl
+   0174 19            [11]  367 	add	hl, de
+   0175 29            [11]  368 	add	hl, hl
+   0176 19            [11]  369 	add	hl, de
+   0177 D1            [10]  370 	pop	de
+   0178 09            [11]  371 	add	hl, bc
+   0179 E5            [11]  372 	push	hl
+   017A FD E1         [14]  373 	pop	iy
+   017C C5            [11]  374 	push	bc
+   017D DD 7E FE      [19]  375 	ld	a, -2 (ix)
+   0180 F5            [11]  376 	push	af
+   0181 33            [ 6]  377 	inc	sp
+   0182 7B            [ 4]  378 	ld	a, e
+   0183 F5            [11]  379 	push	af
+   0184 33            [ 6]  380 	inc	sp
+   0185 D5            [11]  381 	push	de
+   0186 33            [ 6]  382 	inc	sp
+   0187 DD 7E FD      [19]  383 	ld	a, -3 (ix)
+   018A F5            [11]  384 	push	af
+   018B 33            [ 6]  385 	inc	sp
+   018C FD E5         [15]  386 	push	iy
+   018E CDr00r00      [17]  387 	call	_enemyspawn
+   0191 21 06 00      [10]  388 	ld	hl, #6
+   0194 39            [11]  389 	add	hl, sp
+   0195 F9            [ 6]  390 	ld	sp, hl
+   0196 C1            [10]  391 	pop	bc
+                            392 ;src/game.c:70: for (i = 0; i < count; ++i) {
+   0197 DD 34 FC      [23]  393 	inc	-4 (ix)
+   019A C3r09r01      [10]  394 	jp	00120$
+   019D                     395 00116$:
+                            396 ;src/game.c:81: g_aliveenemies = count;
+   019D DD 7E FB      [19]  397 	ld	a, -5 (ix)
+   01A0 32r8Dr00      [13]  398 	ld	(#_g_aliveenemies + 0),a
+   01A3 DD F9         [10]  399 	ld	sp, ix
+   01A5 DD E1         [14]  400 	pop	ix
+   01A7 C9            [10]  401 	ret
+                            402 ;src/game.c:84: static void spawn_boss(void) {
+                            403 ;	---------------------------------
+                            404 ; Function spawn_boss
+                            405 ; ---------------------------------
+   01A8                     406 _spawn_boss:
+                            407 ;src/game.c:85: enemyinit(&g_boss);
+   01A8 21r98r00      [10]  408 	ld	hl, #_g_boss
+   01AB E5            [11]  409 	push	hl
+   01AC CDr00r00      [17]  410 	call	_enemyinit
+   01AF F1            [10]  411 	pop	af
+                            412 ;src/game.c:86: enemyspawn(&g_boss, 68, 112, 1, 0);
+   01B0 21 01 00      [10]  413 	ld	hl, #0x0001
+   01B3 E5            [11]  414 	push	hl
+   01B4 21 44 70      [10]  415 	ld	hl, #0x7044
+   01B7 E5            [11]  416 	push	hl
+   01B8 21r98r00      [10]  417 	ld	hl, #_g_boss
+   01BB E5            [11]  418 	push	hl
+   01BC CDr00r00      [17]  419 	call	_enemyspawn
+   01BF 21 06 00      [10]  420 	ld	hl, #6
+   01C2 39            [11]  421 	add	hl, sp
+   01C3 F9            [ 6]  422 	ld	sp, hl
+                            423 ;src/game.c:87: g_boss.w = 10;
+   01C4 21r9Cr00      [10]  424 	ld	hl, #(_g_boss + 0x0004)
+   01C7 36 0A         [10]  425 	ld	(hl), #0x0a
+                            426 ;src/game.c:88: g_boss.h = 18;
+   01C9 21r9Dr00      [10]  427 	ld	hl, #(_g_boss + 0x0005)
+   01CC 36 12         [10]  428 	ld	(hl), #0x12
+                            429 ;src/game.c:89: g_boss.health = 10;
+   01CE 21r9Fr00      [10]  430 	ld	hl, #(_g_boss + 0x0007)
+   01D1 36 0A         [10]  431 	ld	(hl), #0x0a
+                            432 ;src/game.c:90: g_boss.reward = 1500;
+   01D3 21 DC 05      [10]  433 	ld	hl, #0x05dc
+   01D6 22rA0r00      [16]  434 	ld	((_g_boss + 0x0008)), hl
+                            435 ;src/game.c:91: g_boss.kind = 3;
+   01D9 21rA2r00      [10]  436 	ld	hl, #(_g_boss + 0x000a)
+   01DC 36 03         [10]  437 	ld	(hl), #0x03
+                            438 ;src/game.c:92: g_boss.vx = -1;
+   01DE 21r9Ar00      [10]  439 	ld	hl, #(_g_boss + 0x0002)
+   01E1 36 FF         [10]  440 	ld	(hl), #0xff
+                            441 ;src/game.c:93: g_bossactive = 1;
+   01E3 21rA3r00      [10]  442 	ld	hl,#_g_bossactive + 0
+   01E6 36 01         [10]  443 	ld	(hl), #0x01
+                            444 ;src/game.c:94: g_bossphase = 0;
+   01E8 21rA4r00      [10]  445 	ld	hl,#_g_bossphase + 0
+   01EB 36 00         [10]  446 	ld	(hl), #0x00
+   01ED C9            [10]  447 	ret
+                            448 ;src/game.c:97: static void try_fire_projectile(void) {
+                            449 ;	---------------------------------
+                            450 ; Function try_fire_projectile
+                            451 ; ---------------------------------
+   01EE                     452 _try_fire_projectile:
+   01EE DD E5         [15]  453 	push	ix
+   01F0 DD 21 00 00   [14]  454 	ld	ix,#0
+   01F4 DD 39         [15]  455 	add	ix,sp
+   01F6 F5            [11]  456 	push	af
+   01F7 3B            [ 6]  457 	dec	sp
+                            458 ;src/game.c:101: if (!input_is_shoot_just_pressed()) return;
+   01F8 CDr00r00      [17]  459 	call	_input_is_shoot_just_pressed
+   01FB 7D            [ 4]  460 	ld	a, l
+   01FC B7            [ 4]  461 	or	a, a
+   01FD CAr8Fr02      [10]  462 	jp	Z,00110$
+                            463 ;src/game.c:102: if (g_shootcooldown) return;
+   0200 3Ar90r00      [13]  464 	ld	a,(#_g_shootcooldown + 0)
+   0203 B7            [ 4]  465 	or	a, a
+   0204 C2r8Fr02      [10]  466 	jp	NZ,00110$
+                            467 ;src/game.c:104: dir = g_player.facing_left ? -3 : 3;
+   0207 3Ar07r00      [13]  468 	ld	a, (#_g_player + 7)
+   020A B7            [ 4]  469 	or	a, a
+   020B 28 04         [12]  470 	jr	Z,00112$
+   020D 0E FD         [ 7]  471 	ld	c, #0xfd
+   020F 18 02         [12]  472 	jr	00113$
+   0211                     473 00112$:
+   0211 0E 03         [ 7]  474 	ld	c, #0x03
+   0213                     475 00113$:
+                            476 ;src/game.c:106: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   0213 DD 36 FF 00   [19]  477 	ld	-1 (ix), #0x00
+   0217 06 00         [ 7]  478 	ld	b, #0x00
+   0219                     479 00108$:
+                            480 ;src/game.c:107: if (!g_projectiles[i].active) {
+   0219 58            [ 4]  481 	ld	e,b
+   021A 16 00         [ 7]  482 	ld	d,#0x00
+   021C 6B            [ 4]  483 	ld	l, e
+   021D 62            [ 4]  484 	ld	h, d
+   021E 29            [11]  485 	add	hl, hl
+   021F 29            [11]  486 	add	hl, hl
+   0220 19            [11]  487 	add	hl, de
+   0221 29            [11]  488 	add	hl, hl
+   0222 11r4Br00      [10]  489 	ld	de, #_g_projectiles
+   0225 19            [11]  490 	add	hl, de
+   0226 11 06 00      [10]  491 	ld	de, #0x0006
+   0229 19            [11]  492 	add	hl, de
+   022A 7E            [ 7]  493 	ld	a, (hl)
+   022B B7            [ 4]  494 	or	a, a
+   022C 20 58         [12]  495 	jr	NZ,00109$
+                            496 ;src/game.c:109: projectilefire(&g_projectiles[i], (u8)(g_player.x + 2), (u8)(g_player.y + 6), dir, g_weaponlevel > 0 ? 1 : 0);
+   022E 3ArA5r00      [13]  497 	ld	a,(#_g_weaponlevel + 0)
+   0231 B7            [ 4]  498 	or	a, a
+   0232 28 06         [12]  499 	jr	Z,00114$
+   0234 DD 36 FE 01   [19]  500 	ld	-2 (ix), #0x01
+   0238 18 04         [12]  501 	jr	00115$
+   023A                     502 00114$:
+   023A DD 36 FE 00   [19]  503 	ld	-2 (ix), #0x00
+   023E                     504 00115$:
+   023E 3Ar01r00      [13]  505 	ld	a, (#_g_player + 1)
+   0241 C6 06         [ 7]  506 	add	a, #0x06
+   0243 DD 77 FD      [19]  507 	ld	-3 (ix), a
+   0246 21r00r00      [10]  508 	ld	hl, #_g_player + 0
+   0249 46            [ 7]  509 	ld	b, (hl)
+   024A 04            [ 4]  510 	inc	b
+   024B 04            [ 4]  511 	inc	b
+   024C DD 5E FF      [19]  512 	ld	e,-1 (ix)
+   024F 16 00         [ 7]  513 	ld	d,#0x00
+   0251 6B            [ 4]  514 	ld	l, e
+   0252 62            [ 4]  515 	ld	h, d
+   0253 29            [11]  516 	add	hl, hl
+   0254 29            [11]  517 	add	hl, hl
+   0255 19            [11]  518 	add	hl, de
+   0256 29            [11]  519 	add	hl, hl
+   0257 11r4Br00      [10]  520 	ld	de, #_g_projectiles
+   025A 19            [11]  521 	add	hl, de
+   025B EB            [ 4]  522 	ex	de,hl
+   025C DD 7E FE      [19]  523 	ld	a, -2 (ix)
+   025F F5            [11]  524 	push	af
+   0260 33            [ 6]  525 	inc	sp
+   0261 79            [ 4]  526 	ld	a, c
+   0262 F5            [11]  527 	push	af
+   0263 33            [ 6]  528 	inc	sp
+   0264 DD 7E FD      [19]  529 	ld	a, -3 (ix)
+   0267 F5            [11]  530 	push	af
+   0268 33            [ 6]  531 	inc	sp
+   0269 C5            [11]  532 	push	bc
+   026A 33            [ 6]  533 	inc	sp
+   026B D5            [11]  534 	push	de
+   026C CDr00r00      [17]  535 	call	_projectilefire
+   026F 21 06 00      [10]  536 	ld	hl, #6
+   0272 39            [11]  537 	add	hl, sp
+   0273 F9            [ 6]  538 	ld	sp, hl
+                            539 ;src/game.c:110: g_shootcooldown = g_weaponlevel > 0 ? 4 : 8;
+   0274 3ArA5r00      [13]  540 	ld	a,(#_g_weaponlevel + 0)
+   0277 B7            [ 4]  541 	or	a, a
+   0278 28 04         [12]  542 	jr	Z,00116$
+   027A 0E 04         [ 7]  543 	ld	c, #0x04
+   027C 18 02         [12]  544 	jr	00117$
+   027E                     545 00116$:
+   027E 0E 08         [ 7]  546 	ld	c, #0x08
+   0280                     547 00117$:
+   0280 21r90r00      [10]  548 	ld	hl,#_g_shootcooldown + 0
+   0283 71            [ 7]  549 	ld	(hl), c
+                            550 ;src/game.c:111: break;
+   0284 18 09         [12]  551 	jr	00110$
+   0286                     552 00109$:
+                            553 ;src/game.c:106: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   0286 04            [ 4]  554 	inc	b
+   0287 DD 70 FF      [19]  555 	ld	-1 (ix), b
+   028A 78            [ 4]  556 	ld	a, b
+   028B D6 06         [ 7]  557 	sub	a, #0x06
+   028D 38 8A         [12]  558 	jr	C,00108$
+   028F                     559 00110$:
+   028F DD F9         [10]  560 	ld	sp, ix
+   0291 DD E1         [14]  561 	pop	ix
+   0293 C9            [10]  562 	ret
+                            563 ;src/game.c:116: static void register_player_hit(void) {
+                            564 ;	---------------------------------
+                            565 ; Function register_player_hit
+                            566 ; ---------------------------------
+   0294                     567 _register_player_hit:
+                            568 ;src/game.c:117: if (g_lives) {
+   0294 FD 21r87r00   [14]  569 	ld	iy, #_g_lives
+   0298 FD 7E 00      [19]  570 	ld	a, 0 (iy)
+   029B B7            [ 4]  571 	or	a, a
+   029C 28 03         [12]  572 	jr	Z,00102$
+                            573 ;src/game.c:118: g_lives--;
+   029E FD 35 00      [23]  574 	dec	0 (iy)
+   02A1                     575 00102$:
+                            576 ;src/game.c:120: if (g_lives == 0) {
+   02A1 3Ar87r00      [13]  577 	ld	a,(#_g_lives + 0)
+   02A4 B7            [ 4]  578 	or	a, a
+   02A5 20 06         [12]  579 	jr	NZ,00104$
+                            580 ;src/game.c:121: g_gameover = 1;
+   02A7 21r92r00      [10]  581 	ld	hl,#_g_gameover + 0
+   02AA 36 01         [10]  582 	ld	(hl), #0x01
+                            583 ;src/game.c:122: return;
+   02AC C9            [10]  584 	ret
+   02AD                     585 00104$:
+                            586 ;src/game.c:125: reset_player_to_checkpoint();
+   02AD CDr00r00      [17]  587 	call	_reset_player_to_checkpoint
+                            588 ;src/game.c:126: g_damagecooldown = 40;
+   02B0 21r8Fr00      [10]  589 	ld	hl,#_g_damagecooldown + 0
+   02B3 36 28         [10]  590 	ld	(hl), #0x28
+   02B5 C9            [10]  591 	ret
+                            592 ;src/game.c:129: void game_init(void) {
+                            593 ;	---------------------------------
+                            594 ; Function game_init
+                            595 ; ---------------------------------
+   02B6                     596 _game_init::
+                            597 ;src/game.c:132: cpct_disableFirmware();
+   02B6 CDr00r00      [17]  598 	call	_cpct_disableFirmware
+                            599 ;src/game.c:133: cpct_setVideoMode(0);
+   02B9 2E 00         [ 7]  600 	ld	l, #0x00
+   02BB CDr00r00      [17]  601 	call	_cpct_setVideoMode
+                            602 ;src/game.c:134: cpct_setPalette((u8*)gpalette, GPALETTE_SIZE);
+   02BE 21 10 00      [10]  603 	ld	hl, #0x0010
+   02C1 E5            [11]  604 	push	hl
+   02C2 21r00r00      [10]  605 	ld	hl, #_gpalette
+   02C5 E5            [11]  606 	push	hl
+   02C6 CDr00r00      [17]  607 	call	_cpct_setPalette
+                            608 ;src/game.c:135: cpct_setBorder(gpalette[0]);
+   02C9 21r00r00      [10]  609 	ld	hl, #_gpalette + 0
+   02CC 46            [ 7]  610 	ld	b, (hl)
+   02CD C5            [11]  611 	push	bc
+   02CE 33            [ 6]  612 	inc	sp
+   02CF 3E 10         [ 7]  613 	ld	a, #0x10
+   02D1 F5            [11]  614 	push	af
+   02D2 33            [ 6]  615 	inc	sp
+   02D3 CDr00r00      [17]  616 	call	_cpct_setPALColour
+                            617 ;src/game.c:136: cpct_clearScreen(0x00);
+   02D6 21 00 40      [10]  618 	ld	hl, #0x4000
+   02D9 E5            [11]  619 	push	hl
+   02DA AF            [ 4]  620 	xor	a, a
+   02DB F5            [11]  621 	push	af
+   02DC 33            [ 6]  622 	inc	sp
+   02DD 26 C0         [ 7]  623 	ld	h, #0xc0
+   02DF E5            [11]  624 	push	hl
+   02E0 CDr00r00      [17]  625 	call	_cpct_memset
+                            626 ;src/game.c:137: tilemap_init();
+   02E3 CDr00r00      [17]  627 	call	_tilemap_init
+                            628 ;src/game.c:138: collision_init();
+   02E6 CDr00r00      [17]  629 	call	_collision_init
+                            630 ;src/game.c:139: playerinit(&g_player);
+   02E9 21r00r00      [10]  631 	ld	hl, #_g_player
+   02EC E5            [11]  632 	push	hl
+   02ED CDr00r00      [17]  633 	call	_playerinit
+   02F0 F1            [10]  634 	pop	af
+                            635 ;src/game.c:140: hudinit();
+   02F1 CDr00r00      [17]  636 	call	_hudinit
+                            637 ;src/game.c:142: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   02F4 0E 00         [ 7]  638 	ld	c, #0x00
+   02F6                     639 00102$:
+                            640 ;src/game.c:143: projectileinit(&g_projectiles[i]);
+   02F6 06 00         [ 7]  641 	ld	b,#0x00
+   02F8 69            [ 4]  642 	ld	l, c
+   02F9 60            [ 4]  643 	ld	h, b
+   02FA 29            [11]  644 	add	hl, hl
+   02FB 29            [11]  645 	add	hl, hl
+   02FC 09            [11]  646 	add	hl, bc
+   02FD 29            [11]  647 	add	hl, hl
+   02FE 11r4Br00      [10]  648 	ld	de, #_g_projectiles
+   0301 19            [11]  649 	add	hl, de
+   0302 C5            [11]  650 	push	bc
+   0303 E5            [11]  651 	push	hl
+   0304 CDr00r00      [17]  652 	call	_projectileinit
+   0307 F1            [10]  653 	pop	af
+   0308 C1            [10]  654 	pop	bc
+                            655 ;src/game.c:142: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   0309 0C            [ 4]  656 	inc	c
+   030A 79            [ 4]  657 	ld	a, c
+   030B D6 06         [ 7]  658 	sub	a, #0x06
+   030D 38 E7         [12]  659 	jr	C,00102$
+                            660 ;src/game.c:146: g_lives = 3;
+   030F 21r87r00      [10]  661 	ld	hl,#_g_lives + 0
+   0312 36 03         [10]  662 	ld	(hl), #0x03
+                            663 ;src/game.c:147: g_score = 0;
+   0314 21 00 00      [10]  664 	ld	hl, #0x0000
+   0317 22r88r00      [16]  665 	ld	(_g_score), hl
+                            666 ;src/game.c:148: g_timeleft = 99;
+   031A FD 21r8Ar00   [14]  667 	ld	iy, #_g_timeleft
+   031E FD 36 00 63   [19]  668 	ld	0 (iy), #0x63
+                            669 ;src/game.c:149: g_weapondisplay = 1;
+   0322 FD 21r8Br00   [14]  670 	ld	iy, #_g_weapondisplay
+   0326 FD 36 00 01   [19]  671 	ld	0 (iy), #0x01
+                            672 ;src/game.c:150: g_currentwave = 0;
+   032A FD 21r8Cr00   [14]  673 	ld	iy, #_g_currentwave
+   032E FD 36 00 00   [19]  674 	ld	0 (iy), #0x00
+                            675 ;src/game.c:151: g_wavecooldown = 1;
+   0332 FD 21r8Er00   [14]  676 	ld	iy, #_g_wavecooldown
+   0336 FD 36 00 01   [19]  677 	ld	0 (iy), #0x01
+                            678 ;src/game.c:152: g_damagecooldown = 0;
+   033A FD 21r8Fr00   [14]  679 	ld	iy, #_g_damagecooldown
+   033E FD 36 00 00   [19]  680 	ld	0 (iy), #0x00
+                            681 ;src/game.c:153: g_shootcooldown = 0;
+   0342 FD 21r90r00   [14]  682 	ld	iy, #_g_shootcooldown
+   0346 FD 36 00 00   [19]  683 	ld	0 (iy), #0x00
+                            684 ;src/game.c:154: g_victory = 0;
+   034A FD 21r91r00   [14]  685 	ld	iy, #_g_victory
+   034E FD 36 00 00   [19]  686 	ld	0 (iy), #0x00
+                            687 ;src/game.c:155: g_gameover = 0;
+   0352 FD 21r92r00   [14]  688 	ld	iy, #_g_gameover
+   0356 FD 36 00 00   [19]  689 	ld	0 (iy), #0x00
+                            690 ;src/game.c:156: g_framecounter = 0;
+   035A 2E 00         [ 7]  691 	ld	l, #0x00
+   035C 22r93r00      [16]  692 	ld	(_g_framecounter), hl
+                            693 ;src/game.c:157: g_checkpointx = 20;
+   035F 21r95r00      [10]  694 	ld	hl,#_g_checkpointx + 0
+   0362 36 14         [10]  695 	ld	(hl), #0x14
+                            696 ;src/game.c:158: g_checkpointy = 120;
+   0364 21r96r00      [10]  697 	ld	hl,#_g_checkpointy + 0
+   0367 36 78         [10]  698 	ld	(hl), #0x78
+                            699 ;src/game.c:159: g_checkpointactive = 0;
+   0369 21r97r00      [10]  700 	ld	hl,#_g_checkpointactive + 0
+   036C 36 00         [10]  701 	ld	(hl), #0x00
+                            702 ;src/game.c:160: g_bossactive = 0;
+   036E 21rA3r00      [10]  703 	ld	hl,#_g_bossactive + 0
+   0371 36 00         [10]  704 	ld	(hl), #0x00
+                            705 ;src/game.c:161: g_weaponlevel = 0;
+   0373 21rA5r00      [10]  706 	ld	hl,#_g_weaponlevel + 0
+   0376 36 00         [10]  707 	ld	(hl), #0x00
+                            708 ;src/game.c:162: g_pickuptaken = 0;
+   0378 21rA6r00      [10]  709 	ld	hl,#_g_pickuptaken + 0
+   037B 36 00         [10]  710 	ld	(hl), #0x00
+                            711 ;src/game.c:163: enemyinit(&g_boss);
+   037D 21r98r00      [10]  712 	ld	hl, #_g_boss
+   0380 E5            [11]  713 	push	hl
+   0381 CDr00r00      [17]  714 	call	_enemyinit
+   0384 F1            [10]  715 	pop	af
+   0385 C9            [10]  716 	ret
+                            717 ;src/game.c:166: void game_update(void) {
+                            718 ;	---------------------------------
+                            719 ; Function game_update
+                            720 ; ---------------------------------
+   0386                     721 _game_update::
+   0386 DD E5         [15]  722 	push	ix
+   0388 DD 21 00 00   [14]  723 	ld	ix,#0
+   038C DD 39         [15]  724 	add	ix,sp
+   038E 21 E7 FF      [10]  725 	ld	hl, #-25
+   0391 39            [11]  726 	add	hl, sp
+   0392 F9            [ 6]  727 	ld	sp, hl
+                            728 ;src/game.c:170: input_update();
+   0393 CDr00r00      [17]  729 	call	_input_update
+                            730 ;src/game.c:172: if (g_gameover || g_victory) {
+   0396 3Ar92r00      [13]  731 	ld	a,(#_g_gameover + 0)
+   0399 B7            [ 4]  732 	or	a, a
+   039A 20 06         [12]  733 	jr	NZ,00101$
+   039C 3Ar91r00      [13]  734 	ld	a,(#_g_victory + 0)
+   039F B7            [ 4]  735 	or	a, a
+   03A0 28 1C         [12]  736 	jr	Z,00102$
+   03A2                     737 00101$:
+                            738 ;src/game.c:173: hudupdate(g_lives, g_score, g_timeleft, g_weapondisplay);
+   03A2 3Ar8Br00      [13]  739 	ld	a, (_g_weapondisplay)
+   03A5 F5            [11]  740 	push	af
+   03A6 33            [ 6]  741 	inc	sp
+   03A7 3Ar8Ar00      [13]  742 	ld	a, (_g_timeleft)
+   03AA F5            [11]  743 	push	af
+   03AB 33            [ 6]  744 	inc	sp
+   03AC 2Ar88r00      [16]  745 	ld	hl, (_g_score)
+   03AF E5            [11]  746 	push	hl
+   03B0 3Ar87r00      [13]  747 	ld	a, (_g_lives)
+   03B3 F5            [11]  748 	push	af
+   03B4 33            [ 6]  749 	inc	sp
+   03B5 CDr00r00      [17]  750 	call	_hudupdate
+   03B8 F1            [10]  751 	pop	af
+   03B9 F1            [10]  752 	pop	af
+   03BA 33            [ 6]  753 	inc	sp
+                            754 ;src/game.c:174: return;
+   03BB C3rA9r09      [10]  755 	jp	00181$
+   03BE                     756 00102$:
+                            757 ;src/game.c:177: playerupdate(&g_player);
+   03BE 21r00r00      [10]  758 	ld	hl, #_g_player
+   03C1 E5            [11]  759 	push	hl
+   03C2 CDr00r00      [17]  760 	call	_playerupdate
+   03C5 F1            [10]  761 	pop	af
+                            762 ;src/game.c:178: try_fire_projectile();
+   03C6 CDrEEr01      [17]  763 	call	_try_fire_projectile
+                            764 ;src/game.c:180: if (g_shootcooldown) g_shootcooldown--;
+   03C9 FD 21r90r00   [14]  765 	ld	iy, #_g_shootcooldown
+   03CD FD 7E 00      [19]  766 	ld	a, 0 (iy)
+   03D0 B7            [ 4]  767 	or	a, a
+   03D1 28 03         [12]  768 	jr	Z,00105$
+   03D3 FD 35 00      [23]  769 	dec	0 (iy)
+   03D6                     770 00105$:
+                            771 ;src/game.c:181: if (g_damagecooldown) g_damagecooldown--;
+   03D6 FD 21r8Fr00   [14]  772 	ld	iy, #_g_damagecooldown
+   03DA FD 7E 00      [19]  773 	ld	a, 0 (iy)
+   03DD B7            [ 4]  774 	or	a, a
+   03DE 28 03         [12]  775 	jr	Z,00192$
+   03E0 FD 35 00      [23]  776 	dec	0 (iy)
+                            777 ;src/game.c:183: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   03E3                     778 00192$:
+   03E3 0E 00         [ 7]  779 	ld	c, #0x00
+   03E5                     780 00174$:
+                            781 ;src/game.c:184: projectileupdate(&g_projectiles[i]);
+   03E5 06 00         [ 7]  782 	ld	b,#0x00
+   03E7 69            [ 4]  783 	ld	l, c
+   03E8 60            [ 4]  784 	ld	h, b
+   03E9 29            [11]  785 	add	hl, hl
+   03EA 29            [11]  786 	add	hl, hl
+   03EB 09            [11]  787 	add	hl, bc
+   03EC 29            [11]  788 	add	hl, hl
+   03ED 11r4Br00      [10]  789 	ld	de, #_g_projectiles
+   03F0 19            [11]  790 	add	hl, de
+   03F1 C5            [11]  791 	push	bc
+   03F2 E5            [11]  792 	push	hl
+   03F3 CDr00r00      [17]  793 	call	_projectileupdate
+   03F6 F1            [10]  794 	pop	af
+   03F7 C1            [10]  795 	pop	bc
+                            796 ;src/game.c:183: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   03F8 0C            [ 4]  797 	inc	c
+   03F9 79            [ 4]  798 	ld	a, c
+   03FA D6 06         [ 7]  799 	sub	a, #0x06
+   03FC 38 E7         [12]  800 	jr	C,00174$
+                            801 ;src/game.c:187: for (i = 0; i < MAX_ENEMIES; ++i) {
+   03FE 0E 00         [ 7]  802 	ld	c, #0x00
+   0400                     803 00176$:
+                            804 ;src/game.c:188: enemyupdate(&g_enemies[i]);
+   0400 06 00         [ 7]  805 	ld	b,#0x00
+   0402 69            [ 4]  806 	ld	l, c
+   0403 60            [ 4]  807 	ld	h, b
+   0404 29            [11]  808 	add	hl, hl
+   0405 29            [11]  809 	add	hl, hl
+   0406 09            [11]  810 	add	hl, bc
+   0407 29            [11]  811 	add	hl, hl
+   0408 09            [11]  812 	add	hl, bc
+   0409 11r09r00      [10]  813 	ld	de, #_g_enemies
+   040C 19            [11]  814 	add	hl, de
+   040D C5            [11]  815 	push	bc
+   040E E5            [11]  816 	push	hl
+   040F CDr00r00      [17]  817 	call	_enemyupdate
+   0412 F1            [10]  818 	pop	af
+   0413 C1            [10]  819 	pop	bc
+                            820 ;src/game.c:187: for (i = 0; i < MAX_ENEMIES; ++i) {
+   0414 0C            [ 4]  821 	inc	c
+   0415 79            [ 4]  822 	ld	a, c
+   0416 D6 06         [ 7]  823 	sub	a, #0x06
+   0418 38 E6         [12]  824 	jr	C,00176$
+                            825 ;src/game.c:191: if (g_bossactive) {
+   041A 3ArA3r00      [13]  826 	ld	a,(#_g_bossactive + 0)
+   041D B7            [ 4]  827 	or	a, a
+   041E 28 71         [12]  828 	jr	Z,00211$
+                            829 ;src/game.c:192: if (g_boss.health > 4) g_bossphase = 0;
+   0420 21r9Fr00      [10]  830 	ld	hl, #_g_boss + 7
+   0423 4E            [ 7]  831 	ld	c, (hl)
+   0424 3E 04         [ 7]  832 	ld	a, #0x04
+   0426 91            [ 4]  833 	sub	a, c
+   0427 30 07         [12]  834 	jr	NC,00111$
+   0429 21rA4r00      [10]  835 	ld	hl,#_g_bossphase + 0
+   042C 36 00         [10]  836 	ld	(hl), #0x00
+   042E 18 05         [12]  837 	jr	00112$
+   0430                     838 00111$:
+                            839 ;src/game.c:193: else g_bossphase = 1;
+   0430 21rA4r00      [10]  840 	ld	hl,#_g_bossphase + 0
+   0433 36 01         [10]  841 	ld	(hl), #0x01
+   0435                     842 00112$:
+                            843 ;src/game.c:195: g_boss.vx = (i8)(g_player.x + 2 < g_boss.x ? -(g_bossphase ? 2 : 1) : (g_bossphase ? 2 : 1));
+   0435 3Ar00r00      [13]  844 	ld	a,(#_g_player + 0)
+   0438 DD 77 FF      [19]  845 	ld	-1 (ix), a
+   043B DD 77 FD      [19]  846 	ld	-3 (ix), a
+   043E DD 36 FE 00   [19]  847 	ld	-2 (ix), #0x00
+   0442 DD 7E FD      [19]  848 	ld	a, -3 (ix)
+   0445 C6 02         [ 7]  849 	add	a, #0x02
+   0447 DD 77 FD      [19]  850 	ld	-3 (ix), a
+   044A DD 7E FE      [19]  851 	ld	a, -2 (ix)
+   044D CE 00         [ 7]  852 	adc	a, #0x00
+   044F DD 77 FE      [19]  853 	ld	-2 (ix), a
+   0452 21r98r00      [10]  854 	ld	hl, #_g_boss + 0
+   0455 4E            [ 7]  855 	ld	c, (hl)
+   0456 06 00         [ 7]  856 	ld	b, #0x00
+   0458 DD 7E FD      [19]  857 	ld	a, -3 (ix)
+   045B 91            [ 4]  858 	sub	a, c
+   045C DD 7E FE      [19]  859 	ld	a, -2 (ix)
+   045F 98            [ 4]  860 	sbc	a, b
+   0460 E2r65r04      [10]  861 	jp	PO, 00380$
+   0463 EE 80         [ 7]  862 	xor	a, #0x80
+   0465                     863 00380$:
+   0465 F2r79r04      [10]  864 	jp	P, 00183$
+   0468 3ArA4r00      [13]  865 	ld	a,(#_g_bossphase + 0)
+   046B B7            [ 4]  866 	or	a, a
+   046C 28 04         [12]  867 	jr	Z,00185$
+   046E 0E 02         [ 7]  868 	ld	c, #0x02
+   0470 18 02         [12]  869 	jr	00186$
+   0472                     870 00185$:
+   0472 0E 01         [ 7]  871 	ld	c, #0x01
+   0474                     872 00186$:
+   0474 AF            [ 4]  873 	xor	a, a
+   0475 91            [ 4]  874 	sub	a, c
+   0476 4F            [ 4]  875 	ld	c, a
+   0477 18 0C         [12]  876 	jr	00184$
+   0479                     877 00183$:
+   0479 3ArA4r00      [13]  878 	ld	a,(#_g_bossphase + 0)
+   047C B7            [ 4]  879 	or	a, a
+   047D 28 04         [12]  880 	jr	Z,00187$
+   047F 0E 02         [ 7]  881 	ld	c, #0x02
+   0481 18 02         [12]  882 	jr	00188$
+   0483                     883 00187$:
+   0483 0E 01         [ 7]  884 	ld	c, #0x01
+   0485                     885 00188$:
+   0485                     886 00184$:
+   0485 21r9Ar00      [10]  887 	ld	hl, #(_g_boss + 0x0002)
+   0488 71            [ 7]  888 	ld	(hl), c
+                            889 ;src/game.c:196: enemyupdate(&g_boss);
+   0489 21r98r00      [10]  890 	ld	hl, #_g_boss
+   048C E5            [11]  891 	push	hl
+   048D CDr00r00      [17]  892 	call	_enemyupdate
+   0490 F1            [10]  893 	pop	af
+                            894 ;src/game.c:199: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   0491                     895 00211$:
+   0491 0E 00         [ 7]  896 	ld	c, #0x00
+   0493                     897 00179$:
+                            898 ;src/game.c:200: if (!g_projectiles[i].active) continue;
+   0493 06 00         [ 7]  899 	ld	b,#0x00
+   0495 69            [ 4]  900 	ld	l, c
+   0496 60            [ 4]  901 	ld	h, b
+   0497 29            [11]  902 	add	hl, hl
+   0498 29            [11]  903 	add	hl, hl
+   0499 09            [11]  904 	add	hl, bc
+   049A 29            [11]  905 	add	hl, hl
+   049B EB            [ 4]  906 	ex	de,hl
+   049C 21r4Br00      [10]  907 	ld	hl, #_g_projectiles
+   049F 19            [11]  908 	add	hl,de
+   04A0 EB            [ 4]  909 	ex	de,hl
+   04A1 21 06 00      [10]  910 	ld	hl, #0x0006
+   04A4 19            [11]  911 	add	hl,de
+   04A5 DD 75 FD      [19]  912 	ld	-3 (ix), l
+   04A8 DD 74 FE      [19]  913 	ld	-2 (ix), h
+   04AB 7E            [ 7]  914 	ld	a, (hl)
+   04AC B7            [ 4]  915 	or	a, a
+   04AD CArCEr06      [10]  916 	jp	Z, 00133$
+                            917 ;src/game.c:201: for (j = 0; j < MAX_ENEMIES; ++j) {
+   04B0 DD 36 E7 00   [19]  918 	ld	-25 (ix), #0x00
+   04B4                     919 00178$:
+                            920 ;src/game.c:202: if (!g_enemies[j].active) continue;
+   04B4 D5            [11]  921 	push	de
+   04B5 DD 5E E7      [19]  922 	ld	e,-25 (ix)
+   04B8 16 00         [ 7]  923 	ld	d,#0x00
+   04BA 6B            [ 4]  924 	ld	l, e
+   04BB 62            [ 4]  925 	ld	h, d
+   04BC 29            [11]  926 	add	hl, hl
+   04BD 29            [11]  927 	add	hl, hl
+   04BE 19            [11]  928 	add	hl, de
+   04BF 29            [11]  929 	add	hl, hl
+   04C0 19            [11]  930 	add	hl, de
+   04C1 D1            [10]  931 	pop	de
+   04C2 3Er09         [ 7]  932 	ld	a, #<(_g_enemies)
+   04C4 85            [ 4]  933 	add	a, l
+   04C5 DD 77 FB      [19]  934 	ld	-5 (ix), a
+   04C8 3Es00         [ 7]  935 	ld	a, #>(_g_enemies)
+   04CA 8C            [ 4]  936 	adc	a, h
+   04CB DD 77 FC      [19]  937 	ld	-4 (ix), a
+   04CE DD 6E FB      [19]  938 	ld	l,-5 (ix)
+   04D1 DD 66 FC      [19]  939 	ld	h,-4 (ix)
+   04D4 C5            [11]  940 	push	bc
+   04D5 01 06 00      [10]  941 	ld	bc, #0x0006
+   04D8 09            [11]  942 	add	hl, bc
+   04D9 C1            [10]  943 	pop	bc
+   04DA 46            [ 7]  944 	ld	b, (hl)
+                            945 ;src/game.c:203: if (!rect_overlap((i16)g_projectiles[i].x, (i16)g_projectiles[i].y, g_projectiles[i].w, g_projectiles[i].h,
+   04DB 21 05 00      [10]  946 	ld	hl, #0x0005
+   04DE 19            [11]  947 	add	hl,de
+   04DF DD 75 F9      [19]  948 	ld	-7 (ix), l
+   04E2 DD 74 FA      [19]  949 	ld	-6 (ix), h
+   04E5 21 04 00      [10]  950 	ld	hl, #0x0004
+   04E8 19            [11]  951 	add	hl,de
+   04E9 DD 75 F7      [19]  952 	ld	-9 (ix), l
+   04EC DD 74 F8      [19]  953 	ld	-8 (ix), h
+   04EF 21 01 00      [10]  954 	ld	hl, #0x0001
+   04F2 19            [11]  955 	add	hl,de
+   04F3 DD 75 F5      [19]  956 	ld	-11 (ix), l
+   04F6 DD 74 F6      [19]  957 	ld	-10 (ix), h
+                            958 ;src/game.c:205: if (enemydamage(&g_enemies[j], g_projectiles[i].damage)) {
+   04F9 21 07 00      [10]  959 	ld	hl, #0x0007
+   04FC 19            [11]  960 	add	hl,de
+   04FD DD 75 F3      [19]  961 	ld	-13 (ix), l
+   0500 DD 74 F4      [19]  962 	ld	-12 (ix), h
+                            963 ;src/game.c:202: if (!g_enemies[j].active) continue;
+   0503 78            [ 4]  964 	ld	a, b
+   0504 B7            [ 4]  965 	or	a, a
+   0505 CArFEr05      [10]  966 	jp	Z, 00125$
+                            967 ;src/game.c:204: (i16)g_enemies[j].x, (i16)g_enemies[j].y, g_enemies[j].w, g_enemies[j].h)) continue;
+   0508 DD 6E FB      [19]  968 	ld	l,-5 (ix)
+   050B DD 66 FC      [19]  969 	ld	h,-4 (ix)
+   050E 23            [ 6]  970 	inc	hl
+   050F 23            [ 6]  971 	inc	hl
+   0510 23            [ 6]  972 	inc	hl
+   0511 23            [ 6]  973 	inc	hl
+   0512 23            [ 6]  974 	inc	hl
+   0513 7E            [ 7]  975 	ld	a, (hl)
+   0514 DD 77 FF      [19]  976 	ld	-1 (ix), a
+   0517 DD 6E FB      [19]  977 	ld	l,-5 (ix)
+   051A DD 66 FC      [19]  978 	ld	h,-4 (ix)
+   051D 23            [ 6]  979 	inc	hl
+   051E 23            [ 6]  980 	inc	hl
+   051F 23            [ 6]  981 	inc	hl
+   0520 23            [ 6]  982 	inc	hl
+   0521 7E            [ 7]  983 	ld	a, (hl)
+   0522 DD 77 F2      [19]  984 	ld	-14 (ix), a
+   0525 DD 6E FB      [19]  985 	ld	l,-5 (ix)
+   0528 DD 66 FC      [19]  986 	ld	h,-4 (ix)
+   052B 23            [ 6]  987 	inc	hl
+   052C 46            [ 7]  988 	ld	b, (hl)
+   052D DD 70 F0      [19]  989 	ld	-16 (ix), b
+   0530 DD 36 F1 00   [19]  990 	ld	-15 (ix), #0x00
+   0534 DD 6E FB      [19]  991 	ld	l,-5 (ix)
+   0537 DD 66 FC      [19]  992 	ld	h,-4 (ix)
+   053A 46            [ 7]  993 	ld	b, (hl)
+   053B DD 70 EE      [19]  994 	ld	-18 (ix), b
+   053E DD 36 EF 00   [19]  995 	ld	-17 (ix), #0x00
+                            996 ;src/game.c:203: if (!rect_overlap((i16)g_projectiles[i].x, (i16)g_projectiles[i].y, g_projectiles[i].w, g_projectiles[i].h,
+   0542 DD 6E F9      [19]  997 	ld	l,-7 (ix)
+   0545 DD 66 FA      [19]  998 	ld	h,-6 (ix)
+   0548 7E            [ 7]  999 	ld	a, (hl)
+   0549 DD 77 ED      [19] 1000 	ld	-19 (ix), a
+   054C DD 6E F7      [19] 1001 	ld	l,-9 (ix)
+   054F DD 66 F8      [19] 1002 	ld	h,-8 (ix)
+   0552 46            [ 7] 1003 	ld	b, (hl)
+   0553 DD 6E F5      [19] 1004 	ld	l,-11 (ix)
+   0556 DD 66 F6      [19] 1005 	ld	h,-10 (ix)
+   0559 6E            [ 7] 1006 	ld	l, (hl)
+   055A DD 75 EB      [19] 1007 	ld	-21 (ix), l
+   055D DD 36 EC 00   [19] 1008 	ld	-20 (ix), #0x00
+   0561 1A            [ 7] 1009 	ld	a, (de)
+   0562 DD 77 E9      [19] 1010 	ld	-23 (ix), a
+   0565 DD 36 EA 00   [19] 1011 	ld	-22 (ix), #0x00
+   0569 C5            [11] 1012 	push	bc
+   056A D5            [11] 1013 	push	de
+   056B DD 66 FF      [19] 1014 	ld	h, -1 (ix)
+   056E DD 6E F2      [19] 1015 	ld	l, -14 (ix)
+   0571 E5            [11] 1016 	push	hl
+   0572 DD 6E F0      [19] 1017 	ld	l,-16 (ix)
+   0575 DD 66 F1      [19] 1018 	ld	h,-15 (ix)
+   0578 E5            [11] 1019 	push	hl
+   0579 DD 6E EE      [19] 1020 	ld	l,-18 (ix)
+   057C DD 66 EF      [19] 1021 	ld	h,-17 (ix)
+   057F E5            [11] 1022 	push	hl
+   0580 DD 7E ED      [19] 1023 	ld	a, -19 (ix)
+   0583 F5            [11] 1024 	push	af
+   0584 33            [ 6] 1025 	inc	sp
+   0585 C5            [11] 1026 	push	bc
+   0586 33            [ 6] 1027 	inc	sp
+   0587 DD 6E EB      [19] 1028 	ld	l,-21 (ix)
+   058A DD 66 EC      [19] 1029 	ld	h,-20 (ix)
+   058D E5            [11] 1030 	push	hl
+   058E DD 6E E9      [19] 1031 	ld	l,-23 (ix)
+   0591 DD 66 EA      [19] 1032 	ld	h,-22 (ix)
+   0594 E5            [11] 1033 	push	hl
+   0595 CDr19r00      [17] 1034 	call	_rect_overlap
+   0598 FD 21 0C 00   [14] 1035 	ld	iy, #12
+   059C FD 39         [15] 1036 	add	iy, sp
+   059E FD F9         [10] 1037 	ld	sp, iy
+   05A0 D1            [10] 1038 	pop	de
+   05A1 C1            [10] 1039 	pop	bc
+   05A2 7D            [ 4] 1040 	ld	a, l
+   05A3 B7            [ 4] 1041 	or	a, a
+   05A4 28 58         [12] 1042 	jr	Z,00125$
+                           1043 ;src/game.c:205: if (enemydamage(&g_enemies[j], g_projectiles[i].damage)) {
+   05A6 DD 6E F3      [19] 1044 	ld	l,-13 (ix)
+   05A9 DD 66 F4      [19] 1045 	ld	h,-12 (ix)
+   05AC 66            [ 7] 1046 	ld	h, (hl)
+   05AD DD 6E FB      [19] 1047 	ld	l, -5 (ix)
+   05B0 DD 46 FC      [19] 1048 	ld	b, -4 (ix)
+   05B3 C5            [11] 1049 	push	bc
+   05B4 D5            [11] 1050 	push	de
+   05B5 E5            [11] 1051 	push	hl
+   05B6 33            [ 6] 1052 	inc	sp
+   05B7 60            [ 4] 1053 	ld	h, b
+   05B8 E5            [11] 1054 	push	hl
+   05B9 CDr00r00      [17] 1055 	call	_enemydamage
+   05BC F1            [10] 1056 	pop	af
+   05BD 33            [ 6] 1057 	inc	sp
+   05BE D1            [10] 1058 	pop	de
+   05BF C1            [10] 1059 	pop	bc
+   05C0 7D            [ 4] 1060 	ld	a, l
+   05C1 B7            [ 4] 1061 	or	a, a
+   05C2 28 30         [12] 1062 	jr	Z,00124$
+                           1063 ;src/game.c:206: g_score = (u16)(g_score + g_enemies[j].reward);
+   05C4 DD 6E FB      [19] 1064 	ld	l,-5 (ix)
+   05C7 DD 66 FC      [19] 1065 	ld	h,-4 (ix)
+   05CA C5            [11] 1066 	push	bc
+   05CB 01 08 00      [10] 1067 	ld	bc, #0x0008
+   05CE 09            [11] 1068 	add	hl, bc
+   05CF C1            [10] 1069 	pop	bc
+   05D0 7E            [ 7] 1070 	ld	a, (hl)
+   05D1 DD 77 E9      [19] 1071 	ld	-23 (ix), a
+   05D4 23            [ 6] 1072 	inc	hl
+   05D5 7E            [ 7] 1073 	ld	a, (hl)
+   05D6 DD 77 EA      [19] 1074 	ld	-22 (ix), a
+   05D9 21r88r00      [10] 1075 	ld	hl, #_g_score
+   05DC 7E            [ 7] 1076 	ld	a, (hl)
+   05DD DD 86 E9      [19] 1077 	add	a, -23 (ix)
+   05E0 77            [ 7] 1078 	ld	(hl), a
+   05E1 23            [ 6] 1079 	inc	hl
+   05E2 7E            [ 7] 1080 	ld	a, (hl)
+   05E3 DD 8E EA      [19] 1081 	adc	a, -22 (ix)
+   05E6 77            [ 7] 1082 	ld	(hl), a
+                           1083 ;src/game.c:207: if (g_aliveenemies) g_aliveenemies--;
+   05E7 FD 21r8Dr00   [14] 1084 	ld	iy, #_g_aliveenemies
+   05EB FD 7E 00      [19] 1085 	ld	a, 0 (iy)
+   05EE B7            [ 4] 1086 	or	a, a
+   05EF 28 03         [12] 1087 	jr	Z,00124$
+   05F1 FD 35 00      [23] 1088 	dec	0 (iy)
+   05F4                    1089 00124$:
+                           1090 ;src/game.c:209: g_projectiles[i].active = 0;
+   05F4 DD 6E FD      [19] 1091 	ld	l,-3 (ix)
+   05F7 DD 66 FE      [19] 1092 	ld	h,-2 (ix)
+   05FA 36 00         [10] 1093 	ld	(hl), #0x00
+                           1094 ;src/game.c:210: break;
+   05FC 18 0B         [12] 1095 	jr	00126$
+   05FE                    1096 00125$:
+                           1097 ;src/game.c:201: for (j = 0; j < MAX_ENEMIES; ++j) {
+   05FE DD 34 E7      [23] 1098 	inc	-25 (ix)
+   0601 DD 7E E7      [19] 1099 	ld	a, -25 (ix)
+   0604 D6 06         [ 7] 1100 	sub	a, #0x06
+   0606 DArB4r04      [10] 1101 	jp	C, 00178$
+   0609                    1102 00126$:
+                           1103 ;src/game.c:213: if (g_bossactive && g_projectiles[i].active && rect_overlap((i16)g_projectiles[i].x, (i16)g_projectiles[i].y, g_projectiles[i].w, g_projectiles[i].h,
+   0609 3ArA3r00      [13] 1104 	ld	a,(#_g_bossactive + 0)
+   060C B7            [ 4] 1105 	or	a, a
+   060D CArCEr06      [10] 1106 	jp	Z, 00133$
+   0610 DD 6E FD      [19] 1107 	ld	l,-3 (ix)
+   0613 DD 66 FE      [19] 1108 	ld	h,-2 (ix)
+   0616 7E            [ 7] 1109 	ld	a, (hl)
+   0617 B7            [ 4] 1110 	or	a, a
+   0618 CArCEr06      [10] 1111 	jp	Z, 00133$
+                           1112 ;src/game.c:214: (i16)g_boss.x, (i16)g_boss.y, g_boss.w, g_boss.h)) {
+   061B 21r9Dr00      [10] 1113 	ld	hl, #(_g_boss + 0x0005) + 0
+   061E 46            [ 7] 1114 	ld	b, (hl)
+   061F 3Ar9Cr00      [13] 1115 	ld	a, (#(_g_boss + 0x0004) + 0)
+   0622 21r99r00      [10] 1116 	ld	hl, #(_g_boss + 0x0001) + 0
+   0625 6E            [ 7] 1117 	ld	l, (hl)
+   0626 DD 75 E9      [19] 1118 	ld	-23 (ix), l
+   0629 DD 36 EA 00   [19] 1119 	ld	-22 (ix), #0x00
+   062D 21r98r00      [10] 1120 	ld	hl, #_g_boss + 0
+   0630 6E            [ 7] 1121 	ld	l, (hl)
+   0631 DD 75 EB      [19] 1122 	ld	-21 (ix), l
+   0634 DD 36 EC 00   [19] 1123 	ld	-20 (ix), #0x00
+                           1124 ;src/game.c:213: if (g_bossactive && g_projectiles[i].active && rect_overlap((i16)g_projectiles[i].x, (i16)g_projectiles[i].y, g_projectiles[i].w, g_projectiles[i].h,
+   0638 DD 6E F9      [19] 1125 	ld	l,-7 (ix)
+   063B DD 66 FA      [19] 1126 	ld	h,-6 (ix)
+   063E F5            [11] 1127 	push	af
+   063F 7E            [ 7] 1128 	ld	a, (hl)
+   0640 DD 77 ED      [19] 1129 	ld	-19 (ix), a
+   0643 F1            [10] 1130 	pop	af
+   0644 DD 6E F7      [19] 1131 	ld	l,-9 (ix)
+   0647 DD 66 F8      [19] 1132 	ld	h,-8 (ix)
+   064A F5            [11] 1133 	push	af
+   064B 7E            [ 7] 1134 	ld	a, (hl)
+   064C DD 77 EE      [19] 1135 	ld	-18 (ix), a
+   064F F1            [10] 1136 	pop	af
+   0650 DD 6E F5      [19] 1137 	ld	l,-11 (ix)
+   0653 DD 66 F6      [19] 1138 	ld	h,-10 (ix)
+   0656 6E            [ 7] 1139 	ld	l, (hl)
+   0657 DD 75 F0      [19] 1140 	ld	-16 (ix), l
+   065A DD 36 F1 00   [19] 1141 	ld	-15 (ix), #0x00
+   065E F5            [11] 1142 	push	af
+   065F 1A            [ 7] 1143 	ld	a, (de)
+   0660 5F            [ 4] 1144 	ld	e, a
+   0661 F1            [10] 1145 	pop	af
+   0662 16 00         [ 7] 1146 	ld	d, #0x00
+   0664 C5            [11] 1147 	push	bc
+   0665 C5            [11] 1148 	push	bc
+   0666 33            [ 6] 1149 	inc	sp
+   0667 F5            [11] 1150 	push	af
+   0668 33            [ 6] 1151 	inc	sp
+   0669 DD 6E E9      [19] 1152 	ld	l,-23 (ix)
+   066C DD 66 EA      [19] 1153 	ld	h,-22 (ix)
+   066F E5            [11] 1154 	push	hl
+   0670 DD 6E EB      [19] 1155 	ld	l,-21 (ix)
+   0673 DD 66 EC      [19] 1156 	ld	h,-20 (ix)
+   0676 E5            [11] 1157 	push	hl
+   0677 DD 66 ED      [19] 1158 	ld	h, -19 (ix)
+   067A DD 6E EE      [19] 1159 	ld	l, -18 (ix)
+   067D E5            [11] 1160 	push	hl
+   067E DD 6E F0      [19] 1161 	ld	l,-16 (ix)
+   0681 DD 66 F1      [19] 1162 	ld	h,-15 (ix)
+   0684 E5            [11] 1163 	push	hl
+   0685 D5            [11] 1164 	push	de
+   0686 CDr19r00      [17] 1165 	call	_rect_overlap
+   0689 FD 21 0C 00   [14] 1166 	ld	iy, #12
+   068D FD 39         [15] 1167 	add	iy, sp
+   068F FD F9         [10] 1168 	ld	sp, iy
+   0691 C1            [10] 1169 	pop	bc
+   0692 7D            [ 4] 1170 	ld	a, l
+   0693 B7            [ 4] 1171 	or	a, a
+   0694 28 38         [12] 1172 	jr	Z,00133$
+                           1173 ;src/game.c:215: g_projectiles[i].active = 0;
+   0696 DD 6E FD      [19] 1174 	ld	l,-3 (ix)
+   0699 DD 66 FE      [19] 1175 	ld	h,-2 (ix)
+   069C 36 00         [10] 1176 	ld	(hl), #0x00
+                           1177 ;src/game.c:216: if (enemydamage(&g_boss, g_projectiles[i].damage)) {
+   069E DD 6E F3      [19] 1178 	ld	l,-13 (ix)
+   06A1 DD 66 F4      [19] 1179 	ld	h,-12 (ix)
+   06A4 46            [ 7] 1180 	ld	b, (hl)
+   06A5 11r98r00      [10] 1181 	ld	de, #_g_boss
+   06A8 C5            [11] 1182 	push	bc
+   06A9 C5            [11] 1183 	push	bc
+   06AA 33            [ 6] 1184 	inc	sp
+   06AB D5            [11] 1185 	push	de
+   06AC CDr00r00      [17] 1186 	call	_enemydamage
+   06AF F1            [10] 1187 	pop	af
+   06B0 33            [ 6] 1188 	inc	sp
+   06B1 C1            [10] 1189 	pop	bc
+   06B2 7D            [ 4] 1190 	ld	a, l
+   06B3 B7            [ 4] 1191 	or	a, a
+   06B4 28 18         [12] 1192 	jr	Z,00133$
+                           1193 ;src/game.c:217: g_bossactive = 0;
+   06B6 21rA3r00      [10] 1194 	ld	hl,#_g_bossactive + 0
+   06B9 36 00         [10] 1195 	ld	(hl), #0x00
+                           1196 ;src/game.c:218: g_score = (u16)(g_score + g_boss.reward);
+   06BB ED 5BrA0r00   [20] 1197 	ld	de, (#_g_boss + 8)
+   06BF 21r88r00      [10] 1198 	ld	hl, #_g_score
+   06C2 7E            [ 7] 1199 	ld	a, (hl)
+   06C3 83            [ 4] 1200 	add	a, e
+   06C4 77            [ 7] 1201 	ld	(hl), a
+   06C5 23            [ 6] 1202 	inc	hl
+   06C6 7E            [ 7] 1203 	ld	a, (hl)
+   06C7 8A            [ 4] 1204 	adc	a, d
+   06C8 77            [ 7] 1205 	ld	(hl), a
+                           1206 ;src/game.c:219: g_victory = 1;
+   06C9 21r91r00      [10] 1207 	ld	hl,#_g_victory + 0
+   06CC 36 01         [10] 1208 	ld	(hl), #0x01
+   06CE                    1209 00133$:
+                           1210 ;src/game.c:199: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   06CE 0C            [ 4] 1211 	inc	c
+   06CF 79            [ 4] 1212 	ld	a, c
+   06D0 D6 06         [ 7] 1213 	sub	a, #0x06
+   06D2 DAr93r04      [10] 1214 	jp	C, 00179$
+                           1215 ;src/game.c:225: for (i = 0; i < MAX_ENEMIES; ++i) {
+                           1216 ;src/game.c:224: if (!g_damagecooldown) {
+   06D5 3Ar8Fr00      [13] 1217 	ld	a,(#_g_damagecooldown + 0)
+   06D8 B7            [ 4] 1218 	or	a, a
+   06D9 C2r47r08      [10] 1219 	jp	NZ, 00149$
+                           1220 ;src/game.c:225: for (i = 0; i < MAX_ENEMIES; ++i) {
+   06DC DD 36 E8 00   [19] 1221 	ld	-24 (ix), #0x00
+   06E0                    1222 00180$:
+                           1223 ;src/game.c:226: if (!g_enemies[i].active) continue;
+   06E0 DD 4E E8      [19] 1224 	ld	c,-24 (ix)
+   06E3 06 00         [ 7] 1225 	ld	b,#0x00
+   06E5 69            [ 4] 1226 	ld	l, c
+   06E6 60            [ 4] 1227 	ld	h, b
+   06E7 29            [11] 1228 	add	hl, hl
+   06E8 29            [11] 1229 	add	hl, hl
+   06E9 09            [11] 1230 	add	hl, bc
+   06EA 29            [11] 1231 	add	hl, hl
+   06EB 09            [11] 1232 	add	hl, bc
+   06EC 01r09r00      [10] 1233 	ld	bc,#_g_enemies
+   06EF 09            [11] 1234 	add	hl,bc
+   06F0 DD 75 E9      [19] 1235 	ld	-23 (ix), l
+   06F3 DD 74 EA      [19] 1236 	ld	-22 (ix), h
+   06F6 C1            [10] 1237 	pop	bc
+   06F7 E1            [10] 1238 	pop	hl
+   06F8 E5            [11] 1239 	push	hl
+   06F9 C5            [11] 1240 	push	bc
+   06FA 11 06 00      [10] 1241 	ld	de, #0x0006
+   06FD 19            [11] 1242 	add	hl, de
+   06FE 7E            [ 7] 1243 	ld	a, (hl)
+   06FF B7            [ 4] 1244 	or	a, a
+   0700 CAr91r07      [10] 1245 	jp	Z, 00139$
+                           1246 ;src/game.c:228: (i16)g_enemies[i].x, (i16)g_enemies[i].y, g_enemies[i].w, g_enemies[i].h)) {
+   0703 DD 7E E9      [19] 1247 	ld	a, -23 (ix)
+   0706 DD 77 EB      [19] 1248 	ld	-21 (ix), a
+   0709 DD 7E EA      [19] 1249 	ld	a, -22 (ix)
+   070C DD 77 EC      [19] 1250 	ld	-20 (ix), a
+   070F DD 6E EB      [19] 1251 	ld	l,-21 (ix)
+   0712 DD 66 EC      [19] 1252 	ld	h,-20 (ix)
+   0715 11 05 00      [10] 1253 	ld	de, #0x0005
+   0718 19            [11] 1254 	add	hl, de
+   0719 7E            [ 7] 1255 	ld	a, (hl)
+   071A DD 77 EB      [19] 1256 	ld	-21 (ix), a
+   071D C1            [10] 1257 	pop	bc
+   071E E1            [10] 1258 	pop	hl
+   071F E5            [11] 1259 	push	hl
+   0720 C5            [11] 1260 	push	bc
+   0721 11 04 00      [10] 1261 	ld	de, #0x0004
+   0724 19            [11] 1262 	add	hl, de
+   0725 5E            [ 7] 1263 	ld	e, (hl)
+   0726 C1            [10] 1264 	pop	bc
+   0727 E1            [10] 1265 	pop	hl
+   0728 E5            [11] 1266 	push	hl
+   0729 C5            [11] 1267 	push	bc
+   072A 23            [ 6] 1268 	inc	hl
+   072B 4E            [ 7] 1269 	ld	c, (hl)
+   072C 06 00         [ 7] 1270 	ld	b, #0x00
+   072E DD 6E E9      [19] 1271 	ld	l,-23 (ix)
+   0731 DD 66 EA      [19] 1272 	ld	h,-22 (ix)
+   0734 56            [ 7] 1273 	ld	d, (hl)
+   0735 DD 72 E9      [19] 1274 	ld	-23 (ix), d
+   0738 DD 36 EA 00   [19] 1275 	ld	-22 (ix), #0x00
+                           1276 ;src/game.c:227: if (rect_overlap((i16)g_player.x, (i16)g_player.y, g_player.w, g_player.h,
+   073C 3Ar05r00      [13] 1277 	ld	a,(#(_g_player + 0x0005) + 0)
+   073F DD 77 ED      [19] 1278 	ld	-19 (ix), a
+   0742 3Ar04r00      [13] 1279 	ld	a,(#(_g_player + 0x0004) + 0)
+   0745 DD 77 EE      [19] 1280 	ld	-18 (ix), a
+   0748 3Ar01r00      [13] 1281 	ld	a, (#(_g_player + 0x0001) + 0)
+   074B DD 77 F0      [19] 1282 	ld	-16 (ix), a
+   074E DD 36 F1 00   [19] 1283 	ld	-15 (ix), #0x00
+   0752 3Ar00r00      [13] 1284 	ld	a, (#_g_player + 0)
+   0755 DD 77 F3      [19] 1285 	ld	-13 (ix), a
+   0758 DD 36 F4 00   [19] 1286 	ld	-12 (ix), #0x00
+   075C DD 56 EB      [19] 1287 	ld	d, -21 (ix)
+   075F D5            [11] 1288 	push	de
+   0760 C5            [11] 1289 	push	bc
+   0761 DD 6E E9      [19] 1290 	ld	l,-23 (ix)
+   0764 DD 66 EA      [19] 1291 	ld	h,-22 (ix)
+   0767 E5            [11] 1292 	push	hl
+   0768 DD 66 ED      [19] 1293 	ld	h, -19 (ix)
+   076B DD 6E EE      [19] 1294 	ld	l, -18 (ix)
+   076E E5            [11] 1295 	push	hl
+   076F DD 6E F0      [19] 1296 	ld	l,-16 (ix)
+   0772 DD 66 F1      [19] 1297 	ld	h,-15 (ix)
+   0775 E5            [11] 1298 	push	hl
+   0776 DD 6E F3      [19] 1299 	ld	l,-13 (ix)
+   0779 DD 66 F4      [19] 1300 	ld	h,-12 (ix)
+   077C E5            [11] 1301 	push	hl
+   077D CDr19r00      [17] 1302 	call	_rect_overlap
+   0780 FD 21 0C 00   [14] 1303 	ld	iy, #12
+   0784 FD 39         [15] 1304 	add	iy, sp
+   0786 FD F9         [10] 1305 	ld	sp, iy
+   0788 7D            [ 4] 1306 	ld	a, l
+   0789 B7            [ 4] 1307 	or	a, a
+   078A 28 05         [12] 1308 	jr	Z,00139$
+                           1309 ;src/game.c:229: register_player_hit();
+   078C CDr94r02      [17] 1310 	call	_register_player_hit
+                           1311 ;src/game.c:230: break;
+   078F 18 0B         [12] 1312 	jr	00140$
+   0791                    1313 00139$:
+                           1314 ;src/game.c:225: for (i = 0; i < MAX_ENEMIES; ++i) {
+   0791 DD 34 E8      [23] 1315 	inc	-24 (ix)
+   0794 DD 7E E8      [19] 1316 	ld	a, -24 (ix)
+   0797 D6 06         [ 7] 1317 	sub	a, #0x06
+   0799 DArE0r06      [10] 1318 	jp	C, 00180$
+   079C                    1319 00140$:
+                           1320 ;src/game.c:234: if (!g_damagecooldown && g_bossactive && rect_overlap((i16)g_player.x, (i16)g_player.y, g_player.w, g_player.h,
+   079C 3Ar8Fr00      [13] 1321 	ld	a,(#_g_damagecooldown + 0)
+   079F B7            [ 4] 1322 	or	a, a
+   07A0 20 6E         [12] 1323 	jr	NZ,00142$
+   07A2 3ArA3r00      [13] 1324 	ld	a,(#_g_bossactive + 0)
+   07A5 B7            [ 4] 1325 	or	a, a
+   07A6 28 68         [12] 1326 	jr	Z,00142$
+                           1327 ;src/game.c:235: (i16)g_boss.x, (i16)g_boss.y, g_boss.w, g_boss.h)) {
+   07A8 3Ar9Dr00      [13] 1328 	ld	a,(#(_g_boss + 0x0005) + 0)
+   07AB DD 77 E9      [19] 1329 	ld	-23 (ix), a
+   07AE 3Ar9Cr00      [13] 1330 	ld	a,(#(_g_boss + 0x0004) + 0)
+   07B1 DD 77 EB      [19] 1331 	ld	-21 (ix), a
+   07B4 21r99r00      [10] 1332 	ld	hl, #(_g_boss + 0x0001) + 0
+   07B7 5E            [ 7] 1333 	ld	e, (hl)
+   07B8 16 00         [ 7] 1334 	ld	d, #0x00
+   07BA 21r98r00      [10] 1335 	ld	hl, #_g_boss + 0
+   07BD 4E            [ 7] 1336 	ld	c, (hl)
+   07BE 06 00         [ 7] 1337 	ld	b, #0x00
+                           1338 ;src/game.c:234: if (!g_damagecooldown && g_bossactive && rect_overlap((i16)g_player.x, (i16)g_player.y, g_player.w, g_player.h,
+   07C0 3Ar05r00      [13] 1339 	ld	a,(#(_g_player + 0x0005) + 0)
+   07C3 DD 77 ED      [19] 1340 	ld	-19 (ix), a
+   07C6 3Ar04r00      [13] 1341 	ld	a,(#(_g_player + 0x0004) + 0)
+   07C9 DD 77 EE      [19] 1342 	ld	-18 (ix), a
+   07CC 3Ar01r00      [13] 1343 	ld	a, (#(_g_player + 0x0001) + 0)
+   07CF DD 77 F0      [19] 1344 	ld	-16 (ix), a
+   07D2 DD 36 F1 00   [19] 1345 	ld	-15 (ix), #0x00
+   07D6 3Ar00r00      [13] 1346 	ld	a, (#_g_player + 0)
+   07D9 DD 77 F3      [19] 1347 	ld	-13 (ix), a
+   07DC DD 36 F4 00   [19] 1348 	ld	-12 (ix), #0x00
+   07E0 DD 66 E9      [19] 1349 	ld	h, -23 (ix)
+   07E3 DD 6E EB      [19] 1350 	ld	l, -21 (ix)
+   07E6 E5            [11] 1351 	push	hl
+   07E7 D5            [11] 1352 	push	de
+   07E8 C5            [11] 1353 	push	bc
+   07E9 DD 66 ED      [19] 1354 	ld	h, -19 (ix)
+   07EC DD 6E EE      [19] 1355 	ld	l, -18 (ix)
+   07EF E5            [11] 1356 	push	hl
+   07F0 DD 6E F0      [19] 1357 	ld	l,-16 (ix)
+   07F3 DD 66 F1      [19] 1358 	ld	h,-15 (ix)
+   07F6 E5            [11] 1359 	push	hl
+   07F7 DD 6E F3      [19] 1360 	ld	l,-13 (ix)
+   07FA DD 66 F4      [19] 1361 	ld	h,-12 (ix)
+   07FD E5            [11] 1362 	push	hl
+   07FE CDr19r00      [17] 1363 	call	_rect_overlap
+   0801 FD 21 0C 00   [14] 1364 	ld	iy, #12
+   0805 FD 39         [15] 1365 	add	iy, sp
+   0807 FD F9         [10] 1366 	ld	sp, iy
+   0809 7D            [ 4] 1367 	ld	a, l
+   080A B7            [ 4] 1368 	or	a, a
+   080B 28 03         [12] 1369 	jr	Z,00142$
+                           1370 ;src/game.c:236: register_player_hit();
+   080D CDr94r02      [17] 1371 	call	_register_player_hit
+   0810                    1372 00142$:
+                           1373 ;src/game.c:239: if (!g_damagecooldown && collision_is_on_trap((i16)g_player.x, (i16)g_player.y, g_player.w, g_player.h)) {
+   0810 3Ar8Fr00      [13] 1374 	ld	a,(#_g_damagecooldown + 0)
+   0813 B7            [ 4] 1375 	or	a, a
+   0814 20 31         [12] 1376 	jr	NZ,00149$
+   0816 3Ar05r00      [13] 1377 	ld	a, (#(_g_player + 0x0005) + 0)
+   0819 21r04r00      [10] 1378 	ld	hl, #(_g_player + 0x0004) + 0
+   081C 56            [ 7] 1379 	ld	d, (hl)
+   081D 21r01r00      [10] 1380 	ld	hl, #(_g_player + 0x0001) + 0
+   0820 4E            [ 7] 1381 	ld	c, (hl)
+   0821 06 00         [ 7] 1382 	ld	b, #0x00
+   0823 21r00r00      [10] 1383 	ld	hl, #_g_player + 0
+   0826 6E            [ 7] 1384 	ld	l, (hl)
+   0827 DD 75 E9      [19] 1385 	ld	-23 (ix), l
+   082A DD 36 EA 00   [19] 1386 	ld	-22 (ix), #0x00
+   082E F5            [11] 1387 	push	af
+   082F 33            [ 6] 1388 	inc	sp
+   0830 D5            [11] 1389 	push	de
+   0831 33            [ 6] 1390 	inc	sp
+   0832 C5            [11] 1391 	push	bc
+   0833 DD 6E E9      [19] 1392 	ld	l,-23 (ix)
+   0836 DD 66 EA      [19] 1393 	ld	h,-22 (ix)
+   0839 E5            [11] 1394 	push	hl
+   083A CDr00r00      [17] 1395 	call	_collision_is_on_trap
+   083D F1            [10] 1396 	pop	af
+   083E F1            [10] 1397 	pop	af
+   083F F1            [10] 1398 	pop	af
+   0840 7D            [ 4] 1399 	ld	a, l
+   0841 B7            [ 4] 1400 	or	a, a
+   0842 28 03         [12] 1401 	jr	Z,00149$
+                           1402 ;src/game.c:240: register_player_hit();
+   0844 CDr94r02      [17] 1403 	call	_register_player_hit
+   0847                    1404 00149$:
+                           1405 ;src/game.c:244: if (!g_checkpointactive && g_player.x >= 44) {
+   0847 FD 21r97r00   [14] 1406 	ld	iy, #_g_checkpointactive
+   084B FD 7E 00      [19] 1407 	ld	a, 0 (iy)
+   084E B7            [ 4] 1408 	or	a, a
+   084F 20 1E         [12] 1409 	jr	NZ,00151$
+   0851 3Ar00r00      [13] 1410 	ld	a, (#_g_player + 0)
+   0854 D6 2C         [ 7] 1411 	sub	a, #0x2c
+   0856 38 17         [12] 1412 	jr	C,00151$
+                           1413 ;src/game.c:245: g_checkpointactive = 1;
+   0858 FD 36 00 01   [19] 1414 	ld	0 (iy), #0x01
+                           1415 ;src/game.c:246: g_checkpointx = 52;
+   085C 21r95r00      [10] 1416 	ld	hl,#_g_checkpointx + 0
+   085F 36 34         [10] 1417 	ld	(hl), #0x34
+                           1418 ;src/game.c:247: g_checkpointy = (u8)(tilemap_ground_y() - g_player.h);
+   0861 CDr00r00      [17] 1419 	call	_tilemap_ground_y
+   0864 4D            [ 4] 1420 	ld	c, l
+   0865 21r05r00      [10] 1421 	ld	hl, #(_g_player + 0x0005) + 0
+   0868 46            [ 7] 1422 	ld	b, (hl)
+   0869 21r96r00      [10] 1423 	ld	hl, #_g_checkpointy
+   086C 79            [ 4] 1424 	ld	a, c
+   086D 90            [ 4] 1425 	sub	a, b
+   086E 77            [ 7] 1426 	ld	(hl), a
+   086F                    1427 00151$:
+                           1428 ;src/game.c:250: if (!g_pickuptaken && rect_overlap((i16)g_player.x, (i16)g_player.y, g_player.w, g_player.h, (i16)36, (i16)(tilemap_ground_y() - 8), 4, 4)) {
+   086F 3ArA6r00      [13] 1429 	ld	a,(#_g_pickuptaken + 0)
+   0872 B7            [ 4] 1430 	or	a, a
+   0873 C2r02r09      [10] 1431 	jp	NZ, 00154$
+   0876 CDr00r00      [17] 1432 	call	_tilemap_ground_y
+   0879 DD 75 E9      [19] 1433 	ld	-23 (ix), l
+   087C DD 75 E9      [19] 1434 	ld	-23 (ix), l
+   087F DD 36 EA 00   [19] 1435 	ld	-22 (ix), #0x00
+   0883 DD 7E E9      [19] 1436 	ld	a, -23 (ix)
+   0886 C6 F8         [ 7] 1437 	add	a, #0xf8
+   0888 DD 77 E9      [19] 1438 	ld	-23 (ix), a
+   088B DD 7E EA      [19] 1439 	ld	a, -22 (ix)
+   088E CE FF         [ 7] 1440 	adc	a, #0xff
+   0890 DD 77 EA      [19] 1441 	ld	-22 (ix), a
+   0893 3Ar05r00      [13] 1442 	ld	a,(#(_g_player + 0x0005) + 0)
+   0896 DD 77 EB      [19] 1443 	ld	-21 (ix), a
+   0899 3Ar04r00      [13] 1444 	ld	a,(#(_g_player + 0x0004) + 0)
+   089C DD 77 ED      [19] 1445 	ld	-19 (ix), a
+   089F 3Ar01r00      [13] 1446 	ld	a,(#(_g_player + 0x0001) + 0)
+   08A2 DD 77 EE      [19] 1447 	ld	-18 (ix), a
+   08A5 DD 77 EE      [19] 1448 	ld	-18 (ix), a
+   08A8 DD 36 EF 00   [19] 1449 	ld	-17 (ix), #0x00
+   08AC 3Ar00r00      [13] 1450 	ld	a,(#_g_player + 0)
+   08AF DD 77 F0      [19] 1451 	ld	-16 (ix), a
+   08B2 DD 77 F0      [19] 1452 	ld	-16 (ix), a
+   08B5 DD 36 F1 00   [19] 1453 	ld	-15 (ix), #0x00
+   08B9 21 04 04      [10] 1454 	ld	hl, #0x0404
+   08BC E5            [11] 1455 	push	hl
+   08BD DD 6E E9      [19] 1456 	ld	l,-23 (ix)
+   08C0 DD 66 EA      [19] 1457 	ld	h,-22 (ix)
+   08C3 E5            [11] 1458 	push	hl
+   08C4 21 24 00      [10] 1459 	ld	hl, #0x0024
+   08C7 E5            [11] 1460 	push	hl
+   08C8 DD 66 EB      [19] 1461 	ld	h, -21 (ix)
+   08CB DD 6E ED      [19] 1462 	ld	l, -19 (ix)
+   08CE E5            [11] 1463 	push	hl
+   08CF DD 6E EE      [19] 1464 	ld	l,-18 (ix)
+   08D2 DD 66 EF      [19] 1465 	ld	h,-17 (ix)
+   08D5 E5            [11] 1466 	push	hl
+   08D6 DD 6E F0      [19] 1467 	ld	l,-16 (ix)
+   08D9 DD 66 F1      [19] 1468 	ld	h,-15 (ix)
+   08DC E5            [11] 1469 	push	hl
+   08DD CDr19r00      [17] 1470 	call	_rect_overlap
+   08E0 FD 21 0C 00   [14] 1471 	ld	iy, #12
+   08E4 FD 39         [15] 1472 	add	iy, sp
+   08E6 FD F9         [10] 1473 	ld	sp, iy
+   08E8 7D            [ 4] 1474 	ld	a, l
+   08E9 B7            [ 4] 1475 	or	a, a
+   08EA 28 16         [12] 1476 	jr	Z,00154$
+                           1477 ;src/game.c:251: g_pickuptaken = 1;
+   08EC 21rA6r00      [10] 1478 	ld	hl,#_g_pickuptaken + 0
+   08EF 36 01         [10] 1479 	ld	(hl), #0x01
+                           1480 ;src/game.c:252: g_weaponlevel = 1;
+   08F1 21rA5r00      [10] 1481 	ld	hl,#_g_weaponlevel + 0
+   08F4 36 01         [10] 1482 	ld	(hl), #0x01
+                           1483 ;src/game.c:253: g_score = (u16)(g_score + 100);
+   08F6 21r88r00      [10] 1484 	ld	hl, #_g_score
+   08F9 7E            [ 7] 1485 	ld	a, (hl)
+   08FA C6 64         [ 7] 1486 	add	a, #0x64
+   08FC 77            [ 7] 1487 	ld	(hl), a
+   08FD 23            [ 6] 1488 	inc	hl
+   08FE 7E            [ 7] 1489 	ld	a, (hl)
+   08FF CE 00         [ 7] 1490 	adc	a, #0x00
+   0901 77            [ 7] 1491 	ld	(hl), a
+   0902                    1492 00154$:
+                           1493 ;src/game.c:256: g_weapondisplay = (u8)(g_weaponlevel + 1);
+   0902 21r8Br00      [10] 1494 	ld	hl, #_g_weapondisplay
+   0905 3ArA5r00      [13] 1495 	ld	a,(#_g_weaponlevel + 0)
+   0908 3C            [ 4] 1496 	inc	a
+   0909 77            [ 7] 1497 	ld	(hl), a
+                           1498 ;src/game.c:258: if (!g_bossactive && g_aliveenemies == 0 && !g_gameover) {
+   090A 3ArA3r00      [13] 1499 	ld	a,(#_g_bossactive + 0)
+   090D B7            [ 4] 1500 	or	a, a
+   090E 20 45         [12] 1501 	jr	NZ,00165$
+   0910 3Ar8Dr00      [13] 1502 	ld	a,(#_g_aliveenemies + 0)
+   0913 B7            [ 4] 1503 	or	a, a
+   0914 20 3F         [12] 1504 	jr	NZ,00165$
+   0916 3Ar92r00      [13] 1505 	ld	a,(#_g_gameover + 0)
+   0919 B7            [ 4] 1506 	or	a, a
+   091A 20 39         [12] 1507 	jr	NZ,00165$
+                           1508 ;src/game.c:259: if (g_currentwave < TOTAL_WAVES) {
+   091C 3Ar8Cr00      [13] 1509 	ld	a,(#_g_currentwave + 0)
+   091F D6 03         [ 7] 1510 	sub	a, #0x03
+   0921 30 20         [12] 1511 	jr	NC,00162$
+                           1512 ;src/game.c:260: if (g_wavecooldown == 0) {
+   0923 3Ar8Er00      [13] 1513 	ld	a,(#_g_wavecooldown + 0)
+   0926 B7            [ 4] 1514 	or	a, a
+   0927 20 14         [12] 1515 	jr	NZ,00157$
+                           1516 ;src/game.c:261: spawn_wave(g_currentwave);
+   0929 3Ar8Cr00      [13] 1517 	ld	a, (_g_currentwave)
+   092C F5            [11] 1518 	push	af
+   092D 33            [ 6] 1519 	inc	sp
+   092E CDrA6r00      [17] 1520 	call	_spawn_wave
+   0931 33            [ 6] 1521 	inc	sp
+                           1522 ;src/game.c:262: g_currentwave++;
+   0932 21r8Cr00      [10] 1523 	ld	hl, #_g_currentwave+0
+   0935 34            [11] 1524 	inc	(hl)
+                           1525 ;src/game.c:263: g_wavecooldown = 90;
+   0936 21r8Er00      [10] 1526 	ld	hl,#_g_wavecooldown + 0
+   0939 36 5A         [10] 1527 	ld	(hl), #0x5a
+   093B 18 18         [12] 1528 	jr	00165$
+   093D                    1529 00157$:
+                           1530 ;src/game.c:265: g_wavecooldown--;
+   093D 21r8Er00      [10] 1531 	ld	hl, #_g_wavecooldown+0
+   0940 35            [11] 1532 	dec	(hl)
+   0941 18 12         [12] 1533 	jr	00165$
+   0943                    1534 00162$:
+                           1535 ;src/game.c:267: } else if (g_player.x >= (u8)(tilemap_goal_x() - 2)) {
+   0943 21r00r00      [10] 1536 	ld	hl, #_g_player + 0
+   0946 4E            [ 7] 1537 	ld	c, (hl)
+   0947 C5            [11] 1538 	push	bc
+   0948 CDr00r00      [17] 1539 	call	_tilemap_goal_x
+   094B C1            [10] 1540 	pop	bc
+   094C 2D            [ 4] 1541 	dec	l
+   094D 2D            [ 4] 1542 	dec	l
+   094E 79            [ 4] 1543 	ld	a, c
+   094F 95            [ 4] 1544 	sub	a, l
+   0950 38 03         [12] 1545 	jr	C,00165$
+                           1546 ;src/game.c:268: spawn_boss();
+   0952 CDrA8r01      [17] 1547 	call	_spawn_boss
+   0955                    1548 00165$:
+                           1549 ;src/game.c:272: g_framecounter++;
+   0955 FD 21r93r00   [14] 1550 	ld	iy, #_g_framecounter
+   0959 FD 34 00      [23] 1551 	inc	0 (iy)
+   095C 20 03         [12] 1552 	jr	NZ,00381$
+   095E FD 34 01      [23] 1553 	inc	1 (iy)
+   0961                    1554 00381$:
+                           1555 ;src/game.c:273: if ((g_framecounter % 50) == 0 && g_timeleft > 0) {
+   0961 21 32 00      [10] 1556 	ld	hl, #0x0032
+   0964 E5            [11] 1557 	push	hl
+   0965 2Ar93r00      [16] 1558 	ld	hl, (_g_framecounter)
+   0968 E5            [11] 1559 	push	hl
+   0969 CDr00r00      [17] 1560 	call	__moduint
+   096C F1            [10] 1561 	pop	af
+   096D F1            [10] 1562 	pop	af
+   096E 7C            [ 4] 1563 	ld	a, h
+   096F B5            [ 4] 1564 	or	a,l
+   0970 20 0D         [12] 1565 	jr	NZ,00169$
+   0972 FD 21r8Ar00   [14] 1566 	ld	iy, #_g_timeleft
+   0976 FD 7E 00      [19] 1567 	ld	a, 0 (iy)
+   0979 B7            [ 4] 1568 	or	a, a
+   097A 28 03         [12] 1569 	jr	Z,00169$
+                           1570 ;src/game.c:274: g_timeleft--;
+   097C FD 35 00      [23] 1571 	dec	0 (iy)
+   097F                    1572 00169$:
+                           1573 ;src/game.c:276: if (g_timeleft == 0 && !g_victory) {
+   097F 3Ar8Ar00      [13] 1574 	ld	a,(#_g_timeleft + 0)
+   0982 B7            [ 4] 1575 	or	a, a
+   0983 20 0B         [12] 1576 	jr	NZ,00172$
+   0985 3Ar91r00      [13] 1577 	ld	a,(#_g_victory + 0)
+   0988 B7            [ 4] 1578 	or	a, a
+   0989 20 05         [12] 1579 	jr	NZ,00172$
+                           1580 ;src/game.c:277: g_gameover = 1;
+   098B 21r92r00      [10] 1581 	ld	hl,#_g_gameover + 0
+   098E 36 01         [10] 1582 	ld	(hl), #0x01
+   0990                    1583 00172$:
+                           1584 ;src/game.c:280: hudupdate(g_lives, g_score, g_timeleft, g_weapondisplay);
+   0990 3Ar8Br00      [13] 1585 	ld	a, (_g_weapondisplay)
+   0993 F5            [11] 1586 	push	af
+   0994 33            [ 6] 1587 	inc	sp
+   0995 3Ar8Ar00      [13] 1588 	ld	a, (_g_timeleft)
+   0998 F5            [11] 1589 	push	af
+   0999 33            [ 6] 1590 	inc	sp
+   099A 2Ar88r00      [16] 1591 	ld	hl, (_g_score)
+   099D E5            [11] 1592 	push	hl
+   099E 3Ar87r00      [13] 1593 	ld	a, (_g_lives)
+   09A1 F5            [11] 1594 	push	af
+   09A2 33            [ 6] 1595 	inc	sp
+   09A3 CDr00r00      [17] 1596 	call	_hudupdate
+   09A6 F1            [10] 1597 	pop	af
+   09A7 F1            [10] 1598 	pop	af
+   09A8 33            [ 6] 1599 	inc	sp
+   09A9                    1600 00181$:
+   09A9 DD F9         [10] 1601 	ld	sp, ix
+   09AB DD E1         [14] 1602 	pop	ix
+   09AD C9            [10] 1603 	ret
+                           1604 ;src/game.c:283: void game_render(void) {
+                           1605 ;	---------------------------------
+                           1606 ; Function game_render
+                           1607 ; ---------------------------------
+   09AE                    1608 _game_render::
+                           1609 ;src/game.c:286: cpct_clearScreen(0x00);
+   09AE 21 00 40      [10] 1610 	ld	hl, #0x4000
+   09B1 E5            [11] 1611 	push	hl
+   09B2 AF            [ 4] 1612 	xor	a, a
+   09B3 F5            [11] 1613 	push	af
+   09B4 33            [ 6] 1614 	inc	sp
+   09B5 26 C0         [ 7] 1615 	ld	h, #0xc0
+   09B7 E5            [11] 1616 	push	hl
+   09B8 CDr00r00      [17] 1617 	call	_cpct_memset
+                           1618 ;src/game.c:288: tilemap_render();
+   09BB CDr00r00      [17] 1619 	call	_tilemap_render
+                           1620 ;src/game.c:290: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   09BE 0E 00         [ 7] 1621 	ld	c, #0x00
+   09C0                    1622 00115$:
+                           1623 ;src/game.c:291: projectilerender(&g_projectiles[i]);
+   09C0 06 00         [ 7] 1624 	ld	b,#0x00
+   09C2 69            [ 4] 1625 	ld	l, c
+   09C3 60            [ 4] 1626 	ld	h, b
+   09C4 29            [11] 1627 	add	hl, hl
+   09C5 29            [11] 1628 	add	hl, hl
+   09C6 09            [11] 1629 	add	hl, bc
+   09C7 29            [11] 1630 	add	hl, hl
+   09C8 11r4Br00      [10] 1631 	ld	de, #_g_projectiles
+   09CB 19            [11] 1632 	add	hl, de
+   09CC C5            [11] 1633 	push	bc
+   09CD E5            [11] 1634 	push	hl
+   09CE CDr00r00      [17] 1635 	call	_projectilerender
+   09D1 F1            [10] 1636 	pop	af
+   09D2 C1            [10] 1637 	pop	bc
+                           1638 ;src/game.c:290: for (i = 0; i < MAX_PROJECTILES; ++i) {
+   09D3 0C            [ 4] 1639 	inc	c
+   09D4 79            [ 4] 1640 	ld	a, c
+   09D5 D6 06         [ 7] 1641 	sub	a, #0x06
+   09D7 38 E7         [12] 1642 	jr	C,00115$
+                           1643 ;src/game.c:294: for (i = 0; i < MAX_ENEMIES; ++i) {
+   09D9 0E 00         [ 7] 1644 	ld	c, #0x00
+   09DB                    1645 00117$:
+                           1646 ;src/game.c:295: enemyrender(&g_enemies[i]);
+   09DB 06 00         [ 7] 1647 	ld	b,#0x00
+   09DD 69            [ 4] 1648 	ld	l, c
+   09DE 60            [ 4] 1649 	ld	h, b
+   09DF 29            [11] 1650 	add	hl, hl
+   09E0 29            [11] 1651 	add	hl, hl
+   09E1 09            [11] 1652 	add	hl, bc
+   09E2 29            [11] 1653 	add	hl, hl
+   09E3 09            [11] 1654 	add	hl, bc
+   09E4 11r09r00      [10] 1655 	ld	de, #_g_enemies
+   09E7 19            [11] 1656 	add	hl, de
+   09E8 C5            [11] 1657 	push	bc
+   09E9 E5            [11] 1658 	push	hl
+   09EA CDr00r00      [17] 1659 	call	_enemyrender
+   09ED F1            [10] 1660 	pop	af
+   09EE C1            [10] 1661 	pop	bc
+                           1662 ;src/game.c:294: for (i = 0; i < MAX_ENEMIES; ++i) {
+   09EF 0C            [ 4] 1663 	inc	c
+   09F0 79            [ 4] 1664 	ld	a, c
+   09F1 D6 06         [ 7] 1665 	sub	a, #0x06
+   09F3 38 E6         [12] 1666 	jr	C,00117$
+                           1667 ;src/game.c:298: if (g_bossactive) {
+   09F5 3ArA3r00      [13] 1668 	ld	a,(#_g_bossactive + 0)
+   09F8 B7            [ 4] 1669 	or	a, a
+   09F9 28 58         [12] 1670 	jr	Z,00104$
+                           1671 ;src/game.c:299: enemyrender(&g_boss);
+   09FB 21r98r00      [10] 1672 	ld	hl, #_g_boss
+   09FE E5            [11] 1673 	push	hl
+   09FF CDr00r00      [17] 1674 	call	_enemyrender
+                           1675 ;src/game.c:300: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), cpct_px2byteM0(1, 1), 32, 2);
+   0A02 21 01 01      [10] 1676 	ld	hl, #0x0101
+   0A05 E3            [19] 1677 	ex	(sp),hl
+   0A06 CDr00r00      [17] 1678 	call	_cpct_px2byteM0
+   0A09 55            [ 4] 1679 	ld	d, l
+   0A0A D5            [11] 1680 	push	de
+   0A0B 21 18 0A      [10] 1681 	ld	hl, #0x0a18
+   0A0E E5            [11] 1682 	push	hl
+   0A0F 21 00 C0      [10] 1683 	ld	hl, #0xc000
+   0A12 E5            [11] 1684 	push	hl
+   0A13 CDr00r00      [17] 1685 	call	_cpct_getScreenPtr
+   0A16 4D            [ 4] 1686 	ld	c, l
+   0A17 44            [ 4] 1687 	ld	b, h
+   0A18 D1            [10] 1688 	pop	de
+   0A19 21 20 02      [10] 1689 	ld	hl, #0x0220
+   0A1C E5            [11] 1690 	push	hl
+   0A1D D5            [11] 1691 	push	de
+   0A1E 33            [ 6] 1692 	inc	sp
+   0A1F C5            [11] 1693 	push	bc
+   0A20 CDr00r00      [17] 1694 	call	_cpct_drawSolidBox
+   0A23 F1            [10] 1695 	pop	af
+   0A24 F1            [10] 1696 	pop	af
+   0A25 33            [ 6] 1697 	inc	sp
+                           1698 ;src/game.c:301: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), cpct_px2byteM0(5, 5), (u8)(g_boss.health * 3), 2);
+   0A26 3Ar9Fr00      [13] 1699 	ld	a, (#_g_boss + 7)
+   0A29 4F            [ 4] 1700 	ld	c, a
+   0A2A 87            [ 4] 1701 	add	a, a
+   0A2B 81            [ 4] 1702 	add	a, c
+   0A2C 57            [ 4] 1703 	ld	d, a
+   0A2D D5            [11] 1704 	push	de
+   0A2E 21 05 05      [10] 1705 	ld	hl, #0x0505
+   0A31 E5            [11] 1706 	push	hl
+   0A32 CDr00r00      [17] 1707 	call	_cpct_px2byteM0
+   0A35 5D            [ 4] 1708 	ld	e, l
+   0A36 F1            [10] 1709 	pop	af
+   0A37 57            [ 4] 1710 	ld	d, a
+   0A38 D5            [11] 1711 	push	de
+   0A39 21 18 0A      [10] 1712 	ld	hl, #0x0a18
+   0A3C E5            [11] 1713 	push	hl
+   0A3D 21 00 C0      [10] 1714 	ld	hl, #0xc000
+   0A40 E5            [11] 1715 	push	hl
+   0A41 CDr00r00      [17] 1716 	call	_cpct_getScreenPtr
+   0A44 4D            [ 4] 1717 	ld	c, l
+   0A45 44            [ 4] 1718 	ld	b, h
+   0A46 D1            [10] 1719 	pop	de
+   0A47 3E 02         [ 7] 1720 	ld	a, #0x02
+   0A49 F5            [11] 1721 	push	af
+   0A4A 33            [ 6] 1722 	inc	sp
+   0A4B D5            [11] 1723 	push	de
+   0A4C C5            [11] 1724 	push	bc
+   0A4D CDr00r00      [17] 1725 	call	_cpct_drawSolidBox
+   0A50 F1            [10] 1726 	pop	af
+   0A51 F1            [10] 1727 	pop	af
+   0A52 33            [ 6] 1728 	inc	sp
+   0A53                    1729 00104$:
+                           1730 ;src/game.c:304: if (!g_pickuptaken) {
+   0A53 3ArA6r00      [13] 1731 	ld	a,(#_g_pickuptaken + 0)
+   0A56 B7            [ 4] 1732 	or	a, a
+   0A57 20 2F         [12] 1733 	jr	NZ,00106$
+                           1734 ;src/game.c:305: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 36, (u8)(tilemap_ground_y() - 8)), cpct_px2byteM0(7, 7), 4, 4);
+   0A59 21 07 07      [10] 1735 	ld	hl, #0x0707
+   0A5C E5            [11] 1736 	push	hl
+   0A5D CDr00r00      [17] 1737 	call	_cpct_px2byteM0
+   0A60 55            [ 4] 1738 	ld	d, l
+   0A61 D5            [11] 1739 	push	de
+   0A62 CDr00r00      [17] 1740 	call	_tilemap_ground_y
+   0A65 D1            [10] 1741 	pop	de
+   0A66 7D            [ 4] 1742 	ld	a, l
+   0A67 C6 F8         [ 7] 1743 	add	a, #0xf8
+   0A69 47            [ 4] 1744 	ld	b, a
+   0A6A D5            [11] 1745 	push	de
+   0A6B C5            [11] 1746 	push	bc
+   0A6C 33            [ 6] 1747 	inc	sp
+   0A6D 3E 24         [ 7] 1748 	ld	a, #0x24
+   0A6F F5            [11] 1749 	push	af
+   0A70 33            [ 6] 1750 	inc	sp
+   0A71 21 00 C0      [10] 1751 	ld	hl, #0xc000
+   0A74 E5            [11] 1752 	push	hl
+   0A75 CDr00r00      [17] 1753 	call	_cpct_getScreenPtr
+   0A78 4D            [ 4] 1754 	ld	c, l
+   0A79 44            [ 4] 1755 	ld	b, h
+   0A7A D1            [10] 1756 	pop	de
+   0A7B 21 04 04      [10] 1757 	ld	hl, #0x0404
+   0A7E E5            [11] 1758 	push	hl
+   0A7F D5            [11] 1759 	push	de
+   0A80 33            [ 6] 1760 	inc	sp
+   0A81 C5            [11] 1761 	push	bc
+   0A82 CDr00r00      [17] 1762 	call	_cpct_drawSolidBox
+   0A85 F1            [10] 1763 	pop	af
+   0A86 F1            [10] 1764 	pop	af
+   0A87 33            [ 6] 1765 	inc	sp
+   0A88                    1766 00106$:
+                           1767 ;src/game.c:307: playerrender(&g_player);
+   0A88 21r00r00      [10] 1768 	ld	hl, #_g_player
+   0A8B E5            [11] 1769 	push	hl
+   0A8C CDr00r00      [17] 1770 	call	_playerrender
+   0A8F F1            [10] 1771 	pop	af
+                           1772 ;src/game.c:308: hudrender();
+   0A90 CDr00r00      [17] 1773 	call	_hudrender
+                           1774 ;src/game.c:310: if (g_victory) {
+   0A93 3Ar91r00      [13] 1775 	ld	a,(#_g_victory + 0)
+   0A96 B7            [ 4] 1776 	or	a, a
+   0A97 28 48         [12] 1777 	jr	Z,00113$
+                           1778 ;src/game.c:311: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), cpct_px2byteM0(8, 8), 32, 12);
+   0A99 21 08 08      [10] 1779 	ld	hl, #0x0808
+   0A9C E5            [11] 1780 	push	hl
+   0A9D CDr00r00      [17] 1781 	call	_cpct_px2byteM0
+   0AA0 55            [ 4] 1782 	ld	d, l
+   0AA1 D5            [11] 1783 	push	de
+   0AA2 21 18 44      [10] 1784 	ld	hl, #0x4418
+   0AA5 E5            [11] 1785 	push	hl
+   0AA6 21 00 C0      [10] 1786 	ld	hl, #0xc000
+   0AA9 E5            [11] 1787 	push	hl
+   0AAA CDr00r00      [17] 1788 	call	_cpct_getScreenPtr
+   0AAD 4D            [ 4] 1789 	ld	c, l
+   0AAE 44            [ 4] 1790 	ld	b, h
+   0AAF D1            [10] 1791 	pop	de
+   0AB0 21 20 0C      [10] 1792 	ld	hl, #0x0c20
+   0AB3 E5            [11] 1793 	push	hl
+   0AB4 D5            [11] 1794 	push	de
+   0AB5 33            [ 6] 1795 	inc	sp
+   0AB6 C5            [11] 1796 	push	bc
+   0AB7 CDr00r00      [17] 1797 	call	_cpct_drawSolidBox
+   0ABA F1            [10] 1798 	pop	af
+                           1799 ;src/game.c:312: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), cpct_px2byteM0(5, 5), 24, 8);
+   0ABB 33            [ 6] 1800 	inc	sp
+   0ABC 21 05 05      [10] 1801 	ld	hl,#0x0505
+   0ABF E3            [19] 1802 	ex	(sp),hl
+   0AC0 CDr00r00      [17] 1803 	call	_cpct_px2byteM0
+   0AC3 55            [ 4] 1804 	ld	d, l
+   0AC4 D5            [11] 1805 	push	de
+   0AC5 21 1C 48      [10] 1806 	ld	hl, #0x481c
+   0AC8 E5            [11] 1807 	push	hl
+   0AC9 21 00 C0      [10] 1808 	ld	hl, #0xc000
+   0ACC E5            [11] 1809 	push	hl
+   0ACD CDr00r00      [17] 1810 	call	_cpct_getScreenPtr
+   0AD0 4D            [ 4] 1811 	ld	c, l
+   0AD1 44            [ 4] 1812 	ld	b, h
+   0AD2 D1            [10] 1813 	pop	de
+   0AD3 21 18 08      [10] 1814 	ld	hl, #0x0818
+   0AD6 E5            [11] 1815 	push	hl
+   0AD7 D5            [11] 1816 	push	de
+   0AD8 33            [ 6] 1817 	inc	sp
+   0AD9 C5            [11] 1818 	push	bc
+   0ADA CDr00r00      [17] 1819 	call	_cpct_drawSolidBox
+   0ADD F1            [10] 1820 	pop	af
+   0ADE F1            [10] 1821 	pop	af
+   0ADF 33            [ 6] 1822 	inc	sp
+   0AE0 C9            [10] 1823 	ret
+   0AE1                    1824 00113$:
+                           1825 ;src/game.c:313: } else if (g_gameover) {
+   0AE1 3Ar92r00      [13] 1826 	ld	a,(#_g_gameover + 0)
+   0AE4 B7            [ 4] 1827 	or	a, a
+   0AE5 28 48         [12] 1828 	jr	Z,00110$
+                           1829 ;src/game.c:314: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 68), cpct_px2byteM0(1, 1), 32, 12);
+   0AE7 21 01 01      [10] 1830 	ld	hl, #0x0101
+   0AEA E5            [11] 1831 	push	hl
+   0AEB CDr00r00      [17] 1832 	call	_cpct_px2byteM0
+   0AEE 55            [ 4] 1833 	ld	d, l
+   0AEF D5            [11] 1834 	push	de
+   0AF0 21 18 44      [10] 1835 	ld	hl, #0x4418
+   0AF3 E5            [11] 1836 	push	hl
+   0AF4 21 00 C0      [10] 1837 	ld	hl, #0xc000
+   0AF7 E5            [11] 1838 	push	hl
+   0AF8 CDr00r00      [17] 1839 	call	_cpct_getScreenPtr
+   0AFB 4D            [ 4] 1840 	ld	c, l
+   0AFC 44            [ 4] 1841 	ld	b, h
+   0AFD D1            [10] 1842 	pop	de
+   0AFE 21 20 0C      [10] 1843 	ld	hl, #0x0c20
+   0B01 E5            [11] 1844 	push	hl
+   0B02 D5            [11] 1845 	push	de
+   0B03 33            [ 6] 1846 	inc	sp
+   0B04 C5            [11] 1847 	push	bc
+   0B05 CDr00r00      [17] 1848 	call	_cpct_drawSolidBox
+   0B08 F1            [10] 1849 	pop	af
+                           1850 ;src/game.c:315: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 28, 72), cpct_px2byteM0(6, 6), 24, 8);
+   0B09 33            [ 6] 1851 	inc	sp
+   0B0A 21 06 06      [10] 1852 	ld	hl,#0x0606
+   0B0D E3            [19] 1853 	ex	(sp),hl
+   0B0E CDr00r00      [17] 1854 	call	_cpct_px2byteM0
+   0B11 55            [ 4] 1855 	ld	d, l
+   0B12 D5            [11] 1856 	push	de
+   0B13 21 1C 48      [10] 1857 	ld	hl, #0x481c
+   0B16 E5            [11] 1858 	push	hl
+   0B17 21 00 C0      [10] 1859 	ld	hl, #0xc000
+   0B1A E5            [11] 1860 	push	hl
+   0B1B CDr00r00      [17] 1861 	call	_cpct_getScreenPtr
+   0B1E 4D            [ 4] 1862 	ld	c, l
+   0B1F 44            [ 4] 1863 	ld	b, h
+   0B20 D1            [10] 1864 	pop	de
+   0B21 21 18 08      [10] 1865 	ld	hl, #0x0818
+   0B24 E5            [11] 1866 	push	hl
+   0B25 D5            [11] 1867 	push	de
+   0B26 33            [ 6] 1868 	inc	sp
+   0B27 C5            [11] 1869 	push	bc
+   0B28 CDr00r00      [17] 1870 	call	_cpct_drawSolidBox
+   0B2B F1            [10] 1871 	pop	af
+   0B2C F1            [10] 1872 	pop	af
+   0B2D 33            [ 6] 1873 	inc	sp
+   0B2E C9            [10] 1874 	ret
+   0B2F                    1875 00110$:
+                           1876 ;src/game.c:316: } else if (g_checkpointactive) {
+   0B2F 3Ar97r00      [13] 1877 	ld	a,(#_g_checkpointactive + 0)
+   0B32 B7            [ 4] 1878 	or	a, a
+   0B33 C8            [11] 1879 	ret	Z
+                           1880 ;src/game.c:317: cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_checkpointx, (u8)(g_checkpointy - 8)), cpct_px2byteM0(9, 9), 2, 8);
+   0B34 21 09 09      [10] 1881 	ld	hl, #0x0909
+   0B37 E5            [11] 1882 	push	hl
+   0B38 CDr00r00      [17] 1883 	call	_cpct_px2byteM0
+   0B3B 55            [ 4] 1884 	ld	d, l
+   0B3C 3Ar96r00      [13] 1885 	ld	a,(#_g_checkpointy + 0)
+   0B3F C6 F8         [ 7] 1886 	add	a, #0xf8
+   0B41 47            [ 4] 1887 	ld	b, a
+   0B42 D5            [11] 1888 	push	de
+   0B43 C5            [11] 1889 	push	bc
+   0B44 33            [ 6] 1890 	inc	sp
+   0B45 3Ar95r00      [13] 1891 	ld	a, (_g_checkpointx)
+   0B48 F5            [11] 1892 	push	af
+   0B49 33            [ 6] 1893 	inc	sp
+   0B4A 21 00 C0      [10] 1894 	ld	hl, #0xc000
+   0B4D E5            [11] 1895 	push	hl
+   0B4E CDr00r00      [17] 1896 	call	_cpct_getScreenPtr
+   0B51 4D            [ 4] 1897 	ld	c, l
+   0B52 44            [ 4] 1898 	ld	b, h
+   0B53 D1            [10] 1899 	pop	de
+   0B54 21 02 08      [10] 1900 	ld	hl, #0x0802
+   0B57 E5            [11] 1901 	push	hl
+   0B58 D5            [11] 1902 	push	de
+   0B59 33            [ 6] 1903 	inc	sp
+   0B5A C5            [11] 1904 	push	bc
+   0B5B CDr00r00      [17] 1905 	call	_cpct_drawSolidBox
+   0B5E F1            [10] 1906 	pop	af
+   0B5F F1            [10] 1907 	pop	af
+   0B60 33            [ 6] 1908 	inc	sp
+   0B61 C9            [10] 1909 	ret
+                           1910 	.area _CODE
+                           1911 	.area _INITIALIZER
+                           1912 	.area _CABS (ABS)

@@ -1,0 +1,596 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Mac OS X ppc)
+                              4 ;--------------------------------------------------------
+                              5 	.module player
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _collision_clamp_y_at
+                             12 	.globl _collision_is_on_ground_at
+                             13 	.globl _input_is_jump_just_pressed
+                             14 	.globl _input_is_jump_pressed
+                             15 	.globl _input_is_right_pressed
+                             16 	.globl _input_is_left_pressed
+                             17 	.globl _cpct_getScreenPtr
+                             18 	.globl _cpct_drawSprite
+                             19 	.globl _playerinit
+                             20 	.globl _playerupdate
+                             21 	.globl _playerrender
+                             22 	.globl _player_get_health
+                             23 	.globl _player_get_weapon
+                             24 ;--------------------------------------------------------
+                             25 ; special function registers
+                             26 ;--------------------------------------------------------
+                             27 ;--------------------------------------------------------
+                             28 ; ram data
+                             29 ;--------------------------------------------------------
+                             30 	.area _DATA
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _INITIALIZED
+                             35 ;--------------------------------------------------------
+                             36 ; absolute external ram data
+                             37 ;--------------------------------------------------------
+                             38 	.area _DABS (ABS)
+                             39 ;--------------------------------------------------------
+                             40 ; global & static initialisations
+                             41 ;--------------------------------------------------------
+                             42 	.area _HOME
+                             43 	.area _GSINIT
+                             44 	.area _GSFINAL
+                             45 	.area _GSINIT
+                             46 ;--------------------------------------------------------
+                             47 ; Home
+                             48 ;--------------------------------------------------------
+                             49 	.area _HOME
+                             50 	.area _HOME
+                             51 ;--------------------------------------------------------
+                             52 ; code
+                             53 ;--------------------------------------------------------
+                             54 	.area _CODE
+                             55 ;src/entities/player.c:17: void playerinit(Player* player) {
+                             56 ;	---------------------------------
+                             57 ; Function playerinit
+                             58 ; ---------------------------------
+   0000                      59 _playerinit::
+                             60 ;src/entities/player.c:18: if (!player) {
+   0000 21 03 00      [10]   61 	ld	hl, #2+1
+   0003 39            [11]   62 	add	hl, sp
+   0004 7E            [ 7]   63 	ld	a, (hl)
+   0005 2B            [ 6]   64 	dec	hl
+   0006 B6            [ 7]   65 	or	a,(hl)
+                             66 ;src/entities/player.c:19: return;
+   0007 C8            [11]   67 	ret	Z
+                             68 ;src/entities/player.c:22: player->x = 20;
+   0008 D1            [10]   69 	pop	de
+   0009 C1            [10]   70 	pop	bc
+   000A C5            [11]   71 	push	bc
+   000B D5            [11]   72 	push	de
+   000C 3E 14         [ 7]   73 	ld	a, #0x14
+   000E 02            [ 7]   74 	ld	(bc), a
+                             75 ;src/entities/player.c:23: player->y = 120;
+   000F 69            [ 4]   76 	ld	l, c
+   0010 60            [ 4]   77 	ld	h, b
+   0011 23            [ 6]   78 	inc	hl
+   0012 36 78         [10]   79 	ld	(hl), #0x78
+                             80 ;src/entities/player.c:24: player->vx = 0;
+   0014 59            [ 4]   81 	ld	e, c
+   0015 50            [ 4]   82 	ld	d, b
+   0016 13            [ 6]   83 	inc	de
+   0017 13            [ 6]   84 	inc	de
+   0018 AF            [ 4]   85 	xor	a, a
+   0019 12            [ 7]   86 	ld	(de), a
+                             87 ;src/entities/player.c:25: player->vy = 0;
+   001A 59            [ 4]   88 	ld	e, c
+   001B 50            [ 4]   89 	ld	d, b
+   001C 13            [ 6]   90 	inc	de
+   001D 13            [ 6]   91 	inc	de
+   001E 13            [ 6]   92 	inc	de
+   001F AF            [ 4]   93 	xor	a, a
+   0020 12            [ 7]   94 	ld	(de), a
+                             95 ;src/entities/player.c:26: player->w = 4;
+   0021 21 04 00      [10]   96 	ld	hl, #0x0004
+   0024 09            [11]   97 	add	hl, bc
+   0025 36 04         [10]   98 	ld	(hl), #0x04
+                             99 ;src/entities/player.c:27: player->h = 16;
+   0027 21 05 00      [10]  100 	ld	hl, #0x0005
+   002A 09            [11]  101 	add	hl, bc
+   002B 36 10         [10]  102 	ld	(hl), #0x10
+                            103 ;src/entities/player.c:28: player->health = 3;
+   002D 21 06 00      [10]  104 	ld	hl, #0x0006
+   0030 09            [11]  105 	add	hl, bc
+   0031 36 03         [10]  106 	ld	(hl), #0x03
+                            107 ;src/entities/player.c:29: player->weapon = 0;
+   0033 21 07 00      [10]  108 	ld	hl, #0x0007
+   0036 09            [11]  109 	add	hl, bc
+   0037 36 00         [10]  110 	ld	(hl), #0x00
+                            111 ;src/entities/player.c:30: player->facing_left = 0;
+   0039 21 08 00      [10]  112 	ld	hl, #0x0008
+   003C 09            [11]  113 	add	hl, bc
+   003D 36 00         [10]  114 	ld	(hl), #0x00
+                            115 ;src/entities/player.c:31: player->jump_hold = 0;
+   003F 21 09 00      [10]  116 	ld	hl, #0x0009
+   0042 09            [11]  117 	add	hl, bc
+   0043 36 00         [10]  118 	ld	(hl), #0x00
+   0045 C9            [10]  119 	ret
+                            120 ;src/entities/player.c:34: void playerupdate(Player* player) {
+                            121 ;	---------------------------------
+                            122 ; Function playerupdate
+                            123 ; ---------------------------------
+   0046                     124 _playerupdate::
+   0046 DD E5         [15]  125 	push	ix
+   0048 DD 21 00 00   [14]  126 	ld	ix,#0
+   004C DD 39         [15]  127 	add	ix,sp
+   004E 21 F2 FF      [10]  128 	ld	hl, #-14
+   0051 39            [11]  129 	add	hl, sp
+   0052 F9            [ 6]  130 	ld	sp, hl
+                            131 ;src/entities/player.c:38: if (!player) {
+   0053 DD 7E 05      [19]  132 	ld	a, 5 (ix)
+   0056 DD B6 04      [19]  133 	or	a,4 (ix)
+                            134 ;src/entities/player.c:39: return;
+   0059 CAr8Dr02      [10]  135 	jp	Z,00141$
+                            136 ;src/entities/player.c:42: if (input_is_left_pressed()) {
+   005C CDr00r00      [17]  137 	call	_input_is_left_pressed
+                            138 ;src/entities/player.c:43: player->vx = (i8)(player->vx - kplayeracceleration);
+   005F DD 4E 04      [19]  139 	ld	c,4 (ix)
+   0062 DD 46 05      [19]  140 	ld	b,5 (ix)
+   0065 59            [ 4]  141 	ld	e, c
+   0066 50            [ 4]  142 	ld	d, b
+   0067 13            [ 6]  143 	inc	de
+   0068 13            [ 6]  144 	inc	de
+                            145 ;src/entities/player.c:44: player->facing_left = 1;
+   0069 79            [ 4]  146 	ld	a, c
+   006A C6 08         [ 7]  147 	add	a, #0x08
+   006C DD 77 FE      [19]  148 	ld	-2 (ix), a
+   006F 78            [ 4]  149 	ld	a, b
+   0070 CE 00         [ 7]  150 	adc	a, #0x00
+   0072 DD 77 FF      [19]  151 	ld	-1 (ix), a
+                            152 ;src/entities/player.c:42: if (input_is_left_pressed()) {
+   0075 7D            [ 4]  153 	ld	a, l
+   0076 B7            [ 4]  154 	or	a, a
+   0077 28 0E         [12]  155 	jr	Z,00116$
+                            156 ;src/entities/player.c:43: player->vx = (i8)(player->vx - kplayeracceleration);
+   0079 1A            [ 7]  157 	ld	a, (de)
+   007A C6 FF         [ 7]  158 	add	a, #0xff
+   007C 12            [ 7]  159 	ld	(de), a
+                            160 ;src/entities/player.c:44: player->facing_left = 1;
+   007D DD 6E FE      [19]  161 	ld	l,-2 (ix)
+   0080 DD 66 FF      [19]  162 	ld	h,-1 (ix)
+   0083 36 01         [10]  163 	ld	(hl), #0x01
+   0085 18 55         [12]  164 	jr	00117$
+   0087                     165 00116$:
+                            166 ;src/entities/player.c:45: } else if (input_is_right_pressed()) {
+   0087 C5            [11]  167 	push	bc
+   0088 D5            [11]  168 	push	de
+   0089 CDr00r00      [17]  169 	call	_input_is_right_pressed
+   008C DD 75 FD      [19]  170 	ld	-3 (ix), l
+   008F D1            [10]  171 	pop	de
+   0090 C1            [10]  172 	pop	bc
+                            173 ;src/entities/player.c:56: if (player->vx > kplayermovespeed) player->vx = kplayermovespeed;
+   0091 1A            [ 7]  174 	ld	a, (de)
+                            175 ;src/entities/player.c:46: player->vx = (i8)(player->vx + kplayeracceleration);
+   0092 6F            [ 4]  176 	ld	l,a
+   0093 3C            [ 4]  177 	inc	a
+   0094 DD 77 FC      [19]  178 	ld	-4 (ix), a
+                            179 ;src/entities/player.c:45: } else if (input_is_right_pressed()) {
+   0097 DD 7E FD      [19]  180 	ld	a, -3 (ix)
+   009A B7            [ 4]  181 	or	a, a
+   009B 28 0E         [12]  182 	jr	Z,00113$
+                            183 ;src/entities/player.c:46: player->vx = (i8)(player->vx + kplayeracceleration);
+   009D DD 7E FC      [19]  184 	ld	a, -4 (ix)
+   00A0 12            [ 7]  185 	ld	(de), a
+                            186 ;src/entities/player.c:47: player->facing_left = 0;
+   00A1 DD 6E FE      [19]  187 	ld	l,-2 (ix)
+   00A4 DD 66 FF      [19]  188 	ld	h,-1 (ix)
+   00A7 36 00         [10]  189 	ld	(hl), #0x00
+   00A9 18 31         [12]  190 	jr	00117$
+   00AB                     191 00113$:
+                            192 ;src/entities/player.c:48: } else if (player->vx > 0) {
+   00AB AF            [ 4]  193 	xor	a, a
+   00AC 95            [ 4]  194 	sub	a, l
+   00AD E2rB2r00      [10]  195 	jp	PO, 00223$
+   00B0 EE 80         [ 7]  196 	xor	a, #0x80
+   00B2                     197 00223$:
+   00B2 F2rC6r00      [10]  198 	jp	P, 00110$
+                            199 ;src/entities/player.c:49: player->vx = (i8)(player->vx - kplayerdeceleration);
+   00B5 7D            [ 4]  200 	ld	a, l
+   00B6 C6 FF         [ 7]  201 	add	a, #0xff
+   00B8 DD 77 FD      [19]  202 	ld	-3 (ix), a
+   00BB 12            [ 7]  203 	ld	(de),a
+                            204 ;src/entities/player.c:50: if (player->vx < 0) player->vx = 0;
+   00BC DD CB FD 7E   [20]  205 	bit	7, -3 (ix)
+   00C0 28 1A         [12]  206 	jr	Z,00117$
+   00C2 AF            [ 4]  207 	xor	a, a
+   00C3 12            [ 7]  208 	ld	(de), a
+   00C4 18 16         [12]  209 	jr	00117$
+   00C6                     210 00110$:
+                            211 ;src/entities/player.c:51: } else if (player->vx < 0) {
+   00C6 CB 7D         [ 8]  212 	bit	7, l
+   00C8 28 12         [12]  213 	jr	Z,00117$
+                            214 ;src/entities/player.c:52: player->vx = (i8)(player->vx + kplayerdeceleration);
+   00CA DD 7E FC      [19]  215 	ld	a, -4 (ix)
+   00CD 12            [ 7]  216 	ld	(de), a
+                            217 ;src/entities/player.c:53: if (player->vx > 0) player->vx = 0;
+   00CE AF            [ 4]  218 	xor	a, a
+   00CF DD 96 FC      [19]  219 	sub	a, -4 (ix)
+   00D2 E2rD7r00      [10]  220 	jp	PO, 00224$
+   00D5 EE 80         [ 7]  221 	xor	a, #0x80
+   00D7                     222 00224$:
+   00D7 F2rDCr00      [10]  223 	jp	P, 00117$
+   00DA AF            [ 4]  224 	xor	a, a
+   00DB 12            [ 7]  225 	ld	(de), a
+   00DC                     226 00117$:
+                            227 ;src/entities/player.c:56: if (player->vx > kplayermovespeed) player->vx = kplayermovespeed;
+   00DC 1A            [ 7]  228 	ld	a, (de)
+   00DD 6F            [ 4]  229 	ld	l, a
+   00DE 3E 03         [ 7]  230 	ld	a, #0x03
+   00E0 95            [ 4]  231 	sub	a, l
+   00E1 E2rE6r00      [10]  232 	jp	PO, 00225$
+   00E4 EE 80         [ 7]  233 	xor	a, #0x80
+   00E6                     234 00225$:
+   00E6 F2rECr00      [10]  235 	jp	P, 00119$
+   00E9 3E 03         [ 7]  236 	ld	a, #0x03
+   00EB 12            [ 7]  237 	ld	(de), a
+   00EC                     238 00119$:
+                            239 ;src/entities/player.c:57: if (player->vx < -kplayermovespeed) player->vx = -kplayermovespeed;
+   00EC 1A            [ 7]  240 	ld	a, (de)
+   00ED EE 80         [ 7]  241 	xor	a, #0x80
+   00EF D6 7D         [ 7]  242 	sub	a, #0x7d
+   00F1 30 03         [12]  243 	jr	NC,00121$
+   00F3 3E FD         [ 7]  244 	ld	a, #0xfd
+   00F5 12            [ 7]  245 	ld	(de), a
+   00F6                     246 00121$:
+                            247 ;src/entities/player.c:59: if (input_is_jump_just_pressed() && collision_is_on_ground_at((i16)player->x, (i16)player->y, player->h)) {
+   00F6 C5            [11]  248 	push	bc
+   00F7 D5            [11]  249 	push	de
+   00F8 CDr00r00      [17]  250 	call	_input_is_jump_just_pressed
+   00FB DD 75 FC      [19]  251 	ld	-4 (ix), l
+   00FE D1            [10]  252 	pop	de
+   00FF C1            [10]  253 	pop	bc
+   0100 21 05 00      [10]  254 	ld	hl, #0x0005
+   0103 09            [11]  255 	add	hl,bc
+   0104 DD 75 FE      [19]  256 	ld	-2 (ix), l
+   0107 DD 74 FF      [19]  257 	ld	-1 (ix), h
+   010A 21 01 00      [10]  258 	ld	hl, #0x0001
+   010D 09            [11]  259 	add	hl,bc
+   010E DD 75 FA      [19]  260 	ld	-6 (ix), l
+   0111 DD 74 FB      [19]  261 	ld	-5 (ix), h
+                            262 ;src/entities/player.c:60: player->vy = kplayerjumpvelocity;
+   0114 21 03 00      [10]  263 	ld	hl, #0x0003
+   0117 09            [11]  264 	add	hl,bc
+   0118 DD 75 F8      [19]  265 	ld	-8 (ix), l
+   011B DD 74 F9      [19]  266 	ld	-7 (ix), h
+                            267 ;src/entities/player.c:61: player->jump_hold = 5;
+   011E 21 09 00      [10]  268 	ld	hl, #0x0009
+   0121 09            [11]  269 	add	hl,bc
+   0122 DD 75 F6      [19]  270 	ld	-10 (ix), l
+   0125 DD 74 F7      [19]  271 	ld	-9 (ix), h
+                            272 ;src/entities/player.c:59: if (input_is_jump_just_pressed() && collision_is_on_ground_at((i16)player->x, (i16)player->y, player->h)) {
+   0128 DD 7E FC      [19]  273 	ld	a, -4 (ix)
+   012B B7            [ 4]  274 	or	a, a
+   012C 28 4E         [12]  275 	jr	Z,00123$
+   012E DD 6E FE      [19]  276 	ld	l,-2 (ix)
+   0131 DD 66 FF      [19]  277 	ld	h,-1 (ix)
+   0134 7E            [ 7]  278 	ld	a, (hl)
+   0135 DD 6E FA      [19]  279 	ld	l,-6 (ix)
+   0138 DD 66 FB      [19]  280 	ld	h,-5 (ix)
+   013B 6E            [ 7]  281 	ld	l, (hl)
+   013C DD 75 F4      [19]  282 	ld	-12 (ix), l
+   013F DD 36 F5 00   [19]  283 	ld	-11 (ix), #0x00
+   0143 F5            [11]  284 	push	af
+   0144 0A            [ 7]  285 	ld	a, (bc)
+   0145 6F            [ 4]  286 	ld	l, a
+   0146 F1            [10]  287 	pop	af
+   0147 DD 75 F2      [19]  288 	ld	-14 (ix), l
+   014A DD 36 F3 00   [19]  289 	ld	-13 (ix), #0x00
+   014E C5            [11]  290 	push	bc
+   014F D5            [11]  291 	push	de
+   0150 F5            [11]  292 	push	af
+   0151 33            [ 6]  293 	inc	sp
+   0152 DD 6E F4      [19]  294 	ld	l,-12 (ix)
+   0155 DD 66 F5      [19]  295 	ld	h,-11 (ix)
+   0158 E5            [11]  296 	push	hl
+   0159 DD 6E F2      [19]  297 	ld	l,-14 (ix)
+   015C DD 66 F3      [19]  298 	ld	h,-13 (ix)
+   015F E5            [11]  299 	push	hl
+   0160 CDr00r00      [17]  300 	call	_collision_is_on_ground_at
+   0163 F1            [10]  301 	pop	af
+   0164 F1            [10]  302 	pop	af
+   0165 33            [ 6]  303 	inc	sp
+   0166 D1            [10]  304 	pop	de
+   0167 C1            [10]  305 	pop	bc
+   0168 7D            [ 4]  306 	ld	a, l
+   0169 B7            [ 4]  307 	or	a, a
+   016A 28 10         [12]  308 	jr	Z,00123$
+                            309 ;src/entities/player.c:60: player->vy = kplayerjumpvelocity;
+   016C DD 6E F8      [19]  310 	ld	l,-8 (ix)
+   016F DD 66 F9      [19]  311 	ld	h,-7 (ix)
+   0172 36 FA         [10]  312 	ld	(hl), #0xfa
+                            313 ;src/entities/player.c:61: player->jump_hold = 5;
+   0174 DD 6E F6      [19]  314 	ld	l,-10 (ix)
+   0177 DD 66 F7      [19]  315 	ld	h,-9 (ix)
+   017A 36 05         [10]  316 	ld	(hl), #0x05
+   017C                     317 00123$:
+                            318 ;src/entities/player.c:64: if (input_is_jump_pressed() && player->jump_hold && player->vy < 0) {
+   017C C5            [11]  319 	push	bc
+   017D D5            [11]  320 	push	de
+   017E CDr00r00      [17]  321 	call	_input_is_jump_pressed
+   0181 7D            [ 4]  322 	ld	a, l
+   0182 D1            [10]  323 	pop	de
+   0183 C1            [10]  324 	pop	bc
+   0184 B7            [ 4]  325 	or	a, a
+   0185 28 31         [12]  326 	jr	Z,00126$
+   0187 DD 6E F6      [19]  327 	ld	l,-10 (ix)
+   018A DD 66 F7      [19]  328 	ld	h,-9 (ix)
+   018D 7E            [ 7]  329 	ld	a, (hl)
+   018E B7            [ 4]  330 	or	a, a
+   018F 28 27         [12]  331 	jr	Z,00126$
+   0191 DD 6E F8      [19]  332 	ld	l,-8 (ix)
+   0194 DD 66 F9      [19]  333 	ld	h,-7 (ix)
+   0197 6E            [ 7]  334 	ld	l, (hl)
+   0198 CB 7D         [ 8]  335 	bit	7, l
+   019A 28 1C         [12]  336 	jr	Z,00126$
+                            337 ;src/entities/player.c:65: player->vy = (i8)(player->vy + kplayerjumpboost);
+   019C 7D            [ 4]  338 	ld	a, l
+   019D C6 FF         [ 7]  339 	add	a, #0xff
+   019F DD 6E F8      [19]  340 	ld	l,-8 (ix)
+   01A2 DD 66 F9      [19]  341 	ld	h,-7 (ix)
+   01A5 77            [ 7]  342 	ld	(hl), a
+                            343 ;src/entities/player.c:66: player->jump_hold--;
+   01A6 DD 6E F6      [19]  344 	ld	l,-10 (ix)
+   01A9 DD 66 F7      [19]  345 	ld	h,-9 (ix)
+   01AC 7E            [ 7]  346 	ld	a, (hl)
+   01AD C6 FF         [ 7]  347 	add	a, #0xff
+   01AF DD 6E F6      [19]  348 	ld	l,-10 (ix)
+   01B2 DD 66 F7      [19]  349 	ld	h,-9 (ix)
+   01B5 77            [ 7]  350 	ld	(hl), a
+   01B6 18 08         [12]  351 	jr	00127$
+   01B8                     352 00126$:
+                            353 ;src/entities/player.c:68: player->jump_hold = 0;
+   01B8 DD 6E F6      [19]  354 	ld	l,-10 (ix)
+   01BB DD 66 F7      [19]  355 	ld	h,-9 (ix)
+   01BE 36 00         [10]  356 	ld	(hl), #0x00
+   01C0                     357 00127$:
+                            358 ;src/entities/player.c:71: player->vy = (i8)(player->vy + kplayergravity);
+   01C0 DD 6E F8      [19]  359 	ld	l,-8 (ix)
+   01C3 DD 66 F9      [19]  360 	ld	h,-7 (ix)
+   01C6 7E            [ 7]  361 	ld	a, (hl)
+   01C7 3C            [ 4]  362 	inc	a
+   01C8 DD 77 F2      [19]  363 	ld	-14 (ix), a
+   01CB DD 6E F8      [19]  364 	ld	l,-8 (ix)
+   01CE DD 66 F9      [19]  365 	ld	h,-7 (ix)
+   01D1 DD 7E F2      [19]  366 	ld	a, -14 (ix)
+   01D4 77            [ 7]  367 	ld	(hl), a
+                            368 ;src/entities/player.c:72: if (player->vy > kplayermaxfall) player->vy = kplayermaxfall;
+   01D5 3E 04         [ 7]  369 	ld	a, #0x04
+   01D7 DD 96 F2      [19]  370 	sub	a, -14 (ix)
+   01DA E2rDFr01      [10]  371 	jp	PO, 00226$
+   01DD EE 80         [ 7]  372 	xor	a, #0x80
+   01DF                     373 00226$:
+   01DF F2rEAr01      [10]  374 	jp	P, 00131$
+   01E2 DD 6E F8      [19]  375 	ld	l,-8 (ix)
+   01E5 DD 66 F9      [19]  376 	ld	h,-7 (ix)
+   01E8 36 04         [10]  377 	ld	(hl), #0x04
+   01EA                     378 00131$:
+                            379 ;src/entities/player.c:74: nextx = (i16)player->x + (i16)player->vx;
+   01EA 0A            [ 7]  380 	ld	a, (bc)
+   01EB DD 77 F2      [19]  381 	ld	-14 (ix), a
+   01EE DD 36 F3 00   [19]  382 	ld	-13 (ix), #0x00
+   01F2 1A            [ 7]  383 	ld	a, (de)
+   01F3 5F            [ 4]  384 	ld	e, a
+   01F4 17            [ 4]  385 	rla
+   01F5 9F            [ 4]  386 	sbc	a, a
+   01F6 57            [ 4]  387 	ld	d, a
+   01F7 E1            [10]  388 	pop	hl
+   01F8 E5            [11]  389 	push	hl
+   01F9 19            [11]  390 	add	hl, de
+                            391 ;src/entities/player.c:75: if (nextx < 0) {
+   01FA CB 7C         [ 8]  392 	bit	7, h
+   01FC 28 03         [12]  393 	jr	Z,00133$
+                            394 ;src/entities/player.c:76: nextx = 0;
+   01FE 21 00 00      [10]  395 	ld	hl, #0x0000
+   0201                     396 00133$:
+                            397 ;src/entities/player.c:78: if (nextx > 76) {
+   0201 3E 4C         [ 7]  398 	ld	a, #0x4c
+   0203 BD            [ 4]  399 	cp	a, l
+   0204 3E 00         [ 7]  400 	ld	a, #0x00
+   0206 9C            [ 4]  401 	sbc	a, h
+   0207 E2r0Cr02      [10]  402 	jp	PO, 00227$
+   020A EE 80         [ 7]  403 	xor	a, #0x80
+   020C                     404 00227$:
+   020C F2r12r02      [10]  405 	jp	P, 00135$
+                            406 ;src/entities/player.c:79: nextx = 76;
+   020F 21 4C 00      [10]  407 	ld	hl, #0x004c
+   0212                     408 00135$:
+                            409 ;src/entities/player.c:81: player->x = (u8)nextx;
+   0212 DD 75 F2      [19]  410 	ld	-14 (ix), l
+   0215 7D            [ 4]  411 	ld	a, l
+   0216 02            [ 7]  412 	ld	(bc), a
+                            413 ;src/entities/player.c:83: nexty = (i16)player->y + (i16)player->vy;
+   0217 DD 6E FA      [19]  414 	ld	l,-6 (ix)
+   021A DD 66 FB      [19]  415 	ld	h,-5 (ix)
+   021D 5E            [ 7]  416 	ld	e, (hl)
+   021E 16 00         [ 7]  417 	ld	d, #0x00
+   0220 DD 6E F8      [19]  418 	ld	l,-8 (ix)
+   0223 DD 66 F9      [19]  419 	ld	h,-7 (ix)
+   0226 6E            [ 7]  420 	ld	l, (hl)
+   0227 7D            [ 4]  421 	ld	a, l
+   0228 17            [ 4]  422 	rla
+   0229 9F            [ 4]  423 	sbc	a, a
+   022A 67            [ 4]  424 	ld	h, a
+   022B 19            [11]  425 	add	hl, de
+   022C E5            [11]  426 	push	hl
+   022D FD E1         [14]  427 	pop	iy
+                            428 ;src/entities/player.c:84: nexty = collision_clamp_y_at((i16)player->x, nexty, player->h);
+   022F DD 6E FE      [19]  429 	ld	l,-2 (ix)
+   0232 DD 66 FF      [19]  430 	ld	h,-1 (ix)
+   0235 66            [ 7]  431 	ld	h, (hl)
+   0236 DD 5E F2      [19]  432 	ld	e, -14 (ix)
+   0239 16 00         [ 7]  433 	ld	d, #0x00
+   023B C5            [11]  434 	push	bc
+   023C E5            [11]  435 	push	hl
+   023D 33            [ 6]  436 	inc	sp
+   023E FD E5         [15]  437 	push	iy
+   0240 D5            [11]  438 	push	de
+   0241 CDr00r00      [17]  439 	call	_collision_clamp_y_at
+   0244 F1            [10]  440 	pop	af
+   0245 F1            [10]  441 	pop	af
+   0246 33            [ 6]  442 	inc	sp
+   0247 C1            [10]  443 	pop	bc
+                            444 ;src/entities/player.c:85: if (nexty < 0) {
+   0248 CB 7C         [ 8]  445 	bit	7, h
+   024A 28 03         [12]  446 	jr	Z,00137$
+                            447 ;src/entities/player.c:86: nexty = 0;
+   024C 21 00 00      [10]  448 	ld	hl, #0x0000
+   024F                     449 00137$:
+                            450 ;src/entities/player.c:88: player->y = (u8)nexty;
+   024F 5D            [ 4]  451 	ld	e, l
+   0250 DD 6E FA      [19]  452 	ld	l,-6 (ix)
+   0253 DD 66 FB      [19]  453 	ld	h,-5 (ix)
+   0256 73            [ 7]  454 	ld	(hl), e
+                            455 ;src/entities/player.c:90: if (collision_is_on_ground_at((i16)player->x, (i16)player->y, player->h) && player->vy > 0) {
+   0257 DD 6E FE      [19]  456 	ld	l,-2 (ix)
+   025A DD 66 FF      [19]  457 	ld	h,-1 (ix)
+   025D 7E            [ 7]  458 	ld	a, (hl)
+   025E 16 00         [ 7]  459 	ld	d, #0x00
+   0260 F5            [11]  460 	push	af
+   0261 0A            [ 7]  461 	ld	a, (bc)
+   0262 4F            [ 4]  462 	ld	c, a
+   0263 F1            [10]  463 	pop	af
+   0264 06 00         [ 7]  464 	ld	b, #0x00
+   0266 F5            [11]  465 	push	af
+   0267 33            [ 6]  466 	inc	sp
+   0268 D5            [11]  467 	push	de
+   0269 C5            [11]  468 	push	bc
+   026A CDr00r00      [17]  469 	call	_collision_is_on_ground_at
+   026D F1            [10]  470 	pop	af
+   026E F1            [10]  471 	pop	af
+   026F 33            [ 6]  472 	inc	sp
+   0270 7D            [ 4]  473 	ld	a, l
+   0271 B7            [ 4]  474 	or	a, a
+   0272 28 19         [12]  475 	jr	Z,00141$
+   0274 DD 6E F8      [19]  476 	ld	l,-8 (ix)
+   0277 DD 66 F9      [19]  477 	ld	h,-7 (ix)
+   027A 4E            [ 7]  478 	ld	c, (hl)
+   027B AF            [ 4]  479 	xor	a, a
+   027C 91            [ 4]  480 	sub	a, c
+   027D E2r82r02      [10]  481 	jp	PO, 00228$
+   0280 EE 80         [ 7]  482 	xor	a, #0x80
+   0282                     483 00228$:
+   0282 F2r8Dr02      [10]  484 	jp	P, 00141$
+                            485 ;src/entities/player.c:91: player->vy = 0;
+   0285 DD 6E F8      [19]  486 	ld	l,-8 (ix)
+   0288 DD 66 F9      [19]  487 	ld	h,-7 (ix)
+   028B 36 00         [10]  488 	ld	(hl), #0x00
+   028D                     489 00141$:
+   028D DD F9         [10]  490 	ld	sp, ix
+   028F DD E1         [14]  491 	pop	ix
+   0291 C9            [10]  492 	ret
+                            493 ;src/entities/player.c:95: void playerrender(const Player* player) {
+                            494 ;	---------------------------------
+                            495 ; Function playerrender
+                            496 ; ---------------------------------
+   0292                     497 _playerrender::
+   0292 DD E5         [15]  498 	push	ix
+   0294 DD 21 00 00   [14]  499 	ld	ix,#0
+   0298 DD 39         [15]  500 	add	ix,sp
+   029A 3B            [ 6]  501 	dec	sp
+                            502 ;src/entities/player.c:98: if (!player) {
+   029B DD 7E 05      [19]  503 	ld	a, 5 (ix)
+   029E DD B6 04      [19]  504 	or	a,4 (ix)
+                            505 ;src/entities/player.c:99: return;
+   02A1 28 38         [12]  506 	jr	Z,00103$
+                            507 ;src/entities/player.c:102: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, player->x, player->y);
+   02A3 DD 5E 04      [19]  508 	ld	e,4 (ix)
+   02A6 DD 56 05      [19]  509 	ld	d,5 (ix)
+   02A9 6B            [ 4]  510 	ld	l, e
+   02AA 62            [ 4]  511 	ld	h, d
+   02AB 23            [ 6]  512 	inc	hl
+   02AC 46            [ 7]  513 	ld	b, (hl)
+   02AD 1A            [ 7]  514 	ld	a, (de)
+   02AE D5            [11]  515 	push	de
+   02AF C5            [11]  516 	push	bc
+   02B0 33            [ 6]  517 	inc	sp
+   02B1 F5            [11]  518 	push	af
+   02B2 33            [ 6]  519 	inc	sp
+   02B3 21 00 C0      [10]  520 	ld	hl, #0xc000
+   02B6 E5            [11]  521 	push	hl
+   02B7 CDr00r00      [17]  522 	call	_cpct_getScreenPtr
+   02BA 4D            [ 4]  523 	ld	c, l
+   02BB 44            [ 4]  524 	ld	b, h
+   02BC D1            [10]  525 	pop	de
+                            526 ;src/entities/player.c:103: cpct_drawSprite((u8*)sprplayerknight_data, pvmem, player->w, player->h);
+   02BD D5            [11]  527 	push	de
+   02BE FD E1         [14]  528 	pop	iy
+   02C0 FD 7E 05      [19]  529 	ld	a, 5 (iy)
+   02C3 DD 77 FF      [19]  530 	ld	-1 (ix), a
+   02C6 EB            [ 4]  531 	ex	de,hl
+   02C7 11 04 00      [10]  532 	ld	de, #0x0004
+   02CA 19            [11]  533 	add	hl, de
+   02CB 56            [ 7]  534 	ld	d, (hl)
+   02CC DD 7E FF      [19]  535 	ld	a, -1 (ix)
+   02CF F5            [11]  536 	push	af
+   02D0 33            [ 6]  537 	inc	sp
+   02D1 D5            [11]  538 	push	de
+   02D2 33            [ 6]  539 	inc	sp
+   02D3 C5            [11]  540 	push	bc
+   02D4 21r00r00      [10]  541 	ld	hl, #_sprplayerknight_data
+   02D7 E5            [11]  542 	push	hl
+   02D8 CDr00r00      [17]  543 	call	_cpct_drawSprite
+   02DB                     544 00103$:
+   02DB 33            [ 6]  545 	inc	sp
+   02DC DD E1         [14]  546 	pop	ix
+   02DE C9            [10]  547 	ret
+                            548 ;src/entities/player.c:106: u8 player_get_health(const Player* player) {
+                            549 ;	---------------------------------
+                            550 ; Function player_get_health
+                            551 ; ---------------------------------
+   02DF                     552 _player_get_health::
+                            553 ;src/entities/player.c:107: return player ? player->health : 0;
+   02DF 21 03 00      [10]  554 	ld	hl, #2+1
+   02E2 39            [11]  555 	add	hl, sp
+   02E3 7E            [ 7]  556 	ld	a, (hl)
+   02E4 2B            [ 6]  557 	dec	hl
+   02E5 B6            [ 7]  558 	or	a,(hl)
+   02E6 28 0A         [12]  559 	jr	Z,00103$
+   02E8 C1            [10]  560 	pop	bc
+   02E9 E1            [10]  561 	pop	hl
+   02EA E5            [11]  562 	push	hl
+   02EB C5            [11]  563 	push	bc
+   02EC 11 06 00      [10]  564 	ld	de, #0x0006
+   02EF 19            [11]  565 	add	hl, de
+   02F0 6E            [ 7]  566 	ld	l, (hl)
+   02F1 C9            [10]  567 	ret
+   02F2                     568 00103$:
+   02F2 2E 00         [ 7]  569 	ld	l, #0x00
+   02F4 C9            [10]  570 	ret
+                            571 ;src/entities/player.c:110: u8 player_get_weapon(const Player* player) {
+                            572 ;	---------------------------------
+                            573 ; Function player_get_weapon
+                            574 ; ---------------------------------
+   02F5                     575 _player_get_weapon::
+                            576 ;src/entities/player.c:111: return player ? player->weapon : 0;
+   02F5 21 03 00      [10]  577 	ld	hl, #2+1
+   02F8 39            [11]  578 	add	hl, sp
+   02F9 7E            [ 7]  579 	ld	a, (hl)
+   02FA 2B            [ 6]  580 	dec	hl
+   02FB B6            [ 7]  581 	or	a,(hl)
+   02FC 28 0A         [12]  582 	jr	Z,00103$
+   02FE C1            [10]  583 	pop	bc
+   02FF E1            [10]  584 	pop	hl
+   0300 E5            [11]  585 	push	hl
+   0301 C5            [11]  586 	push	bc
+   0302 11 07 00      [10]  587 	ld	de, #0x0007
+   0305 19            [11]  588 	add	hl, de
+   0306 6E            [ 7]  589 	ld	l, (hl)
+   0307 C9            [10]  590 	ret
+   0308                     591 00103$:
+   0308 2E 00         [ 7]  592 	ld	l, #0x00
+   030A C9            [10]  593 	ret
+                            594 	.area _CODE
+                            595 	.area _INITIALIZER
+                            596 	.area _CABS (ABS)

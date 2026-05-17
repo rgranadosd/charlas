@@ -1,0 +1,31 @@
+XL2
+H 9 areas 2 global symbols
+M zombie
+O -mz80
+S .__.ABS. Def0000
+A _CODE size 60 flags 0 addr 0
+S _zombie_walk Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 00 00 00 00 00 00 00 00 00 00 3C 3C 3C 3C
+R 00 00 00 00
+T 0E 00 00 00 00 00 7E 7E 7E 7E 00 00 00 00 00 00
+R 00 00 00 00
+T 1C 00 00 00 00 00 00 00 3C 3C 3C 3C 00 00 00 00
+R 00 00 00 00
+T 2A 00 7E 7E 7E 7E 00 00 00 00 00 00 00 00 00 00
+R 00 00 00 00
+T 38 00 00 00 3C 3C 3C 3C 00 00 00 00 7E 7E 7E 7E
+R 00 00 00 00
+T 46 00 00 00 00 00 00 00 00 00 00 00 00 00 3C 3C
+R 00 00 00 00
+T 54 00 3C 3C 00 00 00 00 7E 7E 7E 7E 00 00
+R 00 00 00 00

@@ -1,0 +1,37 @@
+XL2
+H 9 areas 2 global symbols
+M tilesetterrain
+O -mz80
+S .__.ABS. Def0000
+A _CODE size 80 flags 0 addr 0
+S _tile_terrain Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 00 00 00 00 00 00 00 00 FF FF FF FF FF FF
+R 00 00 00 00
+T 0E 00 FF FF AA 55 AA 55 AA 55 AA 55 00 00 00 00
+R 00 00 00 00
+T 1C 00 FF FF FF FF 00 00 00 00 00 00 FF FF FF FF
+R 00 00 00 00
+T 2A 00 00 00 00 00 00 00 81 42 24 18 18 24 42 81
+R 00 00 00 00
+T 38 00 00 00 00 00 00 00 00 00 18 3C 7E FF FF 7E
+R 00 00 00 00
+T 46 00 3C 18 00 00 00 00 00 00 00 00 3C 7E FF FF
+R 00 00 00 00
+T 54 00 FF FF 7E 3C 00 00 00 00 00 00 00 00 00 00
+R 00 00 00 00
+T 62 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+R 00 00 00 00
+T 70 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+R 00 00 00 00
+T 7E 00 00 00
+R 00 00 00 00

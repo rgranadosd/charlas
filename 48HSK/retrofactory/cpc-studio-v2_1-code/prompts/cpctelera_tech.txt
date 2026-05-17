@@ -17,6 +17,96 @@ ARQUETIPOS PERMITIDOS:
 - arcade_single_screen
 - action_platformer_run_and_gun
 
+REGLAS TÉCNICAS CRÍTICAS (verificadas en producción):
+
+INICIALIZACIÓN — ORDEN OBLIGATORIO:
+- cpct_setVideoMode() DEBE llamarse ANTES de cpct_disableFirmware().
+  Motivo: cpct_setVideoMode() desactiva la lower ROM (0x0000-0x3FFF).
+  cpct_disableFirmware() escribe EI:RET en RAM 0x0038.
+  Si la lower ROM sigue activa cuando se llama a cpct_disableFirmware(),
+  el CPU lee ROM en 0x0038 (no la RAM parcheada) y el firmware sigue corriendo.
+  Resultado: crash silencioso, 0FPS, juego no arranca.
+  Orden correcto:
+    cpct_setVideoMode(0);    // 1. desactiva lower ROM
+    cpct_disableFirmware();  // 2. ahora sí parchea RAM en 0x0038
+    cpct_setPalette(...);    // 3. resto del init
+
+TECLADO — cpct_scanKeyboard() vs cpct_scanKeyboard_f():
+- cpct_scanKeyboard_f() delega al firmware para leer el teclado.
+- Si se ha llamado a cpct_disableFirmware(), el firmware ya no corre en las ISR.
+- Usar cpct_scanKeyboard_f() con firmware deshabilitado causa crash o lectura incorrecta.
+- SIEMPRE usar cpct_scanKeyboard() (hardware directo) cuando el firmware está deshabilitado.
+
+TECLADO — Compatibilidad con Caprice32 en macOS:
+- En Caprice32 con joystick_emulation=1, las flechas del PC van al puerto joystick del CPC (Joy0_Left/Right/Up/Down).
+- Siempre incluir Joy0_Left/Right/Up/Down/Fire1 ADEMÁS de Key_CursorLeft etc.
+- Ejemplo correcto de input_update():
+    cpct_scanKeyboard();
+    left  = cpct_isKeyPressed(Key_CursorLeft)  || cpct_isKeyPressed(Key_A) || cpct_isKeyPressed(Joy0_Left);
+    right = cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_D) || cpct_isKeyPressed(Joy0_Right);
+    jump  = cpct_isKeyPressed(Key_CursorUp)    || cpct_isKeyPressed(Key_W) || cpct_isKeyPressed(Joy0_Up);
+    shoot = cpct_isKeyPressed(Key_Space)       || cpct_isKeyPressed(Key_X) || cpct_isKeyPressed(Joy0_Fire1);
+
+cpct_drawSolidBox — LÍMITE DE ANCHO 64 BYTES:
+- cpct_drawSolidBox usa 63 LDIs con JR dinámico. Ancho > 64 hace el JR negativo → NO escribe nada → VRAM no se limpia → rayas.
+- Pantalla Mode 0 = 80 bytes ancho. NUNCA llamar con width=80.
+- NUNCA usar cpct_clearScreen_f8() en el game loop: tarda ~21ms (> 1 frame a 50Hz).
+  El haz de CRT ve pantalla en blanco durante todo ese tiempo → flickering total garantizado.
+  Solo usar para la pantalla de inicio o pantallas estáticas, fuera del loop principal.
+- Para elementos parciales de >40 bytes de ancho, dividir en dos llamadas de ≤40:
+    cpct_drawSolidBox(pvmem,      color, 40, h);
+    cpct_drawSolidBox(pvmem + 40, color, 40, h);
+
+ANTI-FLICKER — PATRÓN ERASE-REDRAW (OBLIGATORIO en action_platformer y arcade):
+- NUNCA hacer clear de pantalla completa en el game loop. Usar erase-redraw por sprite.
+- Guardar posición anterior de cada entidad (prev_x, prev_y, prev_w, prev_h, prev_active).
+- Orden de game_render() OBLIGATORIO:
+    1. ERASE: cpct_drawSolidBox en prev_x/prev_y de cada entidad con color pen0 (0x00).
+    2. FONDO: tilemap_render() restaura tiles que quedaron sucios.
+    3. DRAW: dibujar entidades en posición actual. El orden importa (ver siguiente regla).
+    4. SAVE: copiar posición actual a prev_* para el siguiente frame.
+- Orden del main loop OBLIGATORIO:
+    game_update();
+    cpct_waitVSYNC();   /* beam vuelve a y=0 → empezamos render desde arriba */
+    game_render();
+  NUNCA poner waitVSYNC DESPUÉS de render: el haz se aleja de y=0 mientras renderizamos.
+
+DRAW ORDER — ORDEN DE DIBUJADO (evita flickering por posición Y):
+- El haz CRT avanza hacia abajo durante el render. Si dibujas una entidad en y=104
+  cuando ya han pasado ~10ms (haz en y≈100), el sprite aparece y desaparece cada frame.
+- Regla: dibuja primero las entidades que están MÁS ABAJO en pantalla (y mayor).
+  En un platformer donde el jugador está en el suelo (y≈104) y los enemigos en y≈40-80:
+    1. tilemap_render()        // fondo primero
+    2. playerrender()          // jugador primero: y=104, beam aún en y≈40 a ~4ms del frame
+    3. projectilerender()      // proyectiles
+    4. enemyrender()           // enemigos (suelen estar más arriba, y<100)
+    5. hudrender()             // HUD siempre último (y=0-20)
+  Si el jugador se dibuja ÚLTIMO, el beam ya está cerca de su y → flickering.
+
+COORDENADAS DE ENTIDADES — LÍMITES DE PANTALLA:
+- cpct_getScreenPtr(CPCT_VMEM_START, x, y): x en BYTES (0-79), y en filas de píxeles (0-199).
+- Spawn de entidades: x + sprite_width_bytes DEBE ser ≤ 79. Ejemplo: si sprite_w=5, spawn_x ≤ 74.
+- Si generas spawn_x con fórmulas (e.g., 46 + i*8), clámpa antes de usar: if (spawn_x > 74) spawn_x = 74;
+- Y inicial del jugador: player.y = groundy - player.h (pies exactamente en el suelo, sin solaparse).
+
+ENTRY POINT — JP STUB EN game.c:
+- game.c se enlaza ANTES que main.c (orden alfabético). La dirección 0x4000 contiene código de game.c, NO cpc_run_address.
+- La PRIMERA función de game.c DEBE ser el stub de redirección:
+    void __game_entry_jp(void) __naked {
+        __asm
+            .globl cpc_run_address
+            jp cpc_run_address
+        __endasm;
+    }
+- DISC.BAS SIEMPRE usa CALL 16384 (= 0x4000 = el JP stub). NUNCA una dirección calculada en tiempo de build.
+
+SPRITES — CODIFICACIÓN DE BYTES EN MODE 0 (CRÍTICO):
+- 1 byte = 2 píxeles con bits intercalados. NUNCA usar el valor del pen directamente como byte.
+- Usar cpct_px2byteM0(pen_izquierdo, pen_derecho) o la tabla de conversión.
+- NUNCA usar pen 0 como fill interior: pen 0 = fondo (SKY_BLUE), invisible contra el cielo.
+- Fill opaco estándar: pen 1 (BLACK) = 0x06; contorno: pen 6 (WHITE) = 0x78.
+- El tamaño del array de sprite = width_bytes × height_rows (exacto).
+
 REGLAS:
 - Devuelve SIEMPRE JSON válido.
 - No uses markdown.

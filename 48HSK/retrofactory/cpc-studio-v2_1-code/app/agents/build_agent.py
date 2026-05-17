@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,7 +12,7 @@ IDSK = CPCTELERA_HOME / "tools" / "iDSK-0.13" / "bin" / "iDSK"
 LOADER_TEMPLATE = (
     PROJECT_ROOT / "tools" / "cpctelera" / "examples" / "games" / "platformClimber" / "assets" / "dsk_files" / "PCLIMBER.BAS"
 )
-BLANK_SCREEN_SIZE = 16 * 1024
+AMSDOS_HEADER_SIZE = 0x80
 DEFAULT_PROJECT_NAME = "latestcp"
 
 
@@ -97,6 +98,128 @@ def _build_output(
     }
 
 
+def _make_basic_record(line_number: int, payload: bytes) -> bytes:
+    record_length = 4 + len(payload)
+    return (
+        record_length.to_bytes(2, "little")
+        + line_number.to_bytes(2, "little")
+        + payload
+    )
+
+
+def _encode_basic_integer(value: int) -> bytes:
+    if 0 <= value <= 10:
+        return bytes((0x0E + value,))
+    if 0 <= value <= 0xFF:
+        return bytes((0x19, value))
+    if 0 <= value <= 0xFFFF:
+        return bytes((0x1A,)) + value.to_bytes(2, "little")
+    raise ValueError(f"Cannot encode BASIC integer literal: {value}")
+
+
+def _build_amsdos_binary(filename: str, payload: bytes, load_address: int, exec_address: int | None = None) -> bytes:
+    stem, _, suffix = filename.upper().partition(".")
+    header = bytearray(AMSDOS_HEADER_SIZE)
+    header[0] = 0
+    header[1:9] = stem[:8].ljust(8).encode("ascii")
+    header[9:12] = suffix[:3].ljust(3).encode("ascii")
+    header[18] = 2
+    header[21:23] = load_address.to_bytes(2, "little")
+    header[24:26] = len(payload).to_bytes(2, "little")
+    header[26:28] = (exec_address if exec_address is not None else load_address).to_bytes(2, "little")
+    header[64:66] = len(payload).to_bytes(2, "little")
+    checksum = sum(header[:67]) & 0xFFFF
+    header[67:69] = checksum.to_bytes(2, "little")
+    return bytes(header) + payload
+
+
+def _retarget_loader_template_for_disk(load_address: str | None = None, program_name: str | None = None, run_address: str | None = None) -> bytes:
+    template = LOADER_TEMPLATE.read_bytes()
+    header = bytearray(template[:AMSDOS_HEADER_SIZE])
+    body = template[AMSDOS_HEADER_SIZE:]
+    header[1:12] = b"DISC    BAS"
+    memory_limit = None
+    if load_address:
+        memory_limit = max(int(load_address, 16) - 1, 0)
+    program_basename = (program_name or "GAME")[:8].upper().encode()
+
+    records: list[bytes] = []
+    position = 0
+    while position + 4 <= len(body):
+        record_length = int.from_bytes(body[position:position + 2], "little")
+        if record_length == 0:
+            break
+
+        line_number = int.from_bytes(body[position + 2:position + 4], "little")
+        record = body[position:position + record_length]
+
+        if line_number == 20 and memory_limit is not None:
+            records.append(
+                _make_basic_record(
+                    15,
+                    bytes((0xAA, 0x20)) + _encode_basic_integer(memory_limit) + bytes((0x00,)),
+                )
+            )
+        if line_number == 30:
+            records.append(record)
+            position += record_length
+            continue
+        elif line_number == 40:
+            position += record_length
+            continue
+        elif line_number == 70:
+            # Use LOAD then CALL instead of RUN: RUN for binaries above HIMEM
+            # goes through MC_BOOT_PROGRAM which resets AMSDOS to tape mode,
+            # producing "Press PLAY then any key". LOAD respects the AMSDOS header
+            # and CALL jumps directly to the execution address.
+            record = _make_basic_record(
+                70,
+                bytes((0xA8, 0x20, 0x22))
+                + program_basename
+                + b".BIN"
+                + bytes((0x22, 0x00)),
+            )
+            records.append(record)
+            if run_address:
+                records.append(
+                    _make_basic_record(
+                        75,
+                        bytes((0x83, 0x20))
+                        + _encode_basic_integer(int(run_address, 16))
+                        + bytes((0x00,)),
+                    )
+                )
+            position += record_length
+            continue
+
+        records.append(record)
+        position += record_length
+
+    payload = b"".join(records) + b"\x00\x00"
+
+    header[0x18:0x1A] = len(payload).to_bytes(2, "little")
+    header[0x40:0x42] = len(payload).to_bytes(2, "little")
+    header[0x42] = 0
+    header[0x43:0x45] = b"\x00\x00"
+    checksum = sum(header[:67]) & 0xFFFF
+    header[0x43:0x45] = checksum.to_bytes(2, "little")
+    return bytes(header) + payload
+
+
+def _read_binary_addresses(target_path: Path) -> tuple[str, str] | None:
+    addresses_path = target_path / "obj" / "binaryAddresses.log"
+    if not addresses_path.exists():
+        return None
+
+    text = addresses_path.read_text(encoding="utf-8", errors="ignore")
+    load_match = re.search(r"Load Address\s*=\s*([0-9A-Fa-f]+)", text)
+    run_match = re.search(r"Run\s+Address\s*=\s*([0-9A-Fa-f]+)", text)
+    if not load_match or not run_match:
+        return None
+
+    return load_match.group(1).upper(), run_match.group(1).upper()
+
+
 def _inject_disk_loader(target_path: Path, project_name: str, env: dict[str, str]) -> str:
     dsk_path = target_path / f"{project_name}.dsk"
     if not dsk_path.exists() or not IDSK.exists() or not LOADER_TEMPLATE.exists():
@@ -106,39 +229,73 @@ def _inject_disk_loader(target_path: Path, project_name: str, env: dict[str, str
     loader_dir.mkdir(parents=True, exist_ok=True)
 
     disc_path = loader_dir / "DISC.BAS"
-    screen_path = loader_dir / "SCREEN.SCR"
-    game_path = loader_dir / "GAME.BIN"
-    export_dir = target_path / "obj" / "loader_tmp"
+    stale_game_path = loader_dir / "GAME.BIN"
+    game_binary_path = target_path / "obj" / f"{project_name}.bin"
+    binary_addresses = _read_binary_addresses(target_path)
 
     try:
-        # Use the verbatim tokenized BASIC loader template; the actual boot is
-        # driven by the Caprice32 autocmd (|disc + run"<name>.bin"), so DISC.BAS
-        # is essentially a placeholder ensuring DSK structure parity with the
-        # known-good stable build.
-        shutil.copy2(LOADER_TEMPLATE, disc_path)
-        screen_path.write_bytes(bytes(BLANK_SCREEN_SIZE))
+        # DISC.BAS must target disk files. Reusing the platformClimber template
+        # verbatim leaves tape-prefixed filenames (!screen.scr / !game), which
+        # reproduces the classic "Press PLAY then any key" failure on boot.
+        disc_path.write_bytes(
+            _retarget_loader_template_for_disk(
+                binary_addresses[0] if binary_addresses else None,
+                project_name,
+                binary_addresses[1] if binary_addresses else None,
+            )
+        )
+        if stale_game_path.exists():
+            stale_game_path.unlink()
 
-        if export_dir.exists():
-            shutil.rmtree(export_dir)
-        export_dir.mkdir(parents=True, exist_ok=True)
-
-        exported_name = f"{project_name.upper()}.BIN"
         subprocess.run(
-            [str(IDSK), str(dsk_path), "-g", exported_name],
-            cwd=str(export_dir),
+            [str(IDSK), str(dsk_path), "-r", "GAME.BIN"],
+            cwd=str(target_path),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=120,
             env=env,
-            check=True,
+            check=False,
         )
-        shutil.copy2(export_dir / exported_name, game_path)
+        subprocess.run(
+            [str(IDSK), str(dsk_path), "-r", f"{project_name.upper()}.BIN"],
+            cwd=str(target_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            env=env,
+            check=False,
+        )
+        subprocess.run(
+            [str(IDSK), str(dsk_path), "-r", "SCREEN.SCR"],
+            cwd=str(target_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            env=env,
+            check=False,
+        )
 
-        for command in (
+        commands = [
             [str(IDSK), str(dsk_path), "-i", str(disc_path), "-f"],
-            [str(IDSK), str(dsk_path), "-i", str(screen_path), "-c", "C000", "-e", "C000", "-t", "1", "-f"],
-            [str(IDSK), str(dsk_path), "-i", str(game_path), "-f"],
-        ):
+        ]
+        if game_binary_path.exists() and binary_addresses:
+            commands.append(
+                [
+                    str(IDSK),
+                    str(dsk_path),
+                    "-i",
+                    str(game_binary_path),
+                    "-c",
+                    binary_addresses[0],
+                    "-e",
+                    binary_addresses[1],
+                    "-t",
+                    "1",
+                    "-f",
+                ]
+            )
+
+        for command in commands:
             subprocess.run(
                 command,
                 cwd=str(target_path),
@@ -149,11 +306,9 @@ def _inject_disk_loader(target_path: Path, project_name: str, env: dict[str, str
                 check=True,
             )
 
-        return "Added DISC.BAS, SCREEN.SCR, and GAME.BIN to the DSK for direct BASIC loading."
+        return "Added DISC.BAS and an AMSDOS game binary to the DSK for direct BASIC loading."
     except (OSError, subprocess.SubprocessError) as exc:
         return f"Loader injection failed: {exc}"
-    finally:
-        shutil.rmtree(export_dir, ignore_errors=True)
 
 
 def run(project_path: str | None) -> tuple[dict, str]:

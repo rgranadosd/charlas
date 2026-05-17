@@ -21,6 +21,21 @@ def run(
     build_validation_output: dict | None = None,
     build_output: dict | None = None,
 ) -> dict:
+    if isinstance(build_validation_output, dict):
+        validation_status = str(build_validation_output.get("status", "fail")).strip().lower()
+        if validation_status == "fail":
+            issues = _as_list(build_validation_output.get("suspected_compile_errors"))
+            fixes = _as_list(build_validation_output.get("fix_recommendations"))
+            return {
+                "status": "fail",
+                "playability_checks": [
+                    "{'check': 'pipeline_gate', 'description': 'QA no puede aprobar un build que ya ha fallado la validación estructural.', 'result': 'fail', 'details': 'build_validation devolvió status=fail y QA fue cortocircuitado para evitar falsos positivos.'}"
+                ],
+                "missing_gameplay_elements": issues,
+                "usability_issues": issues,
+                "next_iteration_goals": fixes,
+            }
+
     blocks = []
     if orchestrator_output:
         blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))

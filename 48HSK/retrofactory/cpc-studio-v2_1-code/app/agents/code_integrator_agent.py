@@ -12,6 +12,7 @@ from app.services.c_codegen_service import (
 )
 from app.services.contract_validation_service import normalize_asset_token
 from app.services.llm_service import json_call
+from app.services.resource_service import format_resources_for_prompt
 
 MAIN_C_PATH = "src/main.c"
 GAME_H_PATH = "src/game.h"
@@ -59,11 +60,12 @@ MANDATORY_RUNTIME_MODULES = {
 
 PALETTE_SIZE_BY_MODE = {0: 16, 1: 4, 2: 2}
 
-# CPCtelera HW palette indexes (0..26). Curated baselines per mode.
+# CPCtelera hardware palette values. These must be the real hardware colour
+# bytes accepted by cpct_setPalette, not firmware indexes 0..26.
 DEFAULT_PALETTE_HW_BY_MODE: dict[int, list[int]] = {
-    0: [0, 1, 2, 3, 6, 7, 9, 10, 11, 12, 13, 15, 16, 18, 24, 26],
-    1: [0, 6, 11, 26],   # black, red, sky-blue, white
-    2: [0, 26],          # black, white
+    0: [0x17, 0x14, 0x0E, 0x0C, 0x0B, 0x0A, 0x00, 0x06, 0x15, 0x12, 0x1E, 0x16, 0x07, 0x1A, 0x1C, 0x1F],
+    1: [0x14, 0x0C, 0x17, 0x0B],   # black, bright red, sky-blue, bright white
+    2: [0x14, 0x0B],               # black, bright white
 }
 
 # Semantic pen roles -> in-palette pen index per mode.
@@ -121,7 +123,6 @@ def _resolve_video_mode(tech_output: dict | None) -> int:
         return 2
     return 1
 
-
 def _resolve_palette_hw(art_output: dict | None, mode: int) -> list[int]:
     """Return palette as HW indexes (0..26), sized per mode."""
     size = PALETTE_SIZE_BY_MODE.get(mode, 4)
@@ -164,6 +165,114 @@ def _fill_byte_expr(pen: int, mode: int) -> str:
 
 def _fill_for(role: str, mode: int) -> str:
     return _fill_byte_expr(_pen(role, mode), mode)
+
+
+def _render_u8_const_array(
+    name: str,
+    values: list[str],
+    qualifiers: tuple[str, ...] = ("static", "const"),
+) -> str:
+    declaration = " ".join([*qualifiers, "u8", f"{name}[]"]) + " = {"
+    lines = [declaration]
+    for index in range(0, len(values), 8):
+        chunk = values[index:index + 8]
+        lines.append("    " + ", ".join(chunk) + ",")
+    lines.append("};")
+    return "\n".join(lines)
+
+
+_MODE0_PIXEL_TABLE = [0x00, 0x40, 0x04, 0x44, 0x10, 0x50, 0x14, 0x54, 0x01, 0x41, 0x05, 0x45, 0x11, 0x51, 0x15, 0x55]
+
+
+def _encode_mode0_byte(px0: int, px1: int) -> str:
+    value = ((_MODE0_PIXEL_TABLE[px0 & 0x0F] << 1) & 0xFF) | _MODE0_PIXEL_TABLE[px1 & 0x0F]
+    return f"0x{value:02X}"
+
+
+def _encode_mode0_rows(rows: list[list[int]]) -> list[str]:
+    encoded: list[str] = []
+    for row in rows:
+        if len(row) % 2 != 0:
+            row = [*row, row[-1] if row else 0]
+        for index in range(0, len(row), 2):
+            encoded.append(_encode_mode0_byte(row[index], row[index + 1]))
+    return encoded
+
+
+def _build_box_sprite_values(width: int, height: int, fill: int, accent: int, variant: int = 0) -> list[str]:
+    width_px = width * 2
+    rows: list[list[int]] = []
+    for y in range(height):
+        row: list[int] = []
+        for x in range(width_px):
+            is_border = y == 0 or y == height - 1 or x == 0 or x == width_px - 1
+            is_center_line = x == ((variant % max(1, width_px - 2)) + 1) if width_px > 2 else False
+            is_mid_band = height > 2 and y == (height // 2)
+            row.append(accent if is_border or is_center_line or is_mid_band else fill)
+        rows.append(row)
+    return _encode_mode0_rows(rows)
+
+
+def _digit_sprite_values(digit: int, bg: int, fg: int) -> list[str]:
+    segment_map = {
+        0: "abcfed",
+        1: "bc",
+        2: "abdeg",
+        3: "abcdg",
+        4: "fgbc",
+        5: "afgcd",
+        6: "afgcde",
+        7: "abc",
+        8: "abcdefg",
+        9: "abcfgd",
+    }
+    active = set(segment_map.get(digit, ""))
+    rows: list[list[int]] = []
+
+    for y in range(8):
+        row: list[int] = []
+        for x in range(8):
+            on = False
+            if "a" in active and y == 0 and 1 <= x <= 6:
+                on = True
+            elif "g" in active and y == 3 and 1 <= x <= 6:
+                on = True
+            elif "d" in active and y == 7 and 1 <= x <= 6:
+                on = True
+            elif "f" in active and x == 0 and 1 <= y <= 2:
+                on = True
+            elif "b" in active and x == 7 and 1 <= y <= 2:
+                on = True
+            elif "e" in active and x == 0 and 4 <= y <= 6:
+                on = True
+            elif "c" in active and x == 7 and 4 <= y <= 6:
+                on = True
+            row.append(fg if on else bg)
+        rows.append(row)
+
+    return _encode_mode0_rows(rows)
+
+
+def _build_visible_asset_values(symbol: str) -> list[str]:
+    """
+    RENDERING RULE (CPCtelera Mode 0):
+    cpct_drawSprite has NO transparency.  Pen 0 = background colour.
+    Any sprite pixel encoded as pen 0 will be painted in the background
+    colour → the interior becomes invisible against the background.
+    Always use pen 6 (black) or another opaque pen as the fill for
+    character / enemy sprites.  Use pen 0 ONLY for HUD digits where
+    the game area is already cleared to pen 0 (acts as pseudo-transparency).
+    """
+    token = symbol.lower()
+    bg = 0        # pen 0: background — valid only for HUD digit gaps
+    opaque = 6    # pen 6: black — opaque fill for character sprites
+    if "hud" in token or "health" in token:
+        return _digit_sprite_values(8, bg, 15)
+    if "player" in token or "knight" in token:
+        return _build_box_sprite_values(8, 24, opaque, 15, variant=1)
+    if "tile" in token:
+        return _build_box_sprite_values(4, 8, 1, 14, variant=2)
+    return _build_box_sprite_values(4, 8, opaque, 10, variant=3)
 
 
 def _build_game_h_stub() -> str:
@@ -470,14 +579,22 @@ def _build_game_c_stub(mode: int = 1) -> str:
             "void game_render(void) {",
             "    u8 i;",
             "",
-            "    cpct_clearScreen(0x00);",
+            f"    cpct_drawSolidBox(CPCT_VMEM_START, {_fill_for('bg', mode)}, 80, 200);",
             "    tilemap_render();",
+            f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 60, 18), {_fill_for('victory_fg', mode)}, 6, 10);",
+            f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 58, 20), {_fill_for('victory_bg', mode)}, 2, 6);",
             "",
             "    for (i = 0; i < MAX_PROJECTILES; ++i) {",
+            "        if (g_projectiles[i].active) {",
+            f"            cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_projectiles[i].x, g_projectiles[i].y), {_fill_for('projectile_upgraded', mode)}, g_projectiles[i].w, g_projectiles[i].h);",
+            "        }",
             "        projectilerender(&g_projectiles[i]);",
             "    }",
             "",
             "    for (i = 0; i < MAX_ENEMIES; ++i) {",
+            "        if (g_enemies[i].active) {",
+            f"            cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_enemies[i].x, g_enemies[i].y), {_fill_for('enemy', mode)}, g_enemies[i].w, g_enemies[i].h);",
+            "        }",
             "        enemyrender(&g_enemies[i]);",
             "    }",
             "",
@@ -490,6 +607,7 @@ def _build_game_c_stub(mode: int = 1) -> str:
             "    if (!g_pickuptaken) {",
             f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 36, (u8)(tilemap_ground_y() - 8)), {_fill_for('pickup', mode)}, 4, 4);",
             "    }",
+            f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_player.x, g_player.y), {_fill_for('player', mode)}, g_player.w, g_player.h);",
             "    playerrender(&g_player);",
             "    hudrender();",
             "",
@@ -513,6 +631,28 @@ def _build_main_c_stub() -> str:
         [
             render_c_include("<cpctelera.h>"),
             render_c_include("game.h"),
+            "",
+            "void cpc_entry_wrapper(void) __naked {",
+            "    __asm",
+            "        .globl cpc_run_address",
+            "        .globl s__INITIALIZER",
+            "        .globl s__INITIALIZED",
+            "        .globl l__INITIALIZER",
+            "    cpc_run_address::",
+            "        di",
+            "        ld sp, #0xBFF0",
+            "        ld bc, #l__INITIALIZER",
+            "        ld a, b",
+            "        or c",
+            "        jr z, 00001$",
+            "        ld de, #s__INITIALIZED",
+            "        ld hl, #s__INITIALIZER",
+            "        ldir",
+            "00001$:",
+            "        call _main",
+            "        ret",
+            "    __endasm;",
+            "}",
             "",
             "void main(void) {",
             "    /* Force a known-good stack pointer below firmware RAM (--no-std-crt0). */",
@@ -549,6 +689,7 @@ def _build_player_h_stub() -> str:
             "    u8 w;",
             "    u8 h;",
             "    u8 health;",
+            "    u8 weapon;",
             "    u8 facing_left;",
             "    u8 jump_hold;",
             "} Player;",
@@ -556,6 +697,9 @@ def _build_player_h_stub() -> str:
             "void playerinit(Player* player);",
             "void playerupdate(Player* player);",
             "void playerrender(const Player* player);",
+            "u8 player_get_ammo(const Player* player);",
+            "u8 player_get_health(const Player* player);",
+            "u8 player_get_weapon(const Player* player);",
             "",
             "#endif",
             "",
@@ -629,15 +773,28 @@ def _build_projectile_h_stub() -> str:
 
 
 def _build_enemy_c_stub(mode: int = 1) -> str:
-    enemy0 = _fill_for('enemy_kind0', mode)
-    enemy1 = _fill_for('enemy_kind1', mode)
-    enemy2 = _fill_for('enemy_kind2', mode)
-    enemy3 = _fill_for('enemy_kind3', mode)
+    enemy0 = _pen('enemy_kind0', mode)
+    enemy1 = _pen('enemy_kind1', mode)
+    enemy2 = _pen('enemy_kind2', mode)
+    enemy3 = _pen('enemy_kind3', mode)
+    bg = _pen('bg', mode)
+    enemy0_sprite = _render_u8_const_array("enemy_kind0_sprite", _build_box_sprite_values(4, 16, bg, enemy0, variant=0))
+    enemy1_sprite = _render_u8_const_array("enemy_kind1_sprite", _build_box_sprite_values(5, 14, bg, enemy1, variant=1))
+    enemy2_sprite = _render_u8_const_array("enemy_kind2_sprite", _build_box_sprite_values(6, 10, bg, enemy2, variant=2))
+    enemy3_sprite = _render_u8_const_array("enemy_kind3_sprite", _build_box_sprite_values(10, 18, bg, enemy3, variant=3))
     return "\n".join(
         [
             render_c_include("entities/enemy.h"),
             render_c_include("systems/collision.h"),
             render_c_include("<cpctelera.h>"),
+            "",
+            enemy0_sprite,
+            "",
+            enemy1_sprite,
+            "",
+            enemy2_sprite,
+            "",
+            enemy3_sprite,
             "",
             "void enemyinit(Enemy* enemy) {",
             "    if (!enemy) {",
@@ -747,19 +904,19 @@ def _build_enemy_c_stub(mode: int = 1) -> str:
             "",
             "void enemyrender(const Enemy* enemy) {",
             "    u8* pvmem;",
-            "    u8 colour;",
+            "    const u8* sprite;",
             "",
             "    if (!enemy || !enemy->active) {",
             "        return;",
             "    }",
             "",
-            "    if (enemy->kind == 3) colour = " + enemy3 + ";",
-            "    else if (enemy->kind == 2) colour = " + enemy2 + ";",
-            "    else if (enemy->kind == 1) colour = " + enemy1 + ";",
-            "    else colour = " + enemy0 + ";",
+            "    if (enemy->kind == 3) sprite = enemy_kind3_sprite;",
+            "    else if (enemy->kind == 2) sprite = enemy_kind2_sprite;",
+            "    else if (enemy->kind == 1) sprite = enemy_kind1_sprite;",
+            "    else sprite = enemy_kind0_sprite;",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, enemy->x, enemy->y);",
-            "    cpct_drawSolidBox(pvmem, colour, enemy->w, enemy->h);",
+            "    cpct_drawSprite((u8*)sprite, pvmem, enemy->w, enemy->h);",
             "}",
             "",
             "u8 enemydamage(Enemy* enemy, u8 damage) {",
@@ -782,13 +939,25 @@ def _build_enemy_c_stub(mode: int = 1) -> str:
 
 
 def _build_projectile_c_stub(mode: int = 1) -> str:
-    proj_basic = _fill_for('projectile_basic', mode)
-    proj_up = _fill_for('projectile_upgraded', mode)
-    proj_special = _fill_for('projectile_special', mode)
+    proj_basic = _pen('projectile_basic', mode)
+    proj_up = _pen('projectile_upgraded', mode)
+    proj_special = _pen('projectile_special', mode)
+    bg = _pen('bg', mode)
+    # Minimum 4x4 bytes for basic projectile -- 3x2 is too small to see at runtime.
+    # Projectile sprites have no interior pixels (all border), so bg pen is unused.
+    projectile_basic_sprite = _render_u8_const_array("projectile_basic_sprite", _build_box_sprite_values(4, 4, bg, proj_basic, variant=0))
+    projectile_up_sprite = _render_u8_const_array("projectile_up_sprite", _build_box_sprite_values(3, 4, bg, proj_up, variant=1))
+    projectile_special_sprite = _render_u8_const_array("projectile_special_sprite", _build_box_sprite_values(4, 4, bg, proj_special, variant=2))
     return "\n".join(
         [
             render_c_include("entities/projectile.h"),
             render_c_include("<cpctelera.h>"),
+            "",
+            projectile_basic_sprite,
+            "",
+            projectile_up_sprite,
+            "",
+            projectile_special_sprite,
             "",
             "void projectileinit(Projectile* projectile) {",
             "    if (!projectile) {",
@@ -820,8 +989,8 @@ def _build_projectile_c_stub(mode: int = 1) -> str:
             "    projectile->active = 1;",
             "",
             "    if (weapon == 0) {",
-            "        projectile->w = 3;",
-            "        projectile->h = 2;",
+            "        projectile->w = 4;",
+            "        projectile->h = 4;",
             "        projectile->damage = 1;",
             "        projectile->lifetime = 45;",
             "    } else if (weapon == 1) {",
@@ -857,13 +1026,18 @@ def _build_projectile_c_stub(mode: int = 1) -> str:
             "",
             "void projectilerender(const Projectile* projectile) {",
             "    u8* pvmem;",
+            "    const u8* sprite;",
             "",
             "    if (!projectile || !projectile->active) {",
             "        return;",
             "    }",
             "",
+            "    if (projectile->weapon == 0) sprite = projectile_basic_sprite;",
+            "    else if (projectile->weapon == 1) sprite = projectile_up_sprite;",
+            "    else sprite = projectile_special_sprite;",
+            "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, projectile->x, projectile->y);",
-            "    cpct_drawSolidBox(pvmem, projectile->weapon == 0 ? " + proj_basic + " : (projectile->weapon == 1 ? " + proj_up + " : " + proj_special + "), projectile->w, projectile->h);",
+            "    cpct_drawSprite((u8*)sprite, pvmem, projectile->w, projectile->h);",
             "}",
             "",
         ]
@@ -876,6 +1050,7 @@ def _build_player_c_stub(mode: int = 1) -> str:
             render_c_include("entities/player.h"),
             render_c_include("systems/input.h"),
             render_c_include("systems/collision.h"),
+            render_c_include("data/sprites/playerknight.h"),
             render_c_include("<cpctelera.h>"),
             "",
             "/* Use #define instead of `static const i8` so values are inlined as immediates.",
@@ -887,8 +1062,13 @@ def _build_player_c_stub(mode: int = 1) -> str:
             "#define kplayermaxfall       4",
             "#define kplayerjumpvelocity  (-6)",
             "#define kplayerjumpboost     (-1)",
+            "#define kplayerspritebytes   192",
+            "",
+            "static u8 gplayersprite[kplayerspritebytes];",
+            "static u8 gplayerspritefacingleft;",
             "",
             "void playerinit(Player* player) {",
+            "    u8 index;",
             "    if (!player) {",
             "        return;",
             "    }",
@@ -897,11 +1077,16 @@ def _build_player_c_stub(mode: int = 1) -> str:
             "    player->y = 120;",
             "    player->vx = 0;",
             "    player->vy = 0;",
-            "    player->w = 4;",
-            "    player->h = 16;",
+            "    player->w = 8;",
+            "    player->h = 24;",
             "    player->health = 3;",
+            "    player->weapon = 0;",
             "    player->facing_left = 0;",
             "    player->jump_hold = 0;",
+            "    for (index = 0; index < kplayerspritebytes; ++index) {",
+            "        gplayersprite[index] = sprplayerknight_data[index];",
+            "    }",
+            "    gplayerspritefacingleft = 0;",
             "}",
             "",
             "void playerupdate(Player* player) {",
@@ -948,8 +1133,8 @@ def _build_player_c_stub(mode: int = 1) -> str:
             "    if (nextx < 0) {",
             "        nextx = 0;",
             "    }",
-            "    if (nextx > 76) {",
-            "        nextx = 76;",
+            "    if (nextx > 72) {",
+            "        nextx = 72;",
             "    }",
             "    player->x = (u8)nextx;",
             "",
@@ -973,7 +1158,24 @@ def _build_player_c_stub(mode: int = 1) -> str:
             "    }",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, player->x, player->y);",
-            f"    cpct_drawSolidBox(pvmem, {_fill_for('player', mode)}, player->w, player->h);",
+            "    if (player->facing_left != gplayerspritefacingleft) {",
+            "        cpct_hflipSpriteM0(player->w, player->h, gplayersprite);",
+            "        gplayerspritefacingleft = player->facing_left;",
+            "    }",
+            "    cpct_drawSprite(gplayersprite, pvmem, player->w, player->h);",
+            "}",
+            "",
+            "u8 player_get_ammo(const Player* player) {",
+            "    (void)player;",
+            "    return 3;",
+            "}",
+            "",
+            "u8 player_get_health(const Player* player) {",
+            "    return player ? player->health : 0;",
+            "}",
+            "",
+            "u8 player_get_weapon(const Player* player) {",
+            "    return player ? player->weapon : 0;",
             "}",
             "",
         ]
@@ -1020,12 +1222,12 @@ def _build_input_c_stub() -> str:
             "void input_update(void) {",
             "    gprevjump = ginputup;",
             "    gprevshoot = ginputshoot;",
-            "    cpct_scanKeyboard_f();",
-            "    ginputleft = cpct_isKeyPressed(Key_CursorLeft);",
-            "    ginputright = cpct_isKeyPressed(Key_CursorRight);",
-            "    ginputup = cpct_isKeyPressed(Key_CursorUp);",
-            "    ginputdown = cpct_isKeyPressed(Key_X);",
-            "    ginputshoot = cpct_isKeyPressed(Key_CursorDown);",
+            "    cpct_scanKeyboard();",
+            "    ginputleft = (u8)(cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_A));",
+            "    ginputright = (u8)(cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_D));",
+            "    ginputup = (u8)(cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Key_W) || cpct_isKeyPressed(Key_Z));",
+            "    ginputdown = (u8)(cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_S) || cpct_isKeyPressed(Key_X));",
+            "    ginputshoot = (u8)(cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_X) || cpct_isKeyPressed(Key_CursorDown));",
             "}",
             "",
             "u8 input_is_left_pressed(void) {",
@@ -1335,11 +1537,12 @@ def _build_fixed_asset_header(path: str, symbol: str) -> str:
 
 
 def _build_fixed_asset_source(header_path: str, symbol: str) -> str:
+    array_decl = render_c_const_array("u8", symbol, _build_visible_asset_values(symbol))
     return "\n".join(
         [
             render_c_include(header_path),
             "",
-            f"const u8 {symbol}[] = {{ 0x00 }};",
+            array_decl,
             "",
         ]
     )
@@ -1367,10 +1570,16 @@ def _build_hud_h_stub() -> str:
     )
 
 
-def _build_hud_c_stub() -> str:
+def _build_hud_c_stub(mode: int = 1) -> str:
+    bg = _pen('bg', mode)
+    health = _pen('player', mode)
+    lives = _pen('enemy', mode)
+    digits = [_render_u8_const_array(f"huddigit_{digit}", _digit_sprite_values(digit, bg, health)) for digit in range(10)]
+    lives_sprite = _render_u8_const_array("hudlives", _build_box_sprite_values(4, 8, bg, lives, variant=2))
     return "\n".join(
         [
             '#include "systems/hud.h"',
+            '#include "data/hud/healthbar.h"',
             "",
             "static u8  currenthealth;",
             "static u16 currentscore;",
@@ -1378,16 +1587,25 @@ def _build_hud_c_stub() -> str:
             "static u8  currentlives;",
             "static u8  currentweapon;",
             "",
-            "/* Fallback compile-clean sprites while real HUD assets are wired. */",
-            "static const u8 _hud_dummy_sprite[64] = {0};",
-            "static const u8 hudhealth[64] = {0};",
-            "static const u8 hudlives[64]  = {0};",
+            lives_sprite,
+            "",
+            *digits,
             "",
             "/* GSINIT-safe digit lookup: a function avoids initialised pointer arrays",
             "   (those require the INITIALIZER -> DATA copy that --no-std-crt0 skips). */",
             "static const u8* hud_get_number_sprite(u8 digit) {",
-            "    (void)digit;",
-            "    return _hud_dummy_sprite;",
+            "    switch (digit % 10) {",
+            "    case 0: return huddigit_0;",
+            "    case 1: return huddigit_1;",
+            "    case 2: return huddigit_2;",
+            "    case 3: return huddigit_3;",
+            "    case 4: return huddigit_4;",
+            "    case 5: return huddigit_5;",
+            "    case 6: return huddigit_6;",
+            "    case 7: return huddigit_7;",
+            "    case 8: return huddigit_8;",
+            "    default: return huddigit_9;",
+            "    }",
             "}",
             "",
             "static void hud_draw_digits(u16 value, u8 digits, u8 startx, u8 y) {",
@@ -1405,8 +1623,8 @@ def _build_hud_c_stub() -> str:
             "        digit = (u8)(value / divisor);",
             "        value = (u16)(value % divisor);",
             "",
-            "        pvmem = cpct_getScreenPtr(CPCT_VMEM_START, startx + (i * 8), y);",
-            "        cpct_drawSprite((u8*)hud_get_number_sprite(digit), pvmem, 8, 8);",
+            "        pvmem = cpct_getScreenPtr(CPCT_VMEM_START, startx + (i * 4), y);",
+            "        cpct_drawSprite((u8*)hud_get_number_sprite(digit), pvmem, 4, 8);",
             "",
             "        if (divisor > 1) {",
             "            divisor /= 10;",
@@ -1438,7 +1656,7 @@ def _build_hud_c_stub() -> str:
             "",
             "    for (i = 0; i < currenthealth; ++i) {",
             "        pvmem = cpct_getScreenPtr(CPCT_VMEM_START, (i * 8), 2);",
-            "        cpct_drawSprite((u8*)hudhealth, pvmem, 8, 8);",
+            "        cpct_drawSprite((u8*)hudhealthbar_data, pvmem, 4, 8);",
             "    }",
             "",
             "    scoretemp = currentscore;",
@@ -1448,13 +1666,13 @@ def _build_hud_c_stub() -> str:
             "    hud_draw_digits((u16)timetemp, 3, 56, 2);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 2, 180);",
-            "    cpct_drawSprite((u8*)hudlives, pvmem, 8, 8);",
+            "    cpct_drawSprite((u8*)hudlives, pvmem, 4, 8);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 12, 180);",
-            "    cpct_drawSprite((u8*)hud_get_number_sprite(currentlives % 10), pvmem, 8, 8);",
+            "    cpct_drawSprite((u8*)hud_get_number_sprite(currentlives % 10), pvmem, 4, 8);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 70, 180);",
-            "    cpct_drawSprite((u8*)hud_get_number_sprite(currentweapon % 10), pvmem, 8, 8);",
+            "    cpct_drawSprite((u8*)hud_get_number_sprite(currentweapon % 10), pvmem, 4, 8);",
             "}",
             "",
         ]
@@ -1606,13 +1824,38 @@ def _sanitize_enemy_source_files(
     return normalized, sorted(set(sanitized))
 
 
+def _sanitize_input_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    for path, content in list(normalized.items()):
+        if not path.endswith("/input.c"):
+            continue
+        if not _is_allowed(path, allowed_files):
+            continue
+
+        text = str(content)
+        if "cpct_scanKeyboard_f(" not in text:
+            continue
+
+        replacement = text.replace("cpct_scanKeyboard_f(", "cpct_scanKeyboard(")
+        if replacement != text:
+            normalized[path] = replacement
+            sanitized.append(path)
+
+    return normalized, sorted(set(sanitized))
+
+
 def _build_asset_source_stub(path: str, header_path: str, asset_name: str) -> str:
     symbol = _asset_symbol_name(asset_name, path)
 
     if "level1tileproperties" in _asset_token(asset_name):
         array_decl = render_c_const_array("u8", "level1tileproperties", ["0x00", "0x01", "0x01", "0x00"])
     else:
-        array_decl = render_c_const_array("u8", symbol, ["0x00"])
+        array_decl = render_c_const_array("u8", symbol, _build_visible_asset_values(symbol))
 
     return "\n".join(
         [
@@ -1937,7 +2180,7 @@ def ensure_core_game_module(
         normalized[HUD_H_PATH] = _build_hud_h_stub()
 
     if _is_allowed(HUD_C_PATH, allowed_files):
-        normalized[HUD_C_PATH] = _build_hud_c_stub()
+        normalized[HUD_C_PATH] = _build_hud_c_stub(mode)
 
     if _is_allowed(INPUT_H_PATH, allowed_files):
         normalized[INPUT_H_PATH] = _build_input_h_stub()
@@ -2154,6 +2397,10 @@ def run(
     if tech_output:
         blocks.append("Tech JSON:\n" + json.dumps(tech_output, ensure_ascii=False, indent=2))
 
+    resource_context = format_resources_for_prompt("code_integrator_agent", user_request, limit=6)
+    if resource_context:
+        blocks.append(resource_context)
+
     payload = json_call("code_integrator", user_request, "\n\n".join(blocks))
 
     contract_mode = _has_enriched_contract(tech_output)
@@ -2176,6 +2423,7 @@ def run(
     files = ensure_required_asset_files(files, tech_output, allowed_files)
     files, sanitized_asset_headers = _sanitize_asset_headers(files, allowed_files)
     files, sanitized_enemy_sources = _sanitize_enemy_source_files(files, allowed_files)
+    files, sanitized_input_sources = _sanitize_input_source_files(files, allowed_files)
     files, dropped_unsafe_c = _enforce_compile_safe_c_files(files, allowed_files, tech_output)
     files, repaired_invalid_files, prebuild_validation_errors = _repair_invalid_generated_files(files, allowed_files, tech_output, art_output)
 
@@ -2268,6 +2516,13 @@ def run(
             "Sanitized "
             f"{len(sanitized_enemy_sources)} enemy source file(s) to remove invalid type coupling: "
             f"{_preview_paths(sanitized_enemy_sources)}."
+        )
+
+    if sanitized_input_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_input_sources)} input source file(s) to force hardware keyboard polling: "
+            f"{_preview_paths(sanitized_input_sources)}."
         )
 
     if prebuild_validation_errors:

@@ -76,24 +76,210 @@ tail -n 80 "${STDERR_FILE}" >&2 || true
 
 # Launch Caprice32 with the generated DSK
 if [[ "${cmd_exit}" -eq 0 ]]; then
-  GENERATED_DSK=$(python -c "import json; d=json.load(open('${STDOUT_FILE}')); p=d.get('generated_project_path',''); print(p+'/'+p.split('/')[-1]+'.dsk') if p else print('')" 2>/dev/null || true)
-  if [[ -z "${GENERATED_DSK}" || ! -f "${GENERATED_DSK}" ]]; then
-    GENERATED_DSK=$(ls -td "${ROOT}"/generated_projects/run*/*.dsk 2>/dev/null | head -1 || true)
+  GENERATED_PROJECT_DIR=$(python -c "import json; d=json.load(open('${STDOUT_FILE}')); print(d.get('generated_project_path') or d.get('project_path') or '')" 2>/dev/null || true)
+  CONTRACT_STATUS=$(python -c "import json, re; d=json.load(open('${STDOUT_FILE}')); texts=[str(d.get('contract_validation','')), str(d.get('contractvalidation','')), str(d.get('final_output',''))];
+for text in texts:
+  m=re.search(r\"status='([^']+)'\", text)
+  if m:
+    print(m.group(1))
+    raise SystemExit(0)
+print('')" 2>/dev/null || true)
+  BUILD_STATUS=$(python -c "import json, re; d=json.load(open('${STDOUT_FILE}')); texts=[str(d.get('build_validation','')), str(d.get('final_output',''))];
+for text in texts:
+  m=re.search(r\"build_validation:\\s*\\{.*?\\\"status\\\":\\s*\\\"([^\\\"]+)\\\"\", text, re.S)
+  if m:
+    print(m.group(1))
+    raise SystemExit(0)
+  m=re.search(r\"status='([^']+)'\", text)
+  if m and 'build_validation' in text:
+    print(m.group(1))
+    raise SystemExit(0)
+print('')" 2>/dev/null || true)
+  GENERATED_DSK=""
+  if [[ -n "${GENERATED_PROJECT_DIR}" ]]; then
+    GENERATED_DSK="${GENERATED_PROJECT_DIR}/$(basename "${GENERATED_PROJECT_DIR}").dsk"
   fi
-  if [[ -n "${GENERATED_DSK}" && -f "${GENERATED_DSK}" ]]; then
+
+  if [[ -n "${CONTRACT_STATUS}" && "${CONTRACT_STATUS}" != "pass" ]]; then
+    log "[WARN] contract_validation status is ${CONTRACT_STATUS}; refusing to auto-launch generated output"
+    GENERATED_DSK=""
+  fi
+
+  if [[ -n "${BUILD_STATUS}" && "${BUILD_STATUS}" != "pass" ]]; then
+    log "[WARN] build_validation status is ${BUILD_STATUS}; refusing to auto-launch generated output"
+    GENERATED_DSK=""
+  fi
+
+  if [[ -n "${GENERATED_PROJECT_DIR}" && ! -f "${GENERATED_DSK}" ]]; then
+    if [[ -n "${BUILD_STATUS}" && "${BUILD_STATUS}" != "pass" ]]; then
+      log "[WARN] current pipeline run produced ${GENERATED_PROJECT_DIR} but build status is ${BUILD_STATUS}; refusing to boot a stale DSK"
+      GENERATED_DSK=""
+    else
+      log "[WARN] current pipeline run produced ${GENERATED_PROJECT_DIR} but no DSK was found at ${GENERATED_DSK}"
+      GENERATED_DSK=""
+    fi
+  fi
+
+  if [[ -z "${GENERATED_PROJECT_DIR}" ]]; then
+    log "[WARN] pipeline output did not expose a generated project path; refusing unsafe fallback to a previous DSK"
+  fi
+
+  if [[ -n "${GENERATED_DSK}" && -f "${GENERATED_DSK}" && -n "${BUILD_STATUS}" && "${BUILD_STATUS}" != "pass" ]]; then
+    log "[WARN] build_validation status is ${BUILD_STATUS}; refusing to auto-launch an invalid generated DSK"
+  elif [[ -n "${GENERATED_DSK}" && -f "${GENERATED_DSK}" ]]; then
+    pkill -f -i Caprice32 2>/dev/null || true
     log "[INFO] launching Caprice32 with ${GENERATED_DSK}"
     DSK_BASENAME="$(basename "${GENERATED_DSK}" .dsk)"
+    GENERATED_PROJECT_DIR="$(dirname "${GENERATED_DSK}")"
+    BINARY_ADDRESSES_LOG="${GENERATED_PROJECT_DIR}/obj/binaryAddresses.log"
     CAP32_CFG="/tmp/cap32.cfg"
     if [[ ! -f "${CAP32_CFG}" ]]; then
       cp /Applications/Caprice32.app/Contents/Resources/cap32.cfg "${CAP32_CFG}"
       sed -i '' 's|rom_path=.*|rom_path=/Applications/Caprice32.app/Contents/Resources/rom|' "${CAP32_CFG}"
     fi
-    /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-      -c "${CAP32_CFG}" \
-      -a '|disc' \
-      -a "run\"${DSK_BASENAME}.bin\"" \
-      "${GENERATED_DSK}" &
+    if [[ ! -x "/Applications/Caprice32.app/Contents/MacOS/Caprice32" ]]; then
+      log "[WARN] Caprice32 is not installed at /Applications/Caprice32.app, skipping emulator launch"
+      exit "${cmd_exit}"
+    fi
+
+    MAP_FILE="${GENERATED_PROJECT_DIR}/obj/${DSK_BASENAME}.map"
+    NOI_FILE="${GENERATED_PROJECT_DIR}/obj/${DSK_BASENAME}.noi"
+    LOAD_ADDRESS_HEX="$(python -c "import pathlib, re, sys; text=pathlib.Path(sys.argv[1]).read_text(encoding='utf-8', errors='ignore'); m=re.search(r'Load\s+Address\s*=\s*([0-9A-Fa-f]+)', text); print(m.group(1).upper() if m else '')" "${BINARY_ADDRESSES_LOG}" 2>/dev/null || true)"
+    RUN_ADDRESS_DEC="$(python -c "import pathlib, re, sys; paths=sys.argv[1:];
+patterns=(
+  r'Run\s+Address\s*=\s*([0-9A-Fa-f]+)',
+  r'cpc_run_address\s+0x([0-9A-Fa-f]+)',
+  r'\b([0-9A-Fa-f]+)\s+cpc_run_address\b',
+  r'_main\s+0x([0-9A-Fa-f]+)',
+  r'\b([0-9A-Fa-f]+)\s+_main\b',
+);
+for path in paths:
+  if not path:
+    continue
+  file_path = pathlib.Path(path)
+  if not file_path.exists():
+    continue
+  text = file_path.read_text(encoding='utf-8', errors='ignore')
+  for pattern in patterns:
+    match = re.search(pattern, text)
+    if match:
+      value = match.group(1)
+      try:
+        print(int(value, 16))
+        raise SystemExit(0)
+      except ValueError:
+        continue
+print('')" "${BINARY_ADDRESSES_LOG}" "${MAP_FILE}" "${NOI_FILE}" 2>/dev/null || true)"
+    GENERATED_BIN="${GENERATED_PROJECT_DIR}/obj/${DSK_BASENAME}.bin"
+    GENERATED_DISC_BAS="${GENERATED_PROJECT_DIR}/dsk_files/DISC.BAS"
+    CAP32_BOOTSTRAP_BIN="/tmp/${DSK_BASENAME}_cap32_boot.bin"
+    CAP32_BOOTSTRAP_OFFSET_HEX="8000"
+
+    if [[ -f "${GENERATED_DISC_BAS}" ]]; then
+      log "[INFO] Caprice32 boot using DISC.BAS disk loader"
+      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+        -c "${CAP32_CFG}" \
+        -O system.boot_time=260 \
+        -a '|disc' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a 'load"disc.bas"' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a 'run' \
+        "${GENERATED_DSK}" &
+    elif [[ -n "${LOAD_ADDRESS_HEX}" && -n "${RUN_ADDRESS_DEC}" && -f "${GENERATED_BIN}" ]]; then
+      if python - "${GENERATED_BIN}" "${CAP32_BOOTSTRAP_BIN}" "${CAP32_BOOTSTRAP_OFFSET_HEX}" "${LOAD_ADDRESS_HEX}" "${RUN_ADDRESS_DEC}" <<'PY'
+import pathlib
+import sys
+
+source_path = pathlib.Path(sys.argv[1])
+bootstrap_path = pathlib.Path(sys.argv[2])
+bootstrap_offset = int(sys.argv[3], 16)
+load_address = int(sys.argv[4], 16)
+run_address = int(sys.argv[5])
+payload = source_path.read_bytes()
+stub_size = 18
+source_address = bootstrap_offset + stub_size
+if len(payload) > 0xFFFF:
+    raise SystemExit(1)
+stub = bytes((
+    0xF3,
+    0x31, 0xF0, 0xBF,
+    0x21, source_address & 0xFF, (source_address >> 8) & 0xFF,
+    0x11, load_address & 0xFF, (load_address >> 8) & 0xFF,
+    0x01, len(payload) & 0xFF, (len(payload) >> 8) & 0xFF,
+    0xED, 0xB0,
+    0xC3, run_address & 0xFF, (run_address >> 8) & 0xFF,
+))
+bootstrap_path.write_bytes(stub + payload)
+PY
+      then
+        log "[INFO] Caprice32 disk-command boot using run address ${RUN_ADDRESS_DEC} (preferred over injected runner)"
+        /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+          -c "${CAP32_CFG}" \
+          -O system.boot_time=260 \
+          -a '|disc' \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a 'memory 16383' \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a "load\"${DSK_BASENAME}.BIN\"" \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a "call ${RUN_ADDRESS_DEC}" \
+          "${GENERATED_DSK}" &
+      else
+        log "[WARN] failed to build Caprice32 bootstrap payload, falling back to disk-command boot"
+        /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+          -c "${CAP32_CFG}" \
+          -O system.boot_time=260 \
+          -a '|disc' \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a 'memory 16383' \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a "load\"${DSK_BASENAME}.BIN\"" \
+          -a CAP32_DELAY \
+          -a CAP32_DELAY \
+          -a "call ${RUN_ADDRESS_DEC}" \
+          "${GENERATED_DSK}" &
+      fi
+    elif [[ -n "${RUN_ADDRESS_DEC}" ]]; then
+      log "[INFO] Caprice32 direct boot using run address ${RUN_ADDRESS_DEC}"
+      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+        -c "${CAP32_CFG}" \
+        -O system.boot_time=260 \
+        -a '|disc' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a 'memory 16383' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a "load\"${DSK_BASENAME}.BIN\"" \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a "call ${RUN_ADDRESS_DEC}" \
+        "${GENERATED_DSK}" &
+    else
+      log "[WARN] run address not found, falling back to DISC.BAS boot"
+      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
+        -c "${CAP32_CFG}" \
+        -O system.boot_time=260 \
+        -a '|disc' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a 'load"disc.bas"' \
+        -a CAP32_DELAY \
+        -a CAP32_DELAY \
+        -a 'run' \
+        "${GENERATED_DSK}" &
+    fi
     disown
+  elif [[ -n "${GENERATED_PROJECT_DIR}" ]]; then
+    log "[WARN] skipping emulator launch because the current pipeline run did not produce a bootable DSK"
   else
     log "[WARN] no DSK found, skipping emulator launch"
   fi

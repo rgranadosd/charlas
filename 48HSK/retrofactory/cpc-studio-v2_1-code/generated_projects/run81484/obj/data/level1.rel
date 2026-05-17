@@ -1,0 +1,45 @@
+XL2
+H 9 areas 6 global symbols
+M level1
+O -mz80
+S .__.ABS. Def0000
+A _CODE size 34 flags 0 addr 0
+S _level1tilemapheight Def0002
+S _level1tilemap Def0004
+S _level1tileproperties Def0022
+S _level1tilemapwidth Def0000
+S _gpalette Def0024
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 14 00
+R 00 00 00 00
+T 02 00
+R 00 00 00 00
+T 02 00 12 00
+R 00 00 00 00
+T 04 00
+R 00 00 00 00
+T 04 00 01 01 01 01 01 01 01 01 01 01 01 00 00 00
+R 00 00 00 00
+T 12 00 00 00 00 00 00 01 01 01 01 01 01 01 01 01
+R 00 00 00 00
+T 20 00 01 01
+R 00 00 00 00
+T 22 00
+R 00 00 00 00
+T 22 00 00 01
+R 00 00 00 00
+T 24 00
+R 00 00 00 00
+T 24 00 17 14 0E 0C 0B 0A 00 06 15 12 1E 16 07 1A
+R 00 00 00 00
+T 32 00 1C 1F
+R 00 00 00 00

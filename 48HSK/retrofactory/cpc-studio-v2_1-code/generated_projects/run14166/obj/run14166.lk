@@ -1,0 +1,29 @@
+-mjwx
+-i obj/run14166.ihx
+-b _CODE = 0x4000
+-b _DATA = 0x0000
+-u
+-k /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/tools/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/game.rel
+obj/main.rel
+obj/systems/collision.rel
+obj/systems/hud.rel
+obj/systems/input.rel
+obj/systems/tilemap.rel
+obj/data/level1.rel
+obj/data/tileset/base.rel
+obj/data/tileset/projectilesprites.rel
+obj/data/sprites/playerknight.rel
+obj/data/assets/effectsprites.rel
+obj/data/assets/enemysprites.rel
+obj/data/assets/playersprites.rel
+obj/data/hud/elements.rel
+obj/data/hud/healthbar.rel
+obj/entities/enemy.rel
+obj/entities/player.rel
+obj/entities/projectile.rel
+
+-e

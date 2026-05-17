@@ -7,6 +7,103 @@ TU PAPEL:
 - NO inventas rutas.
 - NO escribes texto explicativo.
 
+REGLAS TÉCNICAS CRÍTICAS CPCtelera (verificadas en producción):
+
+INICIALIZACIÓN — ORDEN OBLIGATORIO en game_init():
+- cpct_setVideoMode() ANTES de cpct_disableFirmware().
+  cpct_setVideoMode() desactiva la lower ROM; solo entonces el patch de
+  cpct_disableFirmware() en RAM 0x0038 es efectivo.
+  Orden incorrecto → crash silencioso, 0FPS, juego no arranca jamás.
+  CORRECTO:
+    cpct_setVideoMode(0);
+    cpct_disableFirmware();
+    cpct_setPalette(...);
+
+TECLADO — usar cpct_scanKeyboard() (NO cpct_scanKeyboard_f()):
+- Con firmware deshabilitado, cpct_scanKeyboard_f() causa crash.
+- Siempre usar cpct_scanKeyboard() en sistemas con cpct_disableFirmware().
+
+SPRITES — pen 0 es el color de fondo, NUNCA usarlo como fill interior:
+- cpct_drawSprite() copia bytes verbatim a VRAM, sin transparencia.
+- En Mode 0, pen 0 = color de fondo (SKY_BLUE, HW 23). Si el interior usa pen 0 → invisible contra el fondo.
+- Usar pen 1 (BLACK, HW 20) como fill opaco para personajes y enemigos.
+- Para transparencia real, usar cpct_drawSpriteMasked().
+
+SPRITES — tamaño mínimo visible en Mode 0 (160x200):
+- Jugador/enemigo: mínimo 4×8 bytes (8×8 px CPC). Recomendado 8×24.
+- Proyectil básico: mínimo 4×4 bytes (8×8 px CPC). Menos es invisible.
+
+SPRITES — CODIFICACIÓN DE BYTES EN MODE 0 (CRÍTICO):
+- 1 byte = 2 píxeles consecutivos con bits intercalados. NUNCA usar el valor del pen directamente.
+- Usar la tabla de conversión pen→byte o cpct_px2byteM0(pen_izquierdo, pen_derecho).
+- Los bytes 0x00-0x0F usados como índices directos son INCORRECTOS.
+
+Tabla de valores más usados (un solo pen para ambos píxeles):
+  pen0 (fondo, invisible) = 0x00    pen1 (BLACK)          = 0xC0
+  pen2 (ORANGE)          = 0x0C    pen3 (BRIGHT_RED)     = 0xCC
+  pen4 (BRIGHT_WHITE)    = 0x30    pen5 (BRIGHT_YELLOW)  = 0xF0
+  pen6 (WHITE)           = 0x3C    pen7 (CYAN)           = 0xFC
+
+⚠ pen1+pen1 = 0xC0 (BLACK), NO 0x03 (eso es pen8+pen8 = BRIGHT_BLUE)
+
+Tabla completa pen_izquierdo × pen_derecho → byte hex (filas = pen izq, cols = pen der):
+       P0   P1   P2   P3   P4   P5   P6   P7
+  P0: 0x00 0x80 0x08 0x88 0x20 0xA0 0x28 0xA8
+  P1: 0x40 0xC0 0x48 0xC8 0x60 0xE0 0x68 0xE8
+  P2: 0x04 0x84 0x0C 0x8C 0x24 0xA4 0x2C 0xAC
+  P3: 0x44 0xC4 0x4C 0xCC 0x64 0xE4 0x6C 0xEC
+  P4: 0x10 0x90 0x18 0x98 0x30 0xB0 0x38 0xB8
+  P5: 0x50 0xD0 0x58 0xD8 0x70 0xF0 0x78 0xF8
+  P6: 0x14 0x94 0x1C 0x9C 0x34 0xB4 0x3C 0xBC
+  P7: 0x54 0xD4 0x5C 0xDC 0x74 0xF4 0x7C 0xFC
+
+Ejemplo de sprite correcto (4 bytes ancho, fondo=pen1=negro, contorno=pen4=bright_white):
+  Fila contorno: 0x30, 0x30, 0x30, 0x30  (pen4+pen4 ambos lados)
+  Fila relleno:  0x90, 0xC0, 0xC0, 0x60  (pen4|pen1, pen1+1, pen1|pen4)
+  Fila relleno:  0x90, 0xC0, 0xC0, 0x60
+  Fila contorno: 0x30, 0x30, 0x30, 0x30
+
+TECLADO — Compatibilidad con Caprice32 (joystick_emulation=1):
+- Caprice32 en macOS con joystick_emulation=1 envía las flechas del PC al puerto joystick del CPC.
+- SIEMPRE incluir Joy0_Left/Right/Up/Down/Fire1 en input_update() como alternativa a cursor keys.
+- Ejemplo correcto de input_update():
+    cpct_scanKeyboard();
+    left  = (u8)(cpct_isKeyPressed(Key_CursorLeft)  || cpct_isKeyPressed(Key_A) || cpct_isKeyPressed(Joy0_Left));
+    right = (u8)(cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_D) || cpct_isKeyPressed(Joy0_Right));
+    jump  = (u8)(cpct_isKeyPressed(Key_CursorUp)    || cpct_isKeyPressed(Key_W) || cpct_isKeyPressed(Joy0_Up));
+    shoot = (u8)(cpct_isKeyPressed(Key_Space)       || cpct_isKeyPressed(Key_X) || cpct_isKeyPressed(Joy0_Fire1));
+
+cpct_drawSolidBox — LÍMITE CRÍTICO: ancho máximo = 64 bytes:
+- La función usa 63 LDIs con JR dinámico. width > 64 → JR negativo → NO escribe nada → rayas.
+- Pantalla Mode 0 = 80 bytes ancho. NUNCA llamar con width=80.
+- NUNCA usar cpct_clearScreen_f8() en el game loop: tarda ~21ms (> 1 frame a 50Hz CPC).
+  El haz CRT ve pantalla en blanco durante ese tiempo → flickering total garantizado.
+  Solo usar para pantallas estáticas (menú, game over) fuera del loop.
+- En el game loop usar PATRÓN ERASE-REDRAW:
+    1. Borrar sprites en su posición ANTERIOR: cpct_drawSolidBox(prev_pos, 0x00, w, h)
+    2. tilemap_render() — restaura fondo sucio
+    3. Dibujar sprites en posición ACTUAL (jugador primero, luego enemigos)
+    4. Guardar posición actual en prev_x/prev_y para el siguiente frame
+- Para elementos parciales (suelo, plataforma) donde ancho > 40, dividir en dos llamadas de ≤40:
+    cpct_drawSolidBox(pvmem,      color, 40, h);
+    cpct_drawSolidBox(pvmem + 40, color, 40, h);
+
+ENTRY POINT — JP STUB obligatorio en game.c:
+- game.c se enlaza ANTES que main.c (orden alfabético). El código en 0x4000 es game.c, NO cpc_run_address.
+- La PRIMERA función de game.c (antes de cualquier otra) DEBE ser:
+    void __game_entry_jp(void) __naked {
+        __asm
+            .globl cpc_run_address
+            jp cpc_run_address
+        __endasm;
+    }
+- DISC.BAS SIEMPRE usa CALL 16384. NUNCA la dirección exec_addr calculada.
+
+COORDENADAS — LÍMITES DE PANTALLA EN MODE 0:
+- cpct_getScreenPtr(base, x, y): x en BYTES (0-79), y en filas (0-199).
+- Spawn de entidades: spawn_x + sprite_w ≤ 79. Clámpa siempre: if (spawn_x > 74) spawn_x = 74;
+- Y inicial del jugador: player.y = tilemap_ground_y() - player.h (pies al ras del suelo).
+
 REGLAS:
 - Devuelve SIEMPRE JSON válido.
 - No uses markdown.
@@ -37,12 +134,18 @@ REGLAS ESPECÍFICAS PARA action_platformer_run_and_gun:
   - void game_render(void);
 - src/main.c debe incluir "game.h" y llamar:
   - game_init();
-  - game_update();
-  - game_render();
+  - ORDEN OBLIGATORIO en el while(1): game_update() → cpct_waitVSYNC() → game_render()
+    El waitVSYNC va ANTES de render, NO después. Así el beam está en y=0 cuando empieza el render.
+    Ejemplo:
+      while (1) {
+          game_update();
+          cpct_waitVSYNC();
+          game_render();
+      }
 - Si necesitas un stub inicial compilable, usa esta base para src/game.c:
   - #include "game.h"
   - #include <cpctelera.h>
-  - void game_init(void) { cpct_disableFirmware(); cpct_setVideoMode(1); cpct_clearScreen(0x00); }
+  - void game_init(void) { cpct_setVideoMode(0); cpct_disableFirmware(); cpct_clearScreen(0x00); }
   - void game_update(void) { }
   - void game_render(void) { }
 - No uses src/scene_game.c como archivo principal del loop.

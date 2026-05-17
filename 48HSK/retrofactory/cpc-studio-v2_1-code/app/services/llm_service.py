@@ -11,6 +11,16 @@ ENV_FILE = BASE / ".env"
 load_dotenv(ENV_FILE)
 
 PROMPTS = BASE / "prompts"
+DATA = BASE / "data"
+
+_hw_ref_path = DATA / "amstrad_cpc_hardware_reference.md"
+HW_REFERENCE = _hw_ref_path.read_text(encoding="utf-8") if _hw_ref_path.exists() else ""
+
+_motor_path = DATA / "motor_grafico.md"
+MOTOR_REFERENCE = _motor_path.read_text(encoding="utf-8") if _motor_path.exists() else ""
+
+_tutorial_path = DATA / "tutorial_crear_video_juego.md"
+TUTORIAL_REFERENCE = _tutorial_path.read_text(encoding="utf-8") if _tutorial_path.exists() else ""
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 
@@ -53,8 +63,39 @@ def build_model() -> ChatOpenAI:
     )
 
 
+# Agentes técnicos que reciben el motor_grafico como referencia primaria
+_TECHNICAL_AGENTS = {"code_integrator", "art", "design", "cpctelera_tech"}
+
+
 def load_prompt(name: str) -> str:
-    return (PROMPTS / f"{name}.txt").read_text(encoding="utf-8")
+    base_prompt = (PROMPTS / f"{name}.txt").read_text(encoding="utf-8")
+    extras = []
+    # Hardware reference → todos los agentes
+    if HW_REFERENCE:
+        extras.append(
+            "## REFERENCIA HARDWARE AMSTRAD CPC "
+            "(leer antes de generar cualquier sprite, código o asset)\n\n"
+            + HW_REFERENCE
+        )
+    # Motor gráfico TFG → sólo agentes técnicos (su biblia)
+    if MOTOR_REFERENCE and name in _TECHNICAL_AGENTS:
+        extras.append(
+            "## MOTOR GRÁFICO AMSTRAD CPC — REFERENCIA PRIMARIA "
+            "(TFG: arquitectura, modos gráficos, VRAM, raycasting, optimizaciones Z80)\n"
+            "Tratar como biblia técnica: todos los algoritmos y decisiones de diseño "
+            "deben ser compatibles con las restricciones aquí descritas.\n\n"
+            + MOTOR_REFERENCE
+        )
+    # Tutorial videojuegos retrocomputación → todos los agentes
+    if TUTORIAL_REFERENCE:
+        extras.append(
+            "## TUTORIAL DE DESARROLLO DE VIDEOJUEGOS PARA SISTEMAS DE 8 BITS "
+            "(conocimiento base obligatorio para todos los agentes)\n\n"
+            + TUTORIAL_REFERENCE
+        )
+    if extras:
+        return base_prompt + "\n\n---\n\n" + "\n\n---\n\n".join(extras)
+    return base_prompt
 
 
 def invoke_with_backoff(llm, messages, retries=5, base_delay=2):
