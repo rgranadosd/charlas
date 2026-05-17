@@ -14,6 +14,11 @@ fi
 
 ROOT="/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code"
 VENV_ACTIVATE="/Users/rafagranados/Develop/charlas/48HSK/.venv/bin/activate"
+CAP32_APP="/Applications/Caprice32.app"
+CAP32_BIN="${CAP32_APP}/Contents/MacOS/Caprice32"
+CAP32_RESOURCES_DIR="${CAP32_APP}/Contents/Resources"
+CAP32_CFG="/tmp/cap32_pipeline_ghosts.cfg"
+CAP32_BOOT_TIME="320"
 
 STDOUT_FILE="${ROOT}/pipeline_ghosts_output.json"
 STDERR_FILE="${ROOT}/pipeline_ghosts_stderr.log"
@@ -23,6 +28,31 @@ timestamp() { date +"%Y-%m-%d %H:%M:%S"; }
 
 log() {
   printf '[%s] %s\n' "$(timestamp)" "$*" | tee -a "${LOG_FILE}" >&2
+}
+
+prepare_caprice32_cfg() {
+  cp "${CAP32_RESOURCES_DIR}/cap32.cfg" "${CAP32_CFG}"
+  sed -i '' "s|^model=.*|model=2|" "${CAP32_CFG}"
+  sed -i '' "s|^joystick_emulation=.*|joystick_emulation=1|" "${CAP32_CFG}"
+  sed -i '' "s|^boot_time=.*|boot_time=${CAP32_BOOT_TIME}|" "${CAP32_CFG}"
+  sed -i '' "s|^resources_path=.*|resources_path=${CAP32_RESOURCES_DIR}/resources|" "${CAP32_CFG}"
+  sed -i '' "s|^dsk_path=.*|dsk_path=${CAP32_RESOURCES_DIR}/disk|" "${CAP32_CFG}"
+  sed -i '' "s|^tape_path=.*|tape_path=${CAP32_RESOURCES_DIR}/tape|" "${CAP32_CFG}"
+  sed -i '' "s|^rom_path=.*|rom_path=${CAP32_RESOURCES_DIR}/rom|" "${CAP32_CFG}"
+}
+
+launch_caprice32_with_autocmd() {
+  local dsk_path="$1"
+  local autocmd="$2"
+
+  (
+    cd "${CAP32_RESOURCES_DIR}"
+    "${CAP32_BIN}" \
+      -c "${CAP32_CFG}" \
+      -O "system.boot_time=${CAP32_BOOT_TIME}" \
+      --autocmd "${autocmd}" \
+      "${dsk_path}"
+  ) &
 }
 
 on_error() {
@@ -132,15 +162,11 @@ print('')" 2>/dev/null || true)
     DSK_BASENAME="$(basename "${GENERATED_DSK}" .dsk)"
     GENERATED_PROJECT_DIR="$(dirname "${GENERATED_DSK}")"
     BINARY_ADDRESSES_LOG="${GENERATED_PROJECT_DIR}/obj/binaryAddresses.log"
-    CAP32_CFG="/tmp/cap32.cfg"
-    if [[ ! -f "${CAP32_CFG}" ]]; then
-      cp /Applications/Caprice32.app/Contents/Resources/cap32.cfg "${CAP32_CFG}"
-      sed -i '' 's|rom_path=.*|rom_path=/Applications/Caprice32.app/Contents/Resources/rom|' "${CAP32_CFG}"
-    fi
-    if [[ ! -x "/Applications/Caprice32.app/Contents/MacOS/Caprice32" ]]; then
-      log "[WARN] Caprice32 is not installed at /Applications/Caprice32.app, skipping emulator launch"
+    if [[ ! -x "${CAP32_BIN}" || ! -f "${CAP32_RESOURCES_DIR}/cap32.cfg" ]]; then
+      log "[WARN] Caprice32 is not installed at ${CAP32_APP}, skipping emulator launch"
       exit "${cmd_exit}"
     fi
+    prepare_caprice32_cfg
 
     MAP_FILE="${GENERATED_PROJECT_DIR}/obj/${DSK_BASENAME}.map"
     NOI_FILE="${GENERATED_PROJECT_DIR}/obj/${DSK_BASENAME}.noi"
@@ -177,17 +203,8 @@ print('')" "${BINARY_ADDRESSES_LOG}" "${MAP_FILE}" "${NOI_FILE}" 2>/dev/null || 
 
     if [[ -f "${GENERATED_DISC_BAS}" ]]; then
       log "[INFO] Caprice32 boot using DISC.BAS disk loader"
-      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-        -c "${CAP32_CFG}" \
-        -O system.boot_time=260 \
-        -a '|disc' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a 'load"disc.bas"' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a 'run' \
-        "${GENERATED_DSK}" &
+      DISC_AUTO_CMD=$'|disc\nrun"disc"\n'
+      launch_caprice32_with_autocmd "${GENERATED_DSK}" "${DISC_AUTO_CMD}"
     elif [[ -n "${LOAD_ADDRESS_HEX}" && -n "${RUN_ADDRESS_DEC}" && -f "${GENERATED_BIN}" ]]; then
       if python - "${GENERATED_BIN}" "${CAP32_BOOTSTRAP_BIN}" "${CAP32_BOOTSTRAP_OFFSET_HEX}" "${LOAD_ADDRESS_HEX}" "${RUN_ADDRESS_DEC}" <<'PY'
 import pathlib
@@ -216,66 +233,21 @@ bootstrap_path.write_bytes(stub + payload)
 PY
       then
         log "[INFO] Caprice32 disk-command boot using run address ${RUN_ADDRESS_DEC} (preferred over injected runner)"
-        /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-          -c "${CAP32_CFG}" \
-          -O system.boot_time=260 \
-          -a '|disc' \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a 'memory 16383' \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a "load\"${DSK_BASENAME}.BIN\"" \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a "call ${RUN_ADDRESS_DEC}" \
-          "${GENERATED_DSK}" &
+        printf -v BIN_AUTO_CMD '|disc\nmemory 16383\nload"%s.BIN"\ncall %s\n' "${DSK_BASENAME}" "${RUN_ADDRESS_DEC}"
+        launch_caprice32_with_autocmd "${GENERATED_DSK}" "${BIN_AUTO_CMD}"
       else
         log "[WARN] failed to build Caprice32 bootstrap payload, falling back to disk-command boot"
-        /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-          -c "${CAP32_CFG}" \
-          -O system.boot_time=260 \
-          -a '|disc' \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a 'memory 16383' \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a "load\"${DSK_BASENAME}.BIN\"" \
-          -a CAP32_DELAY \
-          -a CAP32_DELAY \
-          -a "call ${RUN_ADDRESS_DEC}" \
-          "${GENERATED_DSK}" &
+        printf -v BIN_AUTO_CMD '|disc\nmemory 16383\nload"%s.BIN"\ncall %s\n' "${DSK_BASENAME}" "${RUN_ADDRESS_DEC}"
+        launch_caprice32_with_autocmd "${GENERATED_DSK}" "${BIN_AUTO_CMD}"
       fi
     elif [[ -n "${RUN_ADDRESS_DEC}" ]]; then
       log "[INFO] Caprice32 direct boot using run address ${RUN_ADDRESS_DEC}"
-      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-        -c "${CAP32_CFG}" \
-        -O system.boot_time=260 \
-        -a '|disc' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a 'memory 16383' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a "load\"${DSK_BASENAME}.BIN\"" \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a "call ${RUN_ADDRESS_DEC}" \
-        "${GENERATED_DSK}" &
+      printf -v BIN_AUTO_CMD '|disc\nmemory 16383\nload"%s.BIN"\ncall %s\n' "${DSK_BASENAME}" "${RUN_ADDRESS_DEC}"
+      launch_caprice32_with_autocmd "${GENERATED_DSK}" "${BIN_AUTO_CMD}"
     else
       log "[WARN] run address not found, falling back to DISC.BAS boot"
-      /Applications/Caprice32.app/Contents/MacOS/Caprice32 \
-        -c "${CAP32_CFG}" \
-        -O system.boot_time=260 \
-        -a '|disc' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a 'load"disc.bas"' \
-        -a CAP32_DELAY \
-        -a CAP32_DELAY \
-        -a 'run' \
-        "${GENERATED_DSK}" &
+      DISC_AUTO_CMD=$'|disc\nrun"disc"\n'
+      launch_caprice32_with_autocmd "${GENERATED_DSK}" "${DISC_AUTO_CMD}"
     fi
     disown
   elif [[ -n "${GENERATED_PROJECT_DIR}" ]]; then
