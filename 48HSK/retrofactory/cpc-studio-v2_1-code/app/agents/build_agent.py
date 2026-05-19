@@ -86,6 +86,7 @@ def _build_output(
     stdout: str,
     stderr: str,
     artifacts: list[str] | None = None,
+    project_path: str = "",
     build_notes: str = "",
 ) -> dict:
     return {
@@ -94,6 +95,7 @@ def _build_output(
         "stdout": stdout,
         "stderr": stderr,
         "artifacts": artifacts or [],
+        "project_path": project_path,
         "build_notes": build_notes,
     }
 
@@ -321,6 +323,7 @@ def run(project_path: str | None) -> tuple[dict, str]:
             return_code=-1,
             stdout="",
             stderr=f"cpct_mkproject not found at {CPCT_MKPROJECT}",
+            project_path=str(target_path),
             build_notes="CPCtelera command-line tools are not available in the configured installation.",
         ), str(target_path)
 
@@ -351,6 +354,7 @@ def run(project_path: str | None) -> tuple[dict, str]:
                 return_code=-1,
                 stdout="",
                 stderr=f"Invalid CPCtelera scaffold at {target_path}",
+                project_path=str(target_path),
                 build_notes=(
                     "Build skipped because the target project does not contain a valid "
                     "CPCtelera scaffold (src/, src/main.c, cfg/, cfg/build_config.mk, Makefile)."
@@ -381,6 +385,7 @@ def run(project_path: str | None) -> tuple[dict, str]:
             return_code=-1,
             stdout="",
             stderr="Build timed out after 300 seconds.",
+            project_path=str(target_path),
             build_notes="Build timed out.",
         ), str(target_path)
     except subprocess.CalledProcessError as exc:
@@ -389,6 +394,7 @@ def run(project_path: str | None) -> tuple[dict, str]:
             return_code=exc.returncode,
             stdout=(exc.stdout or "")[-4000:],
             stderr=(exc.stderr or "")[-4000:],
+            project_path=str(target_path),
             build_notes=f"cpct_mkproject failed while creating {project_name} in {GENERATED_PROJECTS}.",
         ), str(target_path)
     except FileNotFoundError:
@@ -397,6 +403,7 @@ def run(project_path: str | None) -> tuple[dict, str]:
             return_code=-1,
             stdout="",
             stderr="'make' not found. Install Xcode Command Line Tools: xcode-select --install",
+            project_path=str(target_path),
             build_notes="make not available in PATH.",
         ), str(target_path)
 
@@ -444,5 +451,6 @@ def run(project_path: str | None) -> tuple[dict, str]:
         stdout=full_stdout,
         stderr=full_stderr,
         artifacts=artifacts,
+        project_path=str(target_path),
         build_notes=notes,
     ), str(target_path)

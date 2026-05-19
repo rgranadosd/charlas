@@ -1,7 +1,11 @@
 import json
+import os
 import re
+import sys
+import time as _time
 from pathlib import PurePosixPath
 
+from app.agents.context_builder import build_agent_extra_context
 from app.services.c_codegen_service import (
     detect_c_generation_issues,
     render_c_array_decl,
@@ -12,7 +16,6 @@ from app.services.c_codegen_service import (
 )
 from app.services.contract_validation_service import normalize_asset_token
 from app.services.llm_service import json_call
-from app.services.resource_service import format_resources_for_prompt
 
 MAIN_C_PATH = "src/main.c"
 GAME_H_PATH = "src/game.h"
@@ -60,12 +63,23 @@ MANDATORY_RUNTIME_MODULES = {
 
 PALETTE_SIZE_BY_MODE = {0: 16, 1: 4, 2: 2}
 
-# CPCtelera hardware palette values. These must be the real hardware colour
-# bytes accepted by cpct_setPalette, not firmware indexes 0..26.
+# Firmware palette index (0..26) -> hardware ink byte accepted by Gate Array.
+# Source used across the project: cpctelera/cpct_firmware2hw_colour_table.s
+FIRMWARE_TO_HW_INK = [
+    0x54, 0x44, 0x55, 0x5C, 0x58, 0x5D, 0x4C, 0x45, 0x4D,
+    0x56, 0x46, 0x57, 0x5E, 0x40, 0x5F, 0x4E, 0x47, 0x4F,
+    0x52, 0x42, 0x53, 0x5A, 0x59, 0x5B, 0x4A, 0x43, 0x4B,
+]
+
+# CPCtelera hardware palette values (Gate Array inks).
+# These are bytes accepted by cpct_setPalette, not firmware indexes 0..26.
 DEFAULT_PALETTE_HW_BY_MODE: dict[int, list[int]] = {
-    0: [0x17, 0x14, 0x0E, 0x0C, 0x0B, 0x0A, 0x00, 0x06, 0x15, 0x12, 0x1E, 0x16, 0x07, 0x1A, 0x1C, 0x1F],
-    1: [0x14, 0x0C, 0x17, 0x0B],   # black, bright red, sky-blue, bright white
-    2: [0x14, 0x0B],               # black, bright white
+    # pen 0 = Black (bg), pen 6 = Bright White (player) — contrast guaranteed on black bg.
+    # Original was pen0=0x17 (BrightWhite bg) + pen6=0x00 (White player) → both white → player invisible.
+    0: [0x48, 0x54, 0x4E, 0x4C, 0x4B, 0x4A, 0x57, 0x46, 0x55, 0x52, 0x5E, 0x56, 0x47, 0x5A, 0x5C, 0x5F],
+    # Reuse a known-good Mode 1 palette from working CPCtelera sample code.
+    1: [0x54, 0x40, 0x4B, 0x44],
+    2: [0x54, 0x4B],
 }
 
 # Semantic pen roles -> in-palette pen index per mode.
@@ -111,20 +125,33 @@ def _resolve_video_mode(tech_output: dict | None) -> int:
     # Normalise: strip everything except digits and the word 'mode'.
     digits = "".join(ch for ch in raw if ch.isdigit())
     if digits in {"0"}:
-        return 0
-    if digits in {"2"}:
-        return 2
-    if digits in {"1"}:
-        return 1
+        requested_mode = 0
+    elif digits in {"2"}:
+        requested_mode = 2
+    elif digits in {"1"}:
+        requested_mode = 1
+    else:
+        requested_mode = None
     # Fallback: look for substrings.
-    if "mode 0" in raw or "mode_0" in raw or "mode-0" in raw or "mode0" in raw:
-        return 0
-    if "mode 2" in raw or "mode_2" in raw or "mode-2" in raw or "mode2" in raw:
-        return 2
-    return 1
+    if requested_mode is None:
+        if "mode 0" in raw or "mode_0" in raw or "mode-0" in raw or "mode0" in raw:
+            requested_mode = 0
+        elif "mode 2" in raw or "mode_2" in raw or "mode-2" in raw or "mode2" in raw:
+            requested_mode = 2
+        else:
+            requested_mode = 1
+
+    # Keep runtime defaults in Mode 1 for reliable visibility with current
+    # generated renderer. Set CPC_ALLOW_MODE0=1 to permit Mode 0.
+    if requested_mode == 0 and os.getenv("CPC_ALLOW_MODE0", "0").strip() != "1":
+        return 1
+    return requested_mode
 
 def _resolve_palette_hw(art_output: dict | None, mode: int) -> list[int]:
-    """Return palette as HW indexes (0..26), sized per mode."""
+    """Return palette as CPC hardware ink bytes, sized per mode.
+
+    Accepts either firmware indexes (0..26) or hardware bytes (0x40..0x5F).
+    """
     size = PALETTE_SIZE_BY_MODE.get(mode, 4)
     palette: list[int] = []
     if art_output:
@@ -136,6 +163,8 @@ def _resolve_palette_hw(art_output: dict | None, mode: int) -> list[int]:
                 except (TypeError, ValueError):
                     continue
                 if 0 <= pen <= 26:
+                    palette.append(FIRMWARE_TO_HW_INK[pen])
+                elif 0x40 <= pen <= 0x5F:
                     palette.append(pen)
     if not palette:
         palette = list(DEFAULT_PALETTE_HW_BY_MODE.get(mode, DEFAULT_PALETTE_HW_BY_MODE[1]))
@@ -265,7 +294,7 @@ def _build_visible_asset_values(symbol: str) -> list[str]:
     """
     token = symbol.lower()
     bg = 0        # pen 0: background — valid only for HUD digit gaps
-    opaque = 6    # pen 6: black — opaque fill for character sprites
+    opaque = 6    # pen 6: bright white — opaque fill for character sprites (contrasts with black bg)
     if "hud" in token or "health" in token:
         return _digit_sprite_values(8, bg, 15)
     if "player" in token or "knight" in token:
@@ -292,6 +321,368 @@ def _build_game_h_stub() -> str:
 
 
 def _build_game_c_stub(mode: int = 1) -> str:
+    safe_mode = 1 if mode != 0 else 0
+    bg_fill = _fill_for("bg", safe_mode)
+    ground_fill = _fill_for("ground", safe_mode)
+    player_fill = _fill_for("player", safe_mode)
+    pickup_fill = _fill_for("pickup", safe_mode)
+
+    if safe_mode == 0:
+        palette_decl = "static const u8 game_palette[16] = {0x54, 0x4B, 0x58, 0x5D, 0x4A, 0x43, 0x53, 0x4F, 0x46, 0x45, 0x4C, 0x5C, 0x40, 0x57, 0x5E, 0x47};"
+        palette_apply = "cpct_setPalette((u8*)game_palette, 16);"
+    else:
+        palette_decl = "static const u8 game_palette[4] = {0x54, 0x4B, 0x58, 0x5D};"
+        palette_apply = "cpct_setPalette((u8*)game_palette, 4);"
+
+    return "\n".join(
+        [
+            render_c_include("game.h"),
+            render_c_include("<cpctelera.h>"),
+            "",
+            palette_decl,
+            "",
+            "void game_init(void) {",
+            "    cpct_disableFirmware();",
+            f"    cpct_setVideoMode({safe_mode});",
+            "    cpct_setBorder(game_palette[0]);",
+            f"    {palette_apply}",
+            f"    cpct_clearScreen({bg_fill});",
+            "}",
+            "",
+            "void game_update(void) {",
+            "}",
+            "",
+            "void game_render(void) {",
+            "    u8* pvmem;",
+            f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 0, 184), {ground_fill}, 40, 16);",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 12, 160);",
+            f"    cpct_drawSolidBox(pvmem, {player_fill}, 4, 16);",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 26, 152);",
+            f"    cpct_drawSolidBox(pvmem, {pickup_fill}, 3, 10);",
+            "}",
+            "",
+        ]
+    )
+
+
+def _build_player_render_function(mode: int) -> str:
+    bg_fill = _fill_for("bg", mode)
+    player_fill = _fill_for("player", mode)
+    flicker_fill = _fill_for("pickup", mode)
+    return "\n".join(
+        [
+            "void player_render(void) {",
+            "    u8 color;",
+            "",
+            "    // Erase previous",
+            f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, player.prev_x, player.prev_y), {bg_fill}, player.w, player.h);",
+            "    // Draw player (solid box as placeholder)",
+            f"    color = (player.invulnerable_timer & 2) ? {flicker_fill} : {player_fill};",
+            "    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, player.x, player.y), color, player.w, player.h);",
+            "}",
+        ]
+    )
+
+
+def _build_projectile_render_function(mode: int) -> str:
+    bg_fill = _fill_for("bg", mode)
+    proj_fill = _fill_for("projectile_basic", mode)
+    return "\n".join(
+        [
+            "void projectile_render(void) {",
+            "    for (u8 i = 0; i < MAX_PROJECTILES; ++i) {",
+            "        Projectile* p = &projectiles[i];",
+            "        if (!p->active) continue;",
+            "        // Erase previous",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, p->prev_x, p->prev_y), {bg_fill}, p->w, p->h);",
+            "        // Draw projectile (solid box as placeholder)",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, p->x, p->y), {proj_fill}, p->w, p->h);",
+            "    }",
+            "}",
+        ]
+    )
+
+
+def _replace_function_block(source: str, func_name: str, replacement: str) -> str:
+    pattern = rf"void\\s+{re.escape(func_name)}\\s*\\(\\s*void\\s*\\)\\s*\\{{.*?\\n\\}}"
+    return re.sub(pattern, replacement, source, count=1, flags=re.DOTALL)
+
+
+def _sanitize_entity_render_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None,
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+    mode = _resolve_video_mode(tech_output)
+
+    if _is_allowed(PLAYER_C_PATH, allowed_files):
+        player_c = str(normalized.get(PLAYER_C_PATH, ""))
+        if player_c and "void player_render(void)" in player_c:
+            suspicious = bool(re.search(r"void\\s+player_render\\s*\\(\\s*void\\s*\\)\\s*\\{.*0x[0-9A-Fa-f]{1,2}", player_c, flags=re.DOTALL))
+            if suspicious:
+                replaced = _replace_function_block(player_c, "player_render", _build_player_render_function(mode))
+                if replaced != player_c:
+                    normalized[PLAYER_C_PATH] = replaced
+                    sanitized.append(PLAYER_C_PATH)
+
+    if _is_allowed(PROJECTILE_C_PATH, allowed_files):
+        projectile_c = str(normalized.get(PROJECTILE_C_PATH, ""))
+        if projectile_c and "void projectile_render(void)" in projectile_c:
+            suspicious = bool(re.search(r"void\\s+projectile_render\\s*\\(\\s*void\\s*\\)\\s*\\{.*0x[0-9A-Fa-f]{1,2}", projectile_c, flags=re.DOTALL))
+            if suspicious:
+                replaced = _replace_function_block(projectile_c, "projectile_render", _build_projectile_render_function(mode))
+                if replaced != projectile_c:
+                    normalized[PROJECTILE_C_PATH] = replaced
+                    sanitized.append(PROJECTILE_C_PATH)
+
+        # Some generated legacy projectiles use C89-incompatible declarations
+        # inside projectile_render_all/projectile_erase_all loops (e.g. "u8* s"
+        # after a "continue"). Normalize those blocks to keep SDCC happy.
+        projectile_c = str(normalized.get(PROJECTILE_C_PATH, ""))
+        if projectile_c and "void projectile_render_all(void)" in projectile_c:
+            replaced = projectile_c
+            replaced = re.sub(
+                r"if \(!p->active\) continue;\s*\n\s*u8\* s = cpct_getScreenPtr\(CPCT_VMEM_START, p->x, p->y\);",
+                "u8* s;\n        if (!p->active) continue;\n        s = cpct_getScreenPtr(CPCT_VMEM_START, p->x, p->y);",
+                replaced,
+                count=1,
+            )
+            replaced = re.sub(
+                r"if \(!p->active\) continue;\s*\n\s*u8\* s = cpct_getScreenPtr\(CPCT_VMEM_START, p->prev_x, p->prev_y\);",
+                "u8* s;\n        if (!p->active) continue;\n        s = cpct_getScreenPtr(CPCT_VMEM_START, p->prev_x, p->prev_y);",
+                replaced,
+                count=1,
+            )
+            if replaced != projectile_c:
+                normalized[PROJECTILE_C_PATH] = replaced
+                sanitized.append(PROJECTILE_C_PATH)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _build_player_c_compat_stub(mode: int = 1) -> str:
+    bg_fill = _fill_for("bg", mode)
+    player_fill = _fill_for("player", mode)
+    return "\n".join(
+        [
+            render_c_include("entities/player.h"),
+            render_c_include("systems/input.h"),
+            render_c_include("systems/tilemap.h"),
+            render_c_include("<cpctelera.h>"),
+            "",
+            "Player player;",
+            "",
+            "#define PLAYER_W 8",
+            "#define PLAYER_H 24",
+            "#define PLAYER_SPEED 2",
+            "#define PLAYER_JUMP_VY -6",
+            "#define PLAYER_GRAVITY 1",
+            "#define PLAYER_MAX_FALL 4",
+            "",
+            "void player_init(void) {",
+            "    player.x = 16;",
+            "    player.y = (u8)(tilemap_ground_y() - PLAYER_H);",
+            "    player.w = PLAYER_W;",
+            "    player.h = PLAYER_H;",
+            "    player.vx = 0;",
+            "    player.vy = 0;",
+            "    player.state = PLAYER_STATE_IDLE;",
+            "    player.lives = 3;",
+            "    player.score = 0;",
+            "    player.invulnerable = 0;",
+            "    player.prev_x = player.x;",
+            "    player.prev_y = player.y;",
+            "    player.active = 1;",
+            "    player.jump_timer = 0;",
+            "    player.can_shoot = 1;",
+            "}",
+            "",
+            "void player_update(void) {",
+            "    i16 nextx;",
+            "    i16 nexty;",
+            "",
+            "    if (!player.active || player.state == PLAYER_STATE_DEAD) return;",
+            "",
+            "    player.prev_x = player.x;",
+            "    player.prev_y = player.y;",
+            "",
+            "    player.vx = 0;",
+            "    if (input_left && !input_right) player.vx = -PLAYER_SPEED;",
+            "    else if (input_right && !input_left) player.vx = PLAYER_SPEED;",
+            "",
+            "    nextx = (i16)player.x + (i16)player.vx;",
+            "    if (nextx < 0) nextx = 0;",
+            "    if (nextx > (80 - (i16)player.w)) nextx = (80 - (i16)player.w);",
+            "    player.x = (u8)nextx;",
+            "",
+            "    if (input_jump && player.vy == 0 && (i16)player.y + (i16)player.h >= (i16)tilemap_ground_y()) {",
+            "        player.vy = PLAYER_JUMP_VY;",
+            "        player.state = PLAYER_STATE_JUMP;",
+            "    }",
+            "",
+            "    player.vy = (i8)(player.vy + PLAYER_GRAVITY);",
+            "    if (player.vy > PLAYER_MAX_FALL) player.vy = PLAYER_MAX_FALL;",
+            "",
+            "    nexty = (i16)player.y + (i16)player.vy;",
+            "    if (nexty + (i16)player.h >= (i16)tilemap_ground_y()) {",
+            "        nexty = (i16)tilemap_ground_y() - (i16)player.h;",
+            "        player.vy = 0;",
+            "        if (input_down) player.state = PLAYER_STATE_CROUCH;",
+            "        else if (player.vx) player.state = PLAYER_STATE_RUN;",
+            "        else player.state = PLAYER_STATE_IDLE;",
+            "    }",
+            "    if (nexty < 0) nexty = 0;",
+            "    player.y = (u8)nexty;",
+            "",
+            "    if (player.invulnerable > 0) player.invulnerable--;",
+            "}",
+            "",
+            "void player_render(void) {",
+            "    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, player.x, player.y), " + player_fill + ", player.w, player.h);",
+            "}",
+            "",
+            "void player_erase(void) {",
+            "    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, player.prev_x, player.prev_y), " + bg_fill + ", player.w, player.h);",
+            "}",
+            "",
+            "void player_save_prev_pos(void) {",
+            "    player.prev_x = player.x;",
+            "    player.prev_y = player.y;",
+            "}",
+            "",
+        ]
+    )
+
+
+def _sanitize_player_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None,
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not _is_allowed(PLAYER_C_PATH, allowed_files):
+        return normalized, sanitized
+
+    player_c = str(normalized.get(PLAYER_C_PATH, ""))
+    if not player_c:
+        return normalized, sanitized
+
+    # Generated legacy player implementations frequently mix C99 declarations
+    # with C89 SDCC and call tilemap/projectile APIs in incompatible ways.
+    has_c89_risk = bool(re.search(r"return\s*;\s*\n\s*i8\s+[A-Za-z_][A-Za-z0-9_]*\s*=", player_c))
+    has_inline_extern_projectile = bool(
+        re.search(r"\n\s*extern\s+void\s+projectile_spawn\s*\(", player_c)
+    )
+    has_late_local_declarations = bool(
+        re.search(r"\n\s*u8\s+ground_y\s*=", player_c)
+        or re.search(r"\n\s*u8\s*\*\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*cpct_getScreenPtr\s*\(", player_c)
+    )
+    uses_missing_tilemap_api = "tilemap_is_solid(" in player_c
+    uses_legacy_projectile_hook = "player_shoot_projectile(" in player_c
+
+    player_h = str(normalized.get(PLAYER_H_PATH, ""))
+    uses_undefined_state_enum = bool(
+        re.search(r"\bPLAYER_STATE_", player_c)
+        and not re.search(r"#define\s+PLAYER_STATE_IDLE", player_h)
+    )
+    uses_undefined_player_fields = bool(
+        re.search(r"player\.(invulnerable|jump_timer|can_shoot)\b", player_c)
+        and not re.search(r"\binvulnerable\b", player_h)
+    )
+
+    needs_stub = (
+        has_c89_risk
+        or has_inline_extern_projectile
+        or has_late_local_declarations
+        or uses_missing_tilemap_api
+        or uses_legacy_projectile_hook
+        or uses_undefined_state_enum
+        or uses_undefined_player_fields
+    )
+
+    if needs_stub:
+        mode = _resolve_video_mode(tech_output)
+        replacement = _build_player_c_compat_stub(mode)
+        if replacement != player_c:
+            normalized[PLAYER_C_PATH] = replacement
+            sanitized.append(PLAYER_C_PATH)
+        # Also replace player.h with the matching stub so fields/enums are consistent
+        if _is_allowed(PLAYER_H_PATH, allowed_files):
+            h_stub = _build_player_h_stub()
+            if normalized.get(PLAYER_H_PATH) != h_stub:
+                normalized[PLAYER_H_PATH] = h_stub
+                sanitized.append(PLAYER_H_PATH)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_projectile_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    """Patch projectile.h struct when projectile.c uses fields not declared in it."""
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not _is_allowed(PROJECTILE_H_PATH, allowed_files):
+        return normalized, sanitized
+
+    projectile_h = str(normalized.get(PROJECTILE_H_PATH, ""))
+    projectile_c = str(normalized.get(PROJECTILE_C_PATH, ""))
+    if not projectile_h or not projectile_c:
+        return normalized, sanitized
+
+    # prev_active used in .c but missing from struct in .h
+    if (
+        re.search(r"\bprev_active\b", projectile_c)
+        and not re.search(r"\bprev_active\b", projectile_h)
+    ):
+        patched = re.sub(
+            r"(\bprev_h\s*,\s*active)\s*;",
+            r"\1, prev_active;",
+            projectile_h,
+        )
+        if patched == projectile_h:
+            # Fallback: add before closing brace of Projectile typedef
+            patched = re.sub(
+                r"(\bactive\b[^;]*;)(\s*\}[^;]*Projectile\s*;)",
+                r"\1\n    u8 prev_active;\2",
+                projectile_h,
+            )
+        if patched != projectile_h:
+            normalized[PROJECTILE_H_PATH] = patched
+            sanitized.append(PROJECTILE_H_PATH)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_main_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not _is_allowed(MAIN_C_PATH, allowed_files):
+        return normalized, sanitized
+
+    main_c = str(normalized.get(MAIN_C_PATH, ""))
+    if not main_c:
+        return normalized, sanitized
+
+    if "jp cpc_run_address" in main_c and "cpc_run_address::" not in main_c:
+        replacement = main_c.replace("        .globl cpc_run_address\n", "")
+        replacement = replacement.replace("        jp cpc_run_address", "        jp _main")
+        if replacement != main_c:
+            normalized[MAIN_C_PATH] = replacement
+            sanitized.append(MAIN_C_PATH)
+
+    return normalized, sorted(set(sanitized))
+
     return "\n".join(
         [
             render_c_include("game.h"),
@@ -579,7 +970,7 @@ def _build_game_c_stub(mode: int = 1) -> str:
             "void game_render(void) {",
             "    u8 i;",
             "",
-            f"    cpct_drawSolidBox(CPCT_VMEM_START, {_fill_for('bg', mode)}, 80, 200);",
+            f"    cpct_clearScreen({_fill_for('bg', mode)});",
             "    tilemap_render();",
             f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 60, 18), {_fill_for('victory_fg', mode)}, 6, 10);",
             f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 58, 20), {_fill_for('victory_bg', mode)}, 2, 6);",
@@ -588,18 +979,16 @@ def _build_game_c_stub(mode: int = 1) -> str:
             "        if (g_projectiles[i].active) {",
             f"            cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_projectiles[i].x, g_projectiles[i].y), {_fill_for('projectile_upgraded', mode)}, g_projectiles[i].w, g_projectiles[i].h);",
             "        }",
-            "        projectilerender(&g_projectiles[i]);",
             "    }",
             "",
             "    for (i = 0; i < MAX_ENEMIES; ++i) {",
             "        if (g_enemies[i].active) {",
             f"            cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_enemies[i].x, g_enemies[i].y), {_fill_for('enemy', mode)}, g_enemies[i].w, g_enemies[i].h);",
             "        }",
-            "        enemyrender(&g_enemies[i]);",
             "    }",
             "",
             "    if (g_bossactive) {",
-            "        enemyrender(&g_boss);",
+            f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_boss.x, g_boss.y), {_fill_for('enemy', mode)}, g_boss.w, g_boss.h);",
             f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), {_fill_for('boss_bar_bg', mode)}, 32, 2);",
             f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 24, 10), {_fill_for('boss_bar_fg', mode)}, (u8)(g_boss.health * 3), 2);",
             "    }",
@@ -608,7 +997,6 @@ def _build_game_c_stub(mode: int = 1) -> str:
             f"        cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, 36, (u8)(tilemap_ground_y() - 8)), {_fill_for('pickup', mode)}, 4, 4);",
             "    }",
             f"    cpct_drawSolidBox(cpct_getScreenPtr(CPCT_VMEM_START, g_player.x, g_player.y), {_fill_for('player', mode)}, g_player.w, g_player.h);",
-            "    playerrender(&g_player);",
             "    hudrender();",
             "",
             "    if (g_victory) {",
@@ -681,6 +1069,12 @@ def _build_player_h_stub() -> str:
             "",
             render_c_include("<cpctelera.h>"),
             "",
+            "#define PLAYER_STATE_IDLE   0",
+            "#define PLAYER_STATE_RUN    1",
+            "#define PLAYER_STATE_JUMP   2",
+            "#define PLAYER_STATE_CROUCH 3",
+            "#define PLAYER_STATE_DEAD   4",
+            "",
             "typedef struct {",
             "    u8 x;",
             "    u8 y;",
@@ -688,18 +1082,25 @@ def _build_player_h_stub() -> str:
             "    i8 vy;",
             "    u8 w;",
             "    u8 h;",
-            "    u8 health;",
-            "    u8 weapon;",
-            "    u8 facing_left;",
-            "    u8 jump_hold;",
+            "    u8 prev_x;",
+            "    u8 prev_y;",
+            "    u8 state;",
+            "    u8 lives;",
+            "    u16 score;",
+            "    u8 invulnerable;",
+            "    u8 jump_timer;",
+            "    u8 can_shoot;",
+            "    u8 active;",
             "} Player;",
             "",
-            "void playerinit(Player* player);",
-            "void playerupdate(Player* player);",
-            "void playerrender(const Player* player);",
-            "u8 player_get_ammo(const Player* player);",
-            "u8 player_get_health(const Player* player);",
-            "u8 player_get_weapon(const Player* player);",
+            "extern Player player;",
+            "",
+            "void player_init(void);",
+            "void player_update(void);",
+            "void player_render(void);",
+            "void player_erase(void);",
+            "void player_store_prev(void);",
+            "void player_kill(void);",
             "",
             "#endif",
             "",
@@ -1045,6 +1446,8 @@ def _build_projectile_c_stub(mode: int = 1) -> str:
 
 
 def _build_player_c_stub(mode: int = 1) -> str:
+    hflip_fn = "cpct_hflipSpriteM0" if mode == 0 else ("cpct_hflipSpriteM2" if mode == 2 else "cpct_hflipSpriteM1")
+
     return "\n".join(
         [
             render_c_include("entities/player.h"),
@@ -1159,7 +1562,7 @@ def _build_player_c_stub(mode: int = 1) -> str:
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, player->x, player->y);",
             "    if (player->facing_left != gplayerspritefacingleft) {",
-            "        cpct_hflipSpriteM0(player->w, player->h, gplayersprite);",
+            f"        {hflip_fn}(player->w, player->h, gplayersprite);",
             "        gplayerspritefacingleft = player->facing_left;",
             "    }",
             "    cpct_drawSprite(gplayersprite, pvmem, player->w, player->h);",
@@ -1295,11 +1698,9 @@ def _build_collision_c_stub() -> str:
             render_c_include("systems/tilemap.h"),
             "",
             "static i16 ggroundy = 160;",
-            "static i16 gplatformy = 255;",
             "",
             "void collision_init(void) {",
             "    ggroundy = (i16)tilemap_ground_y();",
-            "    gplatformy = (i16)tilemap_platform_y_at(32);",
             "}",
             "",
             "u8 collision_is_on_ground(i16 y, u8 h) {",
@@ -1310,12 +1711,8 @@ def _build_collision_c_stub() -> str:
             "    i16 feet;",
             "    i16 support;",
             "",
+            "    (void)x;",
             "    support = (i16)tilemap_ground_y();",
-            "    gplatformy = (i16)tilemap_platform_y_at(x);",
-            "    if (gplatformy != 255 && y + (i16)h <= gplatformy + 2) {",
-            "        support = gplatformy;",
-            "    }",
-            "",
             "    feet = y + (i16)h;",
             "    return (u8)(feet >= support);",
             "}",
@@ -1326,18 +1723,10 @@ def _build_collision_c_stub() -> str:
             "",
             "i16 collision_clamp_y_at(i16 x, i16 y, u8 h) {",
             "    i16 maxy;",
-            "    i16 platformmaxy;",
             "",
+            "    (void)x;",
             "    ggroundy = (i16)tilemap_ground_y();",
             "    maxy = ggroundy - (i16)h;",
-            "    gplatformy = (i16)tilemap_platform_y_at(x);",
-            "    if (gplatformy != 255) {",
-            "        platformmaxy = gplatformy - (i16)h;",
-            "        if (y > platformmaxy && y <= maxy) {",
-            "            return platformmaxy;",
-            "        }",
-            "    }",
-            "",
             "    if (y > maxy) {",
             "        return maxy;",
             "    }",
@@ -1345,11 +1734,19 @@ def _build_collision_c_stub() -> str:
             "}",
             "",
             "u8 collision_is_on_trap(i16 x, i16 y, u8 w, u8 h) {",
-            "    return tilemap_is_trap(x, y, w, h);",
+            "    (void)x;",
+            "    (void)y;",
+            "    (void)w;",
+            "    (void)h;",
+            "    return 0;",
             "}",
             "",
             "u8 collision_is_on_ladder(i16 x, i16 y, u8 w, u8 h) {",
-            "    return tilemap_is_ladder(x, y, w, h);",
+            "    (void)x;",
+            "    (void)y;",
+            "    (void)w;",
+            "    (void)h;",
+            "    return 0;",
             "}",
             "",
         ]
@@ -1367,7 +1764,10 @@ def _build_tilemap_h_stub() -> str:
             "void tilemap_init(void);",
             "void tilemap_render(void);",
             "u8 tilemap_ground_y(void);",
+            "u8 tilemap_is_solid(u8 x, u8 y, u8 w, u8 h);",
+            "u8 tilemap_is_on_ground(u8 x, u8 y);",
             "u8 tilemap_platform_y_at(i16 x);",
+            "u8 get_tile_at(i16 x, i16 y);",
             "u8 tilemap_is_trap(i16 x, i16 y, u8 w, u8 h);",
             "u8 tilemap_is_ladder(i16 x, i16 y, u8 w, u8 h);",
             "u8 tilemap_is_hidden_zone(i16 x, i16 y, u8 w, u8 h);",
@@ -1383,30 +1783,32 @@ def _build_tilemap_c_stub(mode: int = 1) -> str:
     return "\n".join(
         [
             render_c_include("systems/tilemap.h"),
-            render_c_include("data/level1.h"),
             render_c_include("<cpctelera.h>"),
             "",
-            "static u8 gtilegroundy = 160;",
-            "static u8 gtileplatformy = 128;",
+            "static u8 gtilegroundy = 136;",
+            "static u8 gtileplatformy = 96;",
             "static u8 ggoalx = 72;",
             "",
             "void tilemap_init(void) {",
-            "    if (level1tilemapheight > 2) {",
-            "        gtilegroundy = (u8)((level1tilemapheight - 2) * 8);",
-            "    } else {",
-            "        gtilegroundy = 160;",
-            "    }",
-            "    gtileplatformy = (u8)(gtilegroundy - 24);",
+            "    gtilegroundy = 136;",
+            "    if (gtilegroundy > 152) gtilegroundy = 152;",
+            "    gtileplatformy = (u8)(gtilegroundy - 40);",
             "    ggoalx = 72;",
             "}",
             "",
             "void tilemap_render(void) {",
             "    u8* pvmem;",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 0, 24);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('decor', mode)}, 80, 88);",
+            "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 0, gtilegroundy);",
-            f"    cpct_drawSolidBox(pvmem, {_fill_for('ground', mode)}, 80, 8);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('ground', mode)}, 80, 16);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 24, gtileplatformy);",
-            f"    cpct_drawSolidBox(pvmem, {_fill_for('platform', mode)}, 32, 4);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('platform', mode)}, 20, 6);",
+            "",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 50, gtileplatformy + 18);",
+            f"    cpct_drawSolidBox(pvmem, {_fill_for('platform', mode)}, 18, 6);",
             "",
             "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 56, gtilegroundy - 2);",
             f"    cpct_drawSolidBox(pvmem, {_fill_for('decor', mode)}, 16, 2);",
@@ -1419,11 +1821,45 @@ def _build_tilemap_c_stub(mode: int = 1) -> str:
             "    return gtilegroundy;",
             "}",
             "",
+            "u8 tilemap_is_solid(u8 x, u8 y, u8 w, u8 h) {",
+            "    i16 left;",
+            "    i16 right;",
+            "    i16 top;",
+            "    i16 bottom;",
+            "",
+            "    left = (i16)x;",
+            "    right = left + (i16)w - 1;",
+            "    top = (i16)y;",
+            "    bottom = top + (i16)h - 1;",
+            "",
+            "    if (bottom >= (i16)gtilegroundy - 1) {",
+            "        return 1;",
+            "    }",
+            "    if (bottom >= (i16)gtileplatformy - 1 && bottom <= (i16)gtileplatformy + 2 && right >= 24 && left <= 56) {",
+            "        return 1;",
+            "    }",
+            "    return 0;",
+            "}",
+            "",
+            "u8 tilemap_is_on_ground(u8 x, u8 y) {",
+            "    return tilemap_is_solid(x, (u8)(y + 1), 1, 1);",
+            "}",
+            "",
             "u8 tilemap_platform_y_at(i16 x) {",
             "    if (x >= 24 && x <= 56) {",
             "        return gtileplatformy;",
             "    }",
             "    return 255;",
+            "}",
+            "",
+            "u8 get_tile_at(i16 x, i16 y) {",
+            "    if (y >= (i16)gtilegroundy - 8) {",
+            "        return 1;",
+            "    }",
+            "    if (y >= (i16)gtileplatformy - 4 && y < (i16)gtileplatformy + 4 && x >= 24 && x <= 56) {",
+            "        return 2;",
+            "    }",
+            "    return 0;",
             "}",
             "",
             "u8 tilemap_is_trap(i16 x, i16 y, u8 w, u8 h) {",
@@ -1679,6 +2115,30 @@ def _build_hud_c_stub(mode: int = 1) -> str:
     )
 
 
+def _build_hud_c_safe_stub(mode: int = 1) -> str:
+    bg = _pen('bg', mode)
+    hud = _pen('hud', mode)
+    return "\n".join(
+        [
+            '#include "systems/hud.h"',
+            '#include <cpctelera.h>',
+            "",
+            "void hud_init(void) {}",
+            "void hud_update(void) {}",
+            "",
+            "void hud_render(void) {",
+            "    u8* pvmem;",
+            "    cpct_drawSolidBox(CPCT_VMEM_START, " + str(bg) + ", 40, 8);",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 2, 1);",
+            "    cpct_drawSolidBox(pvmem, " + str(hud) + ", 3, 6);",
+            "    pvmem = cpct_getScreenPtr(CPCT_VMEM_START, 8, 1);",
+            "    cpct_drawSolidBox(pvmem, " + str(hud) + ", 3, 6);",
+            "}",
+            "",
+        ]
+    )
+
+
 def _header_guard(path: str) -> str:
     token = re.sub(r"[^A-Za-z0-9]", "_", str(path).upper())
     return token or "ASSET_HEADER_H"
@@ -1816,10 +2276,110 @@ def _sanitize_enemy_source_files(
     )
 
     if should_replace:
+        if _is_allowed(ENEMY_H_PATH, allowed_files):
+            replacement_h = _build_enemy_h_stub()
+            if replacement_h != enemy_h:
+                normalized[ENEMY_H_PATH] = replacement_h
+                sanitized.append(ENEMY_H_PATH)
+
         replacement = _build_enemy_c_stub()
         if replacement != enemy_c:
             normalized[ENEMY_C_PATH] = replacement
             sanitized.append(ENEMY_C_PATH)
+
+    # Keep collision API coherent with enemy runtime stubs when enemy logic
+    # depends on helper functions not present in a minimal collision header.
+    collision_h = str(normalized.get(COLLISION_H_PATH, ""))
+    enemy_uses_collision_runtime_api = (
+        "collision_clamp_y_at(" in enemy_c
+        or "collision_is_on_ground_at(" in enemy_c
+    )
+    collision_h_has_runtime_api = bool(
+        re.search(r"\bi16\s+collision_clamp_y_at\s*\(", collision_h)
+    ) and bool(
+        re.search(r"\bu8\s+collision_is_on_ground_at\s*\(", collision_h)
+    )
+
+    if enemy_uses_collision_runtime_api and not collision_h_has_runtime_api:
+        if _is_allowed(COLLISION_H_PATH, allowed_files):
+            replacement_collision_h = _build_collision_h_stub()
+            if replacement_collision_h != collision_h:
+                normalized[COLLISION_H_PATH] = replacement_collision_h
+                sanitized.append(COLLISION_H_PATH)
+
+        if _is_allowed(COLLISION_C_PATH, allowed_files):
+            collision_c = str(normalized.get(COLLISION_C_PATH, ""))
+            collision_c_has_runtime_api = (
+                "collision_clamp_y_at(" in collision_c
+                and "collision_is_on_ground_at(" in collision_c
+            )
+            if not collision_c_has_runtime_api:
+                replacement_collision_c = _build_collision_c_stub()
+                if replacement_collision_c != collision_c:
+                    normalized[COLLISION_C_PATH] = replacement_collision_c
+                    sanitized.append(COLLISION_C_PATH)
+
+    # Some generations wire collision.c against a different enemy runtime
+    # contract (ENEMY_MAX|MAX_ENEMIES, enemies[]|g_enemies[],
+    # ENEMY_STATE_*|ENEMY_DEAD) while enemy.h provides
+    # only enemyinit/enemyspawn style APIs. Replace collision with a coherent
+    # generic stub in that case.
+    collision_h_current = str(normalized.get(COLLISION_H_PATH, ""))
+    collision_c_current = str(normalized.get(COLLISION_C_PATH, ""))
+    enemy_h_current = str(normalized.get(ENEMY_H_PATH, ""))
+
+    collision_uses_enemy_globals = bool(
+        re.search(r"\bENEMY_MAX\b", collision_c_current)
+        or re.search(r"\bMAX_ENEMIES\b", collision_c_current)
+        or re.search(r"\benemies\s*\[", collision_c_current)
+        or re.search(r"\bg_enemies\s*\[", collision_c_current)
+        or re.search(r"\bENEMY_STATE_[A-Z0-9_]+\b", collision_c_current)
+        or re.search(r"\bENEMY_DEAD\b", collision_c_current)
+    )
+    enemy_header_supports_enemy_globals = bool(
+        (re.search(r"\bENEMY_MAX\b", enemy_h_current) or re.search(r"\bMAX_ENEMIES\b", enemy_h_current))
+        and (
+            re.search(r"\bextern\s+Enemy\s+enemies\s*\[", enemy_h_current)
+            or re.search(r"\bextern\s+Enemy\s+g_enemies\s*\[", enemy_h_current)
+        )
+        and (
+            re.search(r"\bENEMY_STATE_[A-Z0-9_]+\b", enemy_h_current)
+            or re.search(r"\bENEMY_DEAD\b", enemy_h_current)
+        )
+    )
+
+    if collision_uses_enemy_globals and not enemy_header_supports_enemy_globals:
+        if _is_allowed(COLLISION_H_PATH, allowed_files):
+            replacement_collision_h = _build_collision_h_stub()
+            if replacement_collision_h != collision_h_current:
+                normalized[COLLISION_H_PATH] = replacement_collision_h
+                sanitized.append(COLLISION_H_PATH)
+
+        if _is_allowed(COLLISION_C_PATH, allowed_files):
+            replacement_collision_c = _build_collision_c_stub()
+            if replacement_collision_c != collision_c_current:
+                normalized[COLLISION_C_PATH] = replacement_collision_c
+                sanitized.append(COLLISION_C_PATH)
+
+    projectile_c_current = str(normalized.get(PROJECTILE_C_PATH, ""))
+    projectile_uses_enemy_globals = bool(
+        re.search(r"\bENEMY_MAX\b", projectile_c_current)
+        or re.search(r"\benemies\s*\[", projectile_c_current)
+        or re.search(r"\bENEMY_STATE_[A-Z0-9_]+\b", projectile_c_current)
+    )
+
+    if projectile_uses_enemy_globals and not enemy_header_supports_enemy_globals:
+        if _is_allowed(PROJECTILE_C_PATH, allowed_files):
+            replacement_projectile_c = re.sub(
+                r"for\s*\(\s*u8\s+j\s*=\s*0\s*;\s*j\s*<\s*ENEMY_MAX\s*;\s*\+\+j\s*\)\s*\{[\s\S]*?\n\s*\}",
+                "/* enemy collision disabled: incompatible ENEMY_MAX/enemies contract */",
+                projectile_c_current,
+                count=1,
+            )
+            replacement_projectile_c = replacement_projectile_c.replace("#include \"entities/enemy.h\"\n", "")
+            if replacement_projectile_c != projectile_c_current:
+                normalized[PROJECTILE_C_PATH] = replacement_projectile_c
+                sanitized.append(PROJECTILE_C_PATH)
 
     return normalized, sorted(set(sanitized))
 
@@ -1845,6 +2405,181 @@ def _sanitize_input_source_files(
         if replacement != text:
             normalized[path] = replacement
             sanitized.append(path)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_tilemap_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None,
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not (_is_allowed(TILEMAP_H_PATH, allowed_files) and _is_allowed(TILEMAP_C_PATH, allowed_files)):
+        return normalized, sanitized
+
+    tilemap_h = str(normalized.get(TILEMAP_H_PATH, ""))
+    tilemap_c = str(normalized.get(TILEMAP_C_PATH, ""))
+    if not tilemap_h or not tilemap_c:
+        return normalized, sanitized
+
+    mode = _resolve_video_mode(tech_output)
+    tile_w_match = re.search(r"#define\s+TILE_W\s+(\d+)", tilemap_h)
+    tile_w = int(tile_w_match.group(1)) if tile_w_match else 0
+
+    # cpct_getScreenPtr X and cpct_drawSolidBox width are byte units.
+    # If a generated tilemap uses TILE_W as pixel-size (e.g. 16 in Mode 1),
+    # rendering goes mostly off-screen/garbled.
+    suspicious_byte_units = bool(
+        re.search(r"cpct_getScreenPtr\s*\(\s*CPCT_VMEM_START\s*,\s*[^,]*\*[^,]*TILE_W", tilemap_c)
+    ) and tile_w >= 8
+    suspicious_fill_bytes = mode == 1 and bool(
+        re.search(r"cpct_drawSolidBox\s*\([^,]+,\s*0x[0-9A-Fa-f]{1,2}\s*,", tilemap_c)
+    )
+    uses_undefined_player_dims = bool(
+        re.search(r"\bPLAYER_(?:W|H)\b", tilemap_c)
+        and not re.search(r"#define\s+PLAYER_(?:W|H)\b", tilemap_c)
+    )
+    # SDCC is C89: variable declarations inside for(...) are not allowed.
+    # e.g.  for (u8 ty = 0; ...) is invalid and causes "syntax error: token -> 'u8'"
+    uses_c99_for_decl = bool(
+        re.search(r"for\s*\(\s*(u8|u16|u32|i8|i16|i32|int|char|unsigned)\s+\w+\s*=", tilemap_c)
+    )
+
+    if suspicious_byte_units or suspicious_fill_bytes or uses_undefined_player_dims or uses_c99_for_decl:
+        normalized[TILEMAP_H_PATH] = _build_tilemap_h_stub()
+        normalized[TILEMAP_C_PATH] = _build_tilemap_c_stub(mode)
+        sanitized.extend([TILEMAP_H_PATH, TILEMAP_C_PATH])
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_game_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None,
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not _is_allowed(GAME_C_PATH, allowed_files):
+        return normalized, sanitized
+
+    game_c = str(normalized.get(GAME_C_PATH, ""))
+    if not game_c:
+        return normalized, sanitized
+
+    mode = _resolve_video_mode(tech_output)
+    replacement = game_c
+    suspicious_palette_as_fill = bool(
+        re.search(r"cpct_clearScreen\s*\(\s*game_palette\s*\[", replacement)
+        or re.search(r"cpct_drawSolidBox\s*\([^\)]*game_palette\s*\[", replacement)
+    )
+
+    if re.search(
+        r"\b(enemy_update_all|projectile_update_all|tilemap_render_dirty|player_save_prev|enemy_save_prev_all|projectile_save_prev_all|enemy_update\s*\(|projectile_update\s*\(|enemy_render_all\s*\(|projectile_render_all\s*\()",
+        replacement,
+    ):
+        replacement = _build_game_c_stub(mode)
+    elif suspicious_palette_as_fill:
+        replacement = _build_game_c_stub(mode)
+    elif mode == 1:
+        replacement = replacement.replace("cpct_setVideoMode(0)", "cpct_setVideoMode(1)")
+
+    if replacement != game_c:
+        normalized[GAME_C_PATH] = replacement
+        sanitized.append(GAME_C_PATH)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_integer_aliases(
+    files: dict[str, str],
+    allowed_files: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    for path, content in list(normalized.items()):
+        if not _is_allowed(path, allowed_files):
+            continue
+        if not (path.endswith(".c") or path.endswith(".h")):
+            continue
+
+        text = str(content)
+        replacement = text
+        replacement = re.sub(r"\bs8\b", "i8", replacement)
+        replacement = re.sub(r"\bs16\b", "i16", replacement)
+        replacement = re.sub(r"\bs32\b", "i32", replacement)
+
+        if replacement != text:
+            normalized[path] = replacement
+            sanitized.append(path)
+
+    return normalized, sorted(set(sanitized))
+
+
+# SDCC compiles as C89: variables must be declared at the top of a block,
+# not inside a for(...) initialiser.  This sanitizer hoists the loop variable
+# declaration to just before the for statement so the code compiles cleanly.
+_C99_FOR_TYPES = r"u8|u16|u32|i8|i16|i32|int|char|unsigned\s+char|unsigned\s+int"
+_C99_FOR_RE = re.compile(
+    r"(\n([ \t]*)for\s*\(\s*(" + _C99_FOR_TYPES + r")\s+(\w+)\s*=\s*([^;]+);)",
+    re.MULTILINE,
+)
+
+
+def _hoist_for_decl(m: re.Match) -> str:  # type: ignore[type-arg]
+    _full, indent, typ, varname, init = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+    return f"\n{indent}{typ} {varname};\n{indent}for ({varname} = {init};"
+
+
+def _sanitize_c89_for_loops(
+    files: dict[str, str],
+    allowed_files: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    """Replace C99-style 'for (TYPE var = ...)' with C89-compatible hoisted declarations."""
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    for path, content in list(normalized.items()):
+        if not _is_allowed(path, allowed_files):
+            continue
+        if not path.endswith(".c"):
+            continue
+
+        text = str(content)
+        replacement = _C99_FOR_RE.sub(_hoist_for_decl, text)
+        if replacement != text:
+            normalized[path] = replacement
+            sanitized.append(path)
+
+    return normalized, sorted(set(sanitized))
+
+
+def _sanitize_hud_source_files(
+    files: dict[str, str],
+    allowed_files: set[str],
+    tech_output: dict | None,
+) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(files)
+    sanitized: list[str] = []
+
+    if not _is_allowed(HUD_C_PATH, allowed_files):
+        return normalized, sanitized
+
+    hud_c = str(normalized.get(HUD_C_PATH, ""))
+    if not hud_c:
+        return normalized, sanitized
+
+    mode = _resolve_video_mode(tech_output)
+    replacement = _build_hud_c_safe_stub(mode)
+
+    if replacement != hud_c:
+        normalized[HUD_C_PATH] = replacement
+        sanitized.append(HUD_C_PATH)
 
     return normalized, sorted(set(sanitized))
 
@@ -2129,76 +2864,82 @@ def ensure_core_game_module(
     mode = _resolve_video_mode(tech_output)
     palette_hw = _resolve_palette_hw(art_output, mode)
 
+    def _ensure(path: str, content: str) -> None:
+        if path in normalized and str(normalized.get(path, "")).strip():
+            return
+        normalized[path] = content
+
     if _is_allowed(GAME_H_PATH, allowed_files):
-        normalized[GAME_H_PATH] = _build_game_h_stub()
+        _ensure(GAME_H_PATH, _build_game_h_stub())
 
     if _is_allowed(GAME_C_PATH, allowed_files):
-        normalized[GAME_C_PATH] = _build_game_c_stub(mode)
+        _ensure(GAME_C_PATH, _build_game_c_stub(mode))
 
     if _is_allowed(MAIN_C_PATH, allowed_files):
-        normalized[MAIN_C_PATH] = _build_main_c_stub()
+        _ensure(MAIN_C_PATH, _build_main_c_stub())
 
     if _is_allowed(PLAYER_H_PATH, allowed_files):
-        normalized[PLAYER_H_PATH] = _build_player_h_stub()
+        _ensure(PLAYER_H_PATH, _build_player_h_stub())
 
     if _is_allowed(PLAYER_C_PATH, allowed_files):
-        normalized[PLAYER_C_PATH] = _build_player_c_stub(mode)
+        _ensure(PLAYER_C_PATH, _build_player_c_stub(mode))
 
-    # Always enforce these runtime modules because game.c depends on them.
-    normalized[ENEMY_H_PATH] = _build_enemy_h_stub()
-    normalized[ENEMY_C_PATH] = _build_enemy_c_stub(mode)
-    normalized[PROJECTILE_H_PATH] = _build_projectile_h_stub()
-    normalized[PROJECTILE_C_PATH] = _build_projectile_c_stub(mode)
+    # Ensure gameplay dependencies exist, but preserve generated implementations.
+    _ensure(ENEMY_H_PATH, _build_enemy_h_stub())
+    _ensure(ENEMY_C_PATH, _build_enemy_c_stub(mode))
+    _ensure(PROJECTILE_H_PATH, _build_projectile_h_stub())
+    _ensure(PROJECTILE_C_PATH, _build_projectile_c_stub(mode))
 
     if _is_allowed(LEVEL1_H_PATH, allowed_files):
-        normalized[LEVEL1_H_PATH] = _build_level1_h_stub(mode)
+        _ensure(LEVEL1_H_PATH, _build_level1_h_stub(mode))
 
     if _is_allowed(LEVEL1_C_PATH, allowed_files):
-        normalized[LEVEL1_C_PATH] = _build_level1_c_stub(mode, palette_hw)
+        _ensure(LEVEL1_C_PATH, _build_level1_c_stub(mode, palette_hw))
 
     if _is_allowed(TILESET_BASE_H_PATH, allowed_files):
-        normalized[TILESET_BASE_H_PATH] = _build_fixed_asset_header(TILESET_BASE_H_PATH, "tilesetbase_data")
+        _ensure(TILESET_BASE_H_PATH, _build_fixed_asset_header(TILESET_BASE_H_PATH, "tilesetbase_data"))
 
     if _is_allowed(TILESET_BASE_C_PATH, allowed_files):
-        normalized[TILESET_BASE_C_PATH] = _build_fixed_asset_source("data/tileset/base.h", "tilesetbase_data")
+        _ensure(TILESET_BASE_C_PATH, _build_fixed_asset_source("data/tileset/base.h", "tilesetbase_data"))
 
     if _is_allowed(PLAYERKNIGHT_H_PATH, allowed_files):
-        normalized[PLAYERKNIGHT_H_PATH] = _build_fixed_asset_header(PLAYERKNIGHT_H_PATH, "sprplayerknight_data")
+        _ensure(PLAYERKNIGHT_H_PATH, _build_fixed_asset_header(PLAYERKNIGHT_H_PATH, "sprplayerknight_data"))
 
     if _is_allowed(PLAYERKNIGHT_C_PATH, allowed_files):
-        normalized[PLAYERKNIGHT_C_PATH] = _build_fixed_asset_source(
-            "data/sprites/playerknight.h", "sprplayerknight_data"
+        _ensure(
+            PLAYERKNIGHT_C_PATH,
+            _build_fixed_asset_source("data/sprites/playerknight.h", "sprplayerknight_data"),
         )
 
     if _is_allowed(HEALTHBAR_H_PATH, allowed_files):
-        normalized[HEALTHBAR_H_PATH] = _build_fixed_asset_header(HEALTHBAR_H_PATH, "hudhealthbar_data")
+        _ensure(HEALTHBAR_H_PATH, _build_fixed_asset_header(HEALTHBAR_H_PATH, "hudhealthbar_data"))
 
     if _is_allowed(HEALTHBAR_C_PATH, allowed_files):
-        normalized[HEALTHBAR_C_PATH] = _build_fixed_asset_source("data/hud/healthbar.h", "hudhealthbar_data")
+        _ensure(HEALTHBAR_C_PATH, _build_fixed_asset_source("data/hud/healthbar.h", "hudhealthbar_data"))
 
     if _is_allowed(HUD_H_PATH, allowed_files):
-        normalized[HUD_H_PATH] = _build_hud_h_stub()
+        _ensure(HUD_H_PATH, _build_hud_h_stub())
 
     if _is_allowed(HUD_C_PATH, allowed_files):
-        normalized[HUD_C_PATH] = _build_hud_c_stub(mode)
+        _ensure(HUD_C_PATH, _build_hud_c_stub(mode))
 
     if _is_allowed(INPUT_H_PATH, allowed_files):
-        normalized[INPUT_H_PATH] = _build_input_h_stub()
+        _ensure(INPUT_H_PATH, _build_input_h_stub())
 
     if _is_allowed(INPUT_C_PATH, allowed_files):
-        normalized[INPUT_C_PATH] = _build_input_c_stub()
+        _ensure(INPUT_C_PATH, _build_input_c_stub())
 
     if _is_allowed(COLLISION_H_PATH, allowed_files):
-        normalized[COLLISION_H_PATH] = _build_collision_h_stub()
+        _ensure(COLLISION_H_PATH, _build_collision_h_stub())
 
     if _is_allowed(COLLISION_C_PATH, allowed_files):
-        normalized[COLLISION_C_PATH] = _build_collision_c_stub()
+        _ensure(COLLISION_C_PATH, _build_collision_c_stub())
 
     if _is_allowed(TILEMAP_H_PATH, allowed_files):
-        normalized[TILEMAP_H_PATH] = _build_tilemap_h_stub()
+        _ensure(TILEMAP_H_PATH, _build_tilemap_h_stub())
 
     if _is_allowed(TILEMAP_C_PATH, allowed_files):
-        normalized[TILEMAP_C_PATH] = _build_tilemap_c_stub(mode)
+        _ensure(TILEMAP_C_PATH, _build_tilemap_c_stub(mode))
 
     # scene_game is no longer the central game loop module.
     normalized.pop("src/scene_game.c", None)
@@ -2261,6 +3002,13 @@ def _extract_issue_paths(issues: list[str]) -> list[str]:
         normalized = _normalize_src_path(candidate)
         if normalized:
             paths.add(normalized)
+        # For signature mismatch issues ("between X.h and X.c"), also repair the .h
+        between_match = re.search(r"between\s+(\S+\.h)\s+and\s+(\S+\.c)\b", str(issue))
+        if between_match:
+            for p in (between_match.group(1), between_match.group(2)):
+                norm = _normalize_src_path(p)
+                if norm:
+                    paths.add(norm)
     return sorted(paths)
 
 
@@ -2385,23 +3133,28 @@ def run(
     art_output: dict | None = None,
     tech_output: dict | None = None,
 ) -> dict:
-    blocks = []
-    if orchestrator_output:
-        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
-    if narrative_output:
-        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
-    if design_output:
-        blocks.append("Design JSON:\n" + json.dumps(design_output, ensure_ascii=False, indent=2))
-    if art_output:
-        blocks.append("Art JSON:\n" + json.dumps(art_output, ensure_ascii=False, indent=2))
-    if tech_output:
-        blocks.append("Tech JSON:\n" + json.dumps(tech_output, ensure_ascii=False, indent=2))
+    _ci_t0 = _time.time()
+    print("[INFO] [code_integrator] construyendo contexto RAG...", file=sys.stderr)
 
-    resource_context = format_resources_for_prompt("code_integrator_agent", user_request, limit=6)
-    if resource_context:
-        blocks.append(resource_context)
-
-    payload = json_call("code_integrator", user_request, "\n\n".join(blocks))
+    payload = json_call(
+        "code_integrator",
+        user_request,
+        build_agent_extra_context(
+            "code_integrator_agent",
+            user_request,
+            upstream_payloads={
+                "orchestrator": orchestrator_output or {},
+                "narrative": narrative_output or {},
+                "design": design_output or {},
+                "art": art_output or {},
+                "tech": tech_output or {},
+            },
+            retrieval_limit=6,
+        ),
+    )
+    print(f"[INFO] [code_integrator] LLM respondió en {_time.time() - _ci_t0:.1f}s; normalizando ficheros...", file=sys.stderr)
+    assumptions = _as_list(payload.get("assumptions"))
+    manual_followups = _as_list(payload.get("manual_followups"))
 
     contract_mode = _has_enriched_contract(tech_output)
     scaffold_allowed_files = _extract_scaffold_allowed_files(tech_output)
@@ -2416,35 +3169,47 @@ def run(
 
     raw_src_files = _collect_raw_src_files(payload)
     compile_profile = _runtime_compile_profile(tech_output)
+    print(f"[INFO] [code_integrator] perfil={compile_profile} allowed={len(allowed_files)} raw_src={len(raw_src_files)}", file=sys.stderr)
 
     files = normalize_files_payload(payload, allowed_files)
     files_before_core = dict(files)
     files = ensure_core_game_module(files, allowed_files, tech_output, art_output)
     files = ensure_required_asset_files(files, tech_output, allowed_files)
+    files, sanitized_integer_aliases = _sanitize_integer_aliases(files, allowed_files)
+    files, sanitized_c89_for = _sanitize_c89_for_loops(files, allowed_files)
     files, sanitized_asset_headers = _sanitize_asset_headers(files, allowed_files)
+    files, sanitized_game_sources = _sanitize_game_source_files(files, allowed_files, tech_output)
     files, sanitized_enemy_sources = _sanitize_enemy_source_files(files, allowed_files)
+    files, sanitized_player_sources = _sanitize_player_source_files(files, allowed_files, tech_output)
+    files, sanitized_projectile_sources = _sanitize_projectile_source_files(files, allowed_files)
     files, sanitized_input_sources = _sanitize_input_source_files(files, allowed_files)
+    files, sanitized_hud_sources = _sanitize_hud_source_files(files, allowed_files, tech_output)
+    files, sanitized_tilemap_sources = _sanitize_tilemap_source_files(files, allowed_files, tech_output)
+    files, sanitized_entity_render_sources = _sanitize_entity_render_source_files(files, allowed_files, tech_output)
+    files, sanitized_main_sources = _sanitize_main_source_files(files, allowed_files)
     files, dropped_unsafe_c = _enforce_compile_safe_c_files(files, allowed_files, tech_output)
     files, repaired_invalid_files, prebuild_validation_errors = _repair_invalid_generated_files(files, allowed_files, tech_output, art_output)
 
     if not files:
         if contract_mode and contract_owned_files:
             expected_preview = _preview_paths(sorted(contract_owned_files))
-            notes = (
+            notes = [
                 "CodeIntegratorAgent returned no valid contract-owned files. "
                 f"Expected owned files: {expected_preview}."
-            )
+            ]
         elif contract_mode:
-            notes = (
+            notes = [
                 "CodeIntegratorAgent returned no valid files. "
                 "Contract metadata exists but owned_files are missing; scaffold fallback also produced no files."
-            )
+            ]
         else:
-            notes = "CodeIntegratorAgent returned no valid scaffold files."
+            notes = ["CodeIntegratorAgent returned no valid scaffold files."]
 
         return {
             "files": {},
+            "assumptions": assumptions,
             "integration_notes": notes,
+            "manual_followups": manual_followups,
             "prebuild_validation_errors": [],
         }
 
@@ -2511,6 +3276,13 @@ def run(
             f"{_preview_paths(sanitized_asset_headers)}."
         )
 
+    if sanitized_integer_aliases:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_integer_aliases)} source/header file(s) to normalize SDCC integer aliases: "
+            f"{_preview_paths(sanitized_integer_aliases)}."
+        )
+
     if sanitized_enemy_sources:
         notes_parts.append(
             "Sanitized "
@@ -2518,11 +3290,53 @@ def run(
             f"{_preview_paths(sanitized_enemy_sources)}."
         )
 
+    if sanitized_player_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_player_sources)} player source file(s) to enforce C89-safe movement/collision logic: "
+            f"{_preview_paths(sanitized_player_sources)}."
+        )
+
+    if sanitized_game_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_game_sources)} game source file(s) for runtime mode compatibility: "
+            f"{_preview_paths(sanitized_game_sources)}."
+        )
+
     if sanitized_input_sources:
         notes_parts.append(
             "Sanitized "
             f"{len(sanitized_input_sources)} input source file(s) to force hardware keyboard polling: "
             f"{_preview_paths(sanitized_input_sources)}."
+        )
+
+    if sanitized_hud_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_hud_sources)} HUD source file(s) for SDCC/CPC text rendering compatibility: "
+            f"{_preview_paths(sanitized_hud_sources)}."
+        )
+
+    if sanitized_tilemap_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_tilemap_sources)} tilemap file(s) due to byte-unit rendering mismatch "
+            f"in cpct_getScreenPtr/cpct_drawSolidBox: {_preview_paths(sanitized_tilemap_sources)}."
+        )
+
+    if sanitized_entity_render_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_entity_render_sources)} entity render file(s) to replace raw fill-byte literals "
+            f"with mode-aware CPCtelera expressions: {_preview_paths(sanitized_entity_render_sources)}."
+        )
+
+    if sanitized_main_sources:
+        notes_parts.append(
+            "Sanitized "
+            f"{len(sanitized_main_sources)} main source file(s) to avoid unresolved cpc_run_address entrypoint symbols: "
+            f"{_preview_paths(sanitized_main_sources)}."
         )
 
     if prebuild_validation_errors:
@@ -2533,10 +3347,12 @@ def run(
             f"{' | ...' if len(prebuild_validation_errors) > 3 else ''}."
         )
 
-    integration_notes = " ".join(part for part in notes_parts if part).strip()
+    integration_notes = [part for part in notes_parts if part]
 
     return {
         "files": files,
+        "assumptions": assumptions,
         "integration_notes": integration_notes,
+        "manual_followups": manual_followups,
         "prebuild_validation_errors": prebuild_validation_errors,
     }

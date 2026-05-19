@@ -1,5 +1,4 @@
-import json
-
+from app.agents.context_builder import build_agent_extra_context
 from app.services.llm_service import json_call
 
 
@@ -12,10 +11,12 @@ def _as_list(value) -> list[str]:
 
 
 def run(user_request: str, orchestrator_output: dict | None = None) -> dict:
-    extra_context = ""
-    if orchestrator_output:
-        extra_context = "Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2)
-
+    extra_context = build_agent_extra_context(
+        "narrative_agent",
+        user_request,
+        {"orchestrator": orchestrator_output or {}},
+        retrieval_limit=5,
+    )
     payload = json_call("narrative", user_request, extra_context)
     return {
         "theme": str(payload.get("theme", "")).strip(),

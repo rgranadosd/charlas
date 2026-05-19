@@ -1,13 +1,13 @@
 import json
 from pathlib import PurePosixPath
 
+from app.agents.context_builder import build_agent_extra_context
 from app.services.contract_validation_service import (
     normalize_asset_token,
     normalize_src_path_token,
     normalize_symbol_token,
 )
 from app.services.llm_service import json_call
-from app.services.resource_service import format_resources_for_prompt
 
 CORE_GAME_H = "src/game.h"
 CORE_GAME_C = "src/game.c"
@@ -30,6 +30,8 @@ RUNTIME_SUPPORT_FILES = [
     "src/systems/collision.c",
     "src/systems/tilemap.h",
     "src/systems/tilemap.c",
+    "src/systems/hud.h",
+    "src/systems/hud.c",
     "src/data/level1.h",
     "src/data/level1.c",
     "src/data/tileset/base.h",
@@ -48,6 +50,21 @@ ASSET_FILE_OVERRIDES = {
 
 SYSTEM_HEADER_TOKENS = {
     "cpctelera.h",
+    "system.h",
+}
+
+RUNTIME_MODULE_SYMBOLS = {
+    "src/systems/tilemap.c": [
+        "tilemap_init",
+        "tilemap_render",
+        "tilemap_ground_y",
+        "tilemap_platform_y_at",
+        "tilemap_is_trap",
+        "tilemap_is_ladder",
+        "tilemap_is_hidden_zone",
+        "tilemap_goal_x",
+        "get_tile_at",
+    ],
 }
 
 
@@ -479,6 +496,20 @@ def _normalize_module_contracts(payload: dict, modules: list[str], scaffold: dic
         game_contract["integrated"] = True
         game_contract["allows_stub"] = False
 
+    for module_path, runtime_symbols in RUNTIME_MODULE_SYMBOLS.items():
+        runtime_contract = contracts_by_module.get(module_path)
+        if not runtime_contract:
+            continue
+
+        normalized_symbols = _clean_symbols(runtime_symbols)
+        runtime_contract["declared_symbols"] = _clean_symbols(
+            runtime_contract.get("declared_symbols", []) + normalized_symbols
+        )
+        runtime_contract["defined_symbols"] = _clean_symbols(
+            runtime_contract.get("defined_symbols", []) + normalized_symbols
+        )
+        runtime_contract["exports"] = list(runtime_contract["defined_symbols"])
+
     contracts: list[dict] = [
         contracts_by_module[module]
         for module in _unique([CORE_MAIN_C, CORE_GAME_C] + sorted(contracts_by_module.keys()))
@@ -903,21 +934,21 @@ def run(
     design_output: dict | None = None,
     art_output: dict | None = None,
 ) -> dict:
-    blocks = []
-    if orchestrator_output:
-        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
-    if narrative_output:
-        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
-    if design_output:
-        blocks.append("Design JSON:\n" + json.dumps(design_output, ensure_ascii=False, indent=2))
-    if art_output:
-        blocks.append("Art JSON:\n" + json.dumps(art_output, ensure_ascii=False, indent=2))
-
-    resource_context = format_resources_for_prompt("cpctelera_tech_agent", user_request, limit=6)
-    if resource_context:
-        blocks.append(resource_context)
-
-    payload = json_call("cpctelera_tech", user_request, "\n\n".join(blocks))
+    payload = json_call(
+        "cpctelera_tech",
+        user_request,
+        build_agent_extra_context(
+            "cpctelera_tech_agent",
+            user_request,
+            {
+                "orchestrator": orchestrator_output or {},
+                "narrative": narrative_output or {},
+                "design": design_output or {},
+                "art": art_output or {},
+            },
+            retrieval_limit=6,
+        ),
+    )
     modules = _as_list(payload.get("modules"))
     scaffold = _ensure_core_scaffold(_as_dict(payload.get("scaffold")))
     module_contracts = _normalize_module_contracts(payload, modules, scaffold)

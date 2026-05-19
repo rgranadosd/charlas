@@ -1007,6 +1007,13 @@ def _validate_symbol_closure_canonical(
         for symbol in symbols:
             declared_by_symbol.setdefault(symbol, set()).add(header)
 
+    # Symbols resolved by the linker (CPCtelera library, C runtime, etc.)
+    # These are NOT defined in project .c files — skip them entirely.
+    _EXTERNAL_PREFIXES = ("cpct_", "__", "_cpct")
+
+    def _is_external(sym: str) -> bool:
+        return any(sym.startswith(p) for p in _EXTERNAL_PREFIXES)
+
     tracked_symbols = set(required) | set(declared_by_symbol.keys())
     if not tracked_symbols:
         return []
@@ -1020,6 +1027,8 @@ def _validate_symbol_closure_canonical(
     issues: list[ContractValidationIssue] = []
 
     for symbol in sorted(tracked_symbols):
+        if _is_external(symbol):
+            continue  # resolved by CPCtelera/runtime linker, not a project symbol
         count = definition_count.get(symbol, 0)
         is_required = symbol in required
 

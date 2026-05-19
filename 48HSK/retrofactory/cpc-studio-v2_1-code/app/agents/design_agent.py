@@ -1,5 +1,6 @@
-import json
+import os
 
+from app.agents.context_builder import build_agent_extra_context
 from app.services.llm_service import json_call
 
 
@@ -11,18 +12,29 @@ def _as_list(value) -> list[str]:
     return [str(value).strip()]
 
 
+def _design_retrieval_limit() -> int:
+    raw = os.getenv("DESIGN_RETRIEVAL_LIMIT", "4").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 4
+
+
 def run(
     user_request: str,
     orchestrator_output: dict | None = None,
     narrative_output: dict | None = None,
 ) -> dict:
-    blocks = []
-    if orchestrator_output:
-        blocks.append("Orchestrator JSON:\n" + json.dumps(orchestrator_output, ensure_ascii=False, indent=2))
-    if narrative_output:
-        blocks.append("Narrative JSON:\n" + json.dumps(narrative_output, ensure_ascii=False, indent=2))
-
-    payload = json_call("design", user_request, "\n\n".join(blocks))
+    extra_context = build_agent_extra_context(
+        "design_agent",
+        user_request,
+        {
+            "orchestrator": orchestrator_output or {},
+            "narrative": narrative_output or {},
+        },
+        retrieval_limit=_design_retrieval_limit(),
+    )
+    payload = json_call("design", user_request, extra_context)
     return {
         "core_loop": str(payload.get("core_loop", "")).strip(),
         "win_condition": str(payload.get("win_condition", "")).strip(),

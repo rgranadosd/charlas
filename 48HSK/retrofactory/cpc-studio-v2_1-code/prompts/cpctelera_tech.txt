@@ -76,12 +76,16 @@ DRAW ORDER — ORDEN DE DIBUJADO (evita flickering por posición Y):
   cuando ya han pasado ~10ms (haz en y≈100), el sprite aparece y desaparece cada frame.
 - Regla: dibuja primero las entidades que están MÁS ABAJO en pantalla (y mayor).
   En un platformer donde el jugador está en el suelo (y≈104) y los enemigos en y≈40-80:
-    1. tilemap_render()        // fondo primero
-    2. playerrender()          // jugador primero: y=104, beam aún en y≈40 a ~4ms del frame
-    3. projectilerender()      // proyectiles
-    4. enemyrender()           // enemigos (suelen estar más arriba, y<100)
-    5. hudrender()             // HUD siempre último (y=0-20)
+    1. tilemap_render()                      // fondo primero
+    2. cpct_drawSolidBox(...jugador...)      // y=104, beam aún en y≈40 a ~4ms del frame
+    3. cpct_drawSolidBox(...proyectiles...)  // proyectiles
+    4. cpct_drawSolidBox(...enemigos...)     // enemigos (suelen estar más arriba, y<100)
+    5. cpct_drawSolidBox(...boss...)         // boss si activo
+    6. hudrender()                           // HUD siempre último (y=0-20)
   Si el jugador se dibuja ÚLTIMO, el beam ya está cerca de su y → flickering.
+⚠ NUNCA llamar playerrender()/enemyrender()/projectilerender() en game_render():
+  Estas funciones llaman cpct_drawSprite() cuyo fill interior usa pen 0 (BLACK = fondo).
+  Dibujan el sprite ENCIMA del cpct_drawSolidBox → la entidad queda invisible (interior negro sobre fondo negro).
 
 COORDENADAS DE ENTIDADES — LÍMITES DE PANTALLA:
 - cpct_getScreenPtr(CPCT_VMEM_START, x, y): x en BYTES (0-79), y en filas de píxeles (0-199).
@@ -103,8 +107,9 @@ ENTRY POINT — JP STUB EN game.c:
 SPRITES — CODIFICACIÓN DE BYTES EN MODE 0 (CRÍTICO):
 - 1 byte = 2 píxeles con bits intercalados. NUNCA usar el valor del pen directamente como byte.
 - Usar cpct_px2byteM0(pen_izquierdo, pen_derecho) o la tabla de conversión.
-- NUNCA usar pen 0 como fill interior: pen 0 = fondo (SKY_BLUE), invisible contra el cielo.
-- Fill opaco estándar: pen 1 (BLACK) = 0x06; contorno: pen 6 (WHITE) = 0x78.
+- NUNCA usar pen 0 como fill interior: pen 0 = fondo = BLACK (HW 8), invisible contra el fondo negro.
+- Fill opaco para jugador: pen 6 (BRIGHT_WHITE) = 0x3C. Fill para enemigos: pen 4 (CYAN) = 0x30.
+- REGLA CRÍTICA: usar SIEMPRE cpct_drawSolidBox() para entidades. NUNCA cpct_drawSprite() en el game loop.
 - El tamaño del array de sprite = width_bytes × height_rows (exacto).
 
 REGLAS:

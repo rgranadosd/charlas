@@ -3,6 +3,18 @@ from pathlib import Path, PurePosixPath
 from app.services.file_service import write_text
 
 
+def _is_valid_cpctelera_scaffold(base: Path) -> bool:
+    return (
+        base.exists()
+        and base.is_dir()
+        and (base / "src").is_dir()
+        and (base / "src" / "main.c").is_file()
+        and (base / "cfg").is_dir()
+        and (base / "cfg" / "build_config.mk").is_file()
+        and (base / "Makefile").is_file()
+    )
+
+
 def _normalize_src_path(raw_path: str) -> str:
     if not isinstance(raw_path, str):
         raise ValueError("All file paths must be strings.")
@@ -36,6 +48,32 @@ def _normalize_scaffold_list(values, field_name: str) -> set[str]:
     return {_normalize_src_path(value) for value in values}
 
 
+def _normalize_write_contract(payload: dict) -> tuple[set[str], set[str], set[str]]:
+    scaffold = payload.get("scaffold")
+    if scaffold is None:
+        scaffold = {
+            "allowed_files": payload.get("allowed_files", []),
+            "overwrite_files": payload.get("overwrite_files", []),
+            "create_if_missing": payload.get("create_if_missing", []),
+        }
+
+    if not isinstance(scaffold, dict):
+        raise ValueError("payload['scaffold'] must be a dictionary.")
+
+    allowed_files = _normalize_scaffold_list(scaffold.get("allowed_files"), "allowed_files")
+    overwrite_files = _normalize_scaffold_list(scaffold.get("overwrite_files"), "overwrite_files")
+    create_if_missing = _normalize_scaffold_list(scaffold.get("create_if_missing"), "create_if_missing")
+
+    if not allowed_files:
+        raise ValueError("payload write contract must declare at least one allowed file.")
+    if not overwrite_files.issubset(allowed_files):
+        raise ValueError("'overwrite_files' must be a subset of 'allowed_files'.")
+    if not create_if_missing.issubset(allowed_files):
+        raise ValueError("'create_if_missing' must be a subset of 'allowed_files'.")
+
+    return allowed_files, overwrite_files, create_if_missing
+
+
 def _ensure_inside_project(base: Path, target: Path) -> None:
     base_resolved = base.resolve()
     target_resolved = target.resolve()
@@ -47,6 +85,8 @@ def generate_project(base_dir: str, payload: dict) -> str:
     base = Path(base_dir)
     if not base.exists() or not base.is_dir():
         raise FileNotFoundError(f"Project directory does not exist: {base}")
+    if not _is_valid_cpctelera_scaffold(base):
+        raise ValueError(f"Project directory is not a valid CPCtelera scaffold: {base}")
 
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dictionary.")
@@ -55,18 +95,7 @@ def generate_project(base_dir: str, payload: dict) -> str:
     if not isinstance(files, dict):
         raise ValueError("payload['files'] must be a dictionary of path -> content.")
 
-    scaffold = payload.get("scaffold")
-    if not isinstance(scaffold, dict):
-        raise ValueError("payload['scaffold'] must be a dictionary.")
-
-    allowed_files = _normalize_scaffold_list(scaffold.get("allowed_files"), "allowed_files")
-    overwrite_files = _normalize_scaffold_list(scaffold.get("overwrite_files"), "overwrite_files")
-    create_if_missing = _normalize_scaffold_list(scaffold.get("create_if_missing"), "create_if_missing")
-
-    if not overwrite_files.issubset(allowed_files):
-        raise ValueError("'overwrite_files' must be a subset of 'allowed_files'.")
-    if not create_if_missing.issubset(allowed_files):
-        raise ValueError("'create_if_missing' must be a subset of 'allowed_files'.")
+    allowed_files, overwrite_files, create_if_missing = _normalize_write_contract(payload)
 
     normalized_files: dict[str, str] = {}
     for raw_path, raw_content in files.items():

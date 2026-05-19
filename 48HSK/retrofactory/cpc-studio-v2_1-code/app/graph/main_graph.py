@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
 
 from app.agents.art_agent import run as run_art
 from app.agents.build_agent import (
@@ -25,6 +25,7 @@ from app.schemas.outputs import (
     ArtOutput,
     BuildOutput,
     BuildValidationOutput,
+    ComposeOutput,
     ContractValidationOutput,
     DesignOutput,
     IntegrationOutput,
@@ -40,6 +41,43 @@ from app.state.studio_state import StudioState
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_PROJECTS_DIR = PROJECT_ROOT / "generated_projects"
 
+WORKFLOW_STEP_TO_NODE = {
+    "narrative": "narrative_node",
+    "design": "design_node",
+    "art": "art_node",
+    "tech": "tech_node",
+    "contract_validation": "contractvalidationnode",
+    "integration": "integration_node",
+    "build": "build_node",
+    "build_validation": "build_validation_node",
+    "qa": "qa_node",
+    "compose": "compose_node",
+}
+
+DEFAULT_WORKFLOW_PLAN = [
+    "narrative",
+    "design",
+    "art",
+    "tech",
+    "contract_validation",
+    "integration",
+    "build",
+    "build_validation",
+    "qa",
+    "compose",
+]
+
+
+def _mock_payload_for_step(state: StudioState, step_name: str) -> dict:
+    replay = state.get("mock_replay") or {}
+    if not isinstance(replay, dict):
+        return {}
+    payload = replay.get(step_name)
+    if isinstance(payload, dict):
+        print(f"[INFO] [mock-replay] usando payload cacheado para step='{step_name}'", file=sys.stderr)
+        return payload
+    return {}
+
 
 def _to_dict(payload) -> dict:
     if payload is None:
@@ -51,20 +89,14 @@ def _to_dict(payload) -> dict:
     return {}
 
 
-def _json_block(title: str, payload) -> str:
-    data = _to_dict(payload)
-    if not data:
-        return ""
-    return f"{title}:\n" + json.dumps(data, ensure_ascii=False, indent=2)
-
-
-def _build_failure_payload(stderr: str, build_notes: str) -> dict:
+def _build_failure_payload(stderr: str, build_notes: str, project_path: str = "") -> dict:
     return {
         "success": False,
         "return_code": -1,
         "stdout": "",
         "stderr": stderr,
         "artifacts": [],
+        "project_path": project_path,
         "build_notes": build_notes,
     }
 
@@ -95,8 +127,6 @@ def _is_build_path_compatible(project_dir: Path) -> bool:
 
 
 def _next_default_run_project_dir() -> Path:
-    # Keep names <= 8 chars and alphanumeric so build_agent resolves the same path.
-    # Format: runXXXXX (timestamp-derived suffix).
     seed = int(time.time() * 1000)
     for offset in range(1000):
         suffix = f"{(seed + offset) % 100000:05d}"
@@ -223,104 +253,223 @@ def _resolve_integration_project_path(state: StudioState) -> Path:
     return _create_cpct_project(candidate)
 
 
+def _build_workflow_plan(_: OrchestratorOutput) -> list[str]:
+    return list(DEFAULT_WORKFLOW_PLAN)
+
+
+def _merge_agent_payloads(state: StudioState, payload_updates: dict[str, object] | None = None) -> dict[str, dict]:
+    merged = dict(state.get("agent_payloads") or {})
+    for key, value in (payload_updates or {}).items():
+        merged[key] = _to_dict(value)
+    return merged
+
+
+def _node_result(
+    state: StudioState,
+    step_name: str,
+    payload_key: str | None = None,
+    payload=None,
+    **updates,
+) -> dict:
+    completed_steps = list(state.get("completed_steps") or [])
+    if step_name not in completed_steps:
+        completed_steps.append(step_name)
+
+    payload_updates = {payload_key: payload} if payload_key and payload is not None else {}
+    result = {
+        "completed_steps": completed_steps,
+        "current_step": step_name,
+        "agent_payloads": _merge_agent_payloads(state, payload_updates),
+        **updates,
+    }
+    if payload_key and payload is not None:
+        result[payload_key] = payload
+    return result
+
+
+def _next_workflow_step(state: StudioState) -> str:
+    workflow_plan = state.get("workflow_plan") or list(DEFAULT_WORKFLOW_PLAN)
+    completed_steps = set(state.get("completed_steps") or [])
+
+    if "contract_validation" in completed_steps:
+        validation_payload = state.get("contract_validation") or state.get("contractvalidation")
+        validation = _to_dict(validation_payload)
+        if validation and validation.get("status") == "fail":
+            # Only abort on hard blockers: missing required files or missing critical symbols.
+            # Duplicate-symbol false positives (ghost entries in provided_symbols) are non-fatal.
+            missing_files = validation.get("missing_required_files") or []
+            missing_symbols = validation.get("missing_symbols") or []
+            if missing_files or missing_symbols:
+                return "compose"
+            # Otherwise: warnings/duplicates → log and proceed to integration
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "[contract_validation] status=fail but no missing files/symbols — "
+                "likely duplicate symbol entries in contract (non-fatal). "
+                "issues=%s", validation.get("issues") or validation.get("errors") or []
+            )
+
+    for step in workflow_plan:
+        if step not in completed_steps:
+            return step
+
+    return "compose"
+
+
+def _route_next_step(state: StudioState):
+    next_step = _next_workflow_step(state)
+    route = WORKFLOW_STEP_TO_NODE.get(next_step, "compose_node")
+    print(f"-> route_next_step => {route}", file=sys.stderr)
+    return route
+
+
 def orchestrator_node(state: StudioState):
     print("-> orchestrator_node", file=sys.stderr)
-    raw = run_orchestrator(state["user_request"])
-    return {"orchestrator": OrchestratorOutput.model_validate(raw)}
+    mock_payload = _mock_payload_for_step(state, "orchestrator")
+    if mock_payload:
+        orchestrator = OrchestratorOutput.model_validate(mock_payload)
+    else:
+        orchestrator = OrchestratorOutput.model_validate(run_orchestrator(state["user_request"]))
+    workflow_plan = _build_workflow_plan(orchestrator)
+    return _node_result(
+        state,
+        "orchestrator",
+        payload_key="orchestrator",
+        payload=orchestrator,
+        workflow_plan=workflow_plan,
+    )
 
 
 def narrative_node(state: StudioState):
     print("-> narrative_node", file=sys.stderr)
-    raw = run_narrative(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-    )
-    return {
-        "narrative": NarrativeOutput.model_validate(raw)
-    }
+    mock_payload = _mock_payload_for_step(state, "narrative")
+    if mock_payload:
+        narrative = NarrativeOutput.model_validate(mock_payload)
+    else:
+        narrative = NarrativeOutput.model_validate(
+            run_narrative(
+                state["user_request"],
+                _to_dict(state.get("orchestrator")) or None,
+            )
+        )
+    return _node_result(state, "narrative", payload_key="narrative", payload=narrative)
 
 
 def design_node(state: StudioState):
     print("-> design_node", file=sys.stderr)
-    raw = run_design(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-        _to_dict(state.get("narrative")) or None,
-    )
-    return {
-        "design": DesignOutput.model_validate(raw)
-    }
+    mock_payload = _mock_payload_for_step(state, "design")
+    if mock_payload:
+        design = DesignOutput.model_validate(mock_payload)
+    else:
+        design = DesignOutput.model_validate(
+            run_design(
+                state["user_request"],
+                _to_dict(state.get("orchestrator")) or None,
+                _to_dict(state.get("narrative")) or None,
+            )
+        )
+    return _node_result(state, "design", payload_key="design", payload=design)
 
 
 def art_node(state: StudioState):
     print("-> art_node", file=sys.stderr)
-    raw = run_art(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-        _to_dict(state.get("narrative")) or None,
-        _to_dict(state.get("design")) or None,
-    )
-    return {
-        "art": ArtOutput.model_validate(raw)
-    }
+    mock_payload = _mock_payload_for_step(state, "art")
+    if mock_payload:
+        art = ArtOutput.model_validate(mock_payload)
+    else:
+        art = ArtOutput.model_validate(
+            run_art(
+                state["user_request"],
+                _to_dict(state.get("orchestrator")) or None,
+                _to_dict(state.get("narrative")) or None,
+                _to_dict(state.get("design")) or None,
+            )
+        )
+    return _node_result(state, "art", payload_key="art", payload=art)
 
 
 def tech_node(state: StudioState):
     print("-> tech_node", file=sys.stderr)
-    raw = run_tech(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-        _to_dict(state.get("narrative")) or None,
-        _to_dict(state.get("design")) or None,
-        _to_dict(state.get("art")) or None,
-    )
-    tech = adapttechoutput(TechOutputV2.model_validate(raw))
-    return {
-        "tech": tech
-    }
+    mock_payload = _mock_payload_for_step(state, "tech")
+    if mock_payload:
+        tech = adapttechoutput(TechOutputV2.model_validate(mock_payload))
+    else:
+        tech = adapttechoutput(
+            TechOutputV2.model_validate(
+                run_tech(
+                    state["user_request"],
+                    _to_dict(state.get("orchestrator")) or None,
+                    _to_dict(state.get("narrative")) or None,
+                    _to_dict(state.get("design")) or None,
+                    _to_dict(state.get("art")) or None,
+                )
+            )
+        )
+    return _node_result(state, "tech", payload_key="tech", payload=tech)
 
 
 def contractvalidationnode(state: StudioState):
     print("-> contractvalidationnode", file=sys.stderr)
-    validation = validatecontract(_to_dict(state.get("tech")))
-    return {
-        "contractvalidation": validation,
-        "contract_validation": validation,
-    }
-
-
-def _route_after_contractvalidation(state: StudioState):
-    raw = state.get("contractvalidation") or state.get("contract_validation")
-    payload = _to_dict(raw)
-    print(f"-> contract_validation payload: {payload}", file=sys.stderr)
-
-    try:
-        validation = ContractValidationOutput.model_validate(payload)
-    except Exception:
-        print("-> contract_validation status: <invalid>", file=sys.stderr)
-        print("-> route_after_contractvalidation => compose_node", file=sys.stderr)
-        return "compose_node"
-
-    print(f"-> contract_validation status: {validation.status}", file=sys.stderr)
-    route = "integration_node" if validation.status == "pass" else "compose_node"
-    print(f"-> route_after_contractvalidation => {route}", file=sys.stderr)
-    return route
+    mock_payload = _mock_payload_for_step(state, "contract_validation")
+    if mock_payload:
+        validation = ContractValidationOutput.model_validate(mock_payload)
+    else:
+        validation = ContractValidationOutput.model_validate(validatecontract(_to_dict(state.get("tech"))))
+    result = _node_result(
+        state,
+        "contract_validation",
+        payload_key="contract_validation",
+        payload=validation,
+        contractvalidation=validation,
+    )
+    result["contract_validation"] = validation
+    return result
 
 
 def integration_node(state: StudioState):
     print("-> integration_node", file=sys.stderr)
+    strict_mocks = bool(state.get("strict_mocks"))
+    mock_payload = _mock_payload_for_step(state, "integration")
+    if mock_payload:
+        integration = IntegrationOutput.model_validate(mock_payload)
+        project_path = (
+            str(state.get("generated_project_path") or "").strip()
+            or str(state.get("mock_generated_project_path") or "").strip()
+        )
+        if project_path and Path(project_path).exists():
+            return _node_result(
+                state,
+                "integration",
+                payload_key="integration",
+                payload=integration,
+                generated_project_path=project_path,
+            )
+        if strict_mocks:
+            raise RuntimeError(
+                "strict mock mode: integration requiere generated_project_path valido en la traza"
+            )
+        print(
+            "[WARN] [mock-replay] integration mock sin generated_project_path válido; ejecutando integración real.",
+            file=sys.stderr,
+        )
+
     integration_project_dir = _resolve_integration_project_path(state)
 
-    raw = run_integrator(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-        _to_dict(state.get("narrative")) or None,
-        _to_dict(state.get("design")) or None,
-        _to_dict(state.get("art")) or None,
-        _to_dict(state.get("tech")) or None,
+    print("[INFO] [integration] llamando a code_integrator_agent (LLM + post-proceso)...", file=sys.stderr)
+    _t0 = time.time()
+    integration = IntegrationOutput.model_validate(
+        run_integrator(
+            state["user_request"],
+            _to_dict(state.get("orchestrator")) or None,
+            _to_dict(state.get("narrative")) or None,
+            _to_dict(state.get("design")) or None,
+            _to_dict(state.get("art")) or None,
+            _to_dict(state.get("tech")) or None,
+        )
     )
-    integration = IntegrationOutput.model_validate(raw)
+    print(f"[INFO] [integration] code_integrator_agent completado en {time.time() - _t0:.1f}s", file=sys.stderr)
 
+    print("[INFO] [integration] filtrando ficheros y materializando proyecto...", file=sys.stderr)
     tech = _to_dict(state.get("tech"))
     scaffold = tech.get("scaffold", {}) if isinstance(tech, dict) else {}
 
@@ -330,43 +479,68 @@ def integration_node(state: StudioState):
         scaffold,
     )
 
-    payload = {
-        "files": writable_files,
-        "scaffold": scaffold,
-    }
-
-    path = generateproject(str(integration_project_dir), payload)
-
-    notes = integration.integration_notes or (
-        f"Generated {len(integration.files)} valid source files."
+    print(f"[INFO] [integration] generando proyecto en {integration_project_dir} ({len(writable_files)} fichero(s))...", file=sys.stderr)
+    path = generateproject(
+        str(integration_project_dir),
+        {
+            "files": writable_files,
+            "scaffold": scaffold,
+        },
     )
+    print(f"[INFO] [integration] proyecto materializado en {path}", file=sys.stderr)
+
+    integration_notes = list(integration.integration_notes or [])
+    manual_followups = list(integration.manual_followups or [])
+    if not integration_notes:
+        integration_notes.append(f"Accepted {len(writable_files)} scaffold-valid file(s) for project materialization.")
     if dropped_files:
-        dropped_preview = ", ".join(sorted(dropped_files)[:10])
-        notes += (
-            f" Skipped {len(dropped_files)} files not writable by scaffold/project state"
-            f": {dropped_preview}{', ...' if len(dropped_files) > 10 else ''}."
+        manual_followups.append(
+            "Skipped non-writable files: "
+            + ", ".join(sorted(dropped_files)[:10])
+            + (", ..." if len(dropped_files) > 10 else "")
         )
     if not writable_files:
-        notes += " No files were applied."
+        manual_followups.append("No writable files were applied to the generated CPCtelera scaffold.")
 
     integration = integration.model_copy(
         update={
             "files": writable_files,
-            "integration_notes": notes,
+            "integration_notes": integration_notes,
+            "manual_followups": manual_followups,
         }
     )
 
-    return {
-        "integration": integration,
-        "generated_project_path": path,
-    }
+    return _node_result(
+        state,
+        "integration",
+        payload_key="integration",
+        payload=integration,
+        generated_project_path=path,
+    )
+
 
 def build_node(state: StudioState):
     print("-> build_node", file=sys.stderr)
+    mock_payload = _mock_payload_for_step(state, "build")
+    if mock_payload:
+        build_output = BuildOutput.model_validate(mock_payload)
+        return _node_result(
+            state,
+            "build",
+            payload_key="build_output",
+            payload=build_output,
+            generated_project_path=str(
+                state.get("generated_project_path")
+                or state.get("mock_generated_project_path")
+                or build_output.project_path
+                or ""
+            ),
+        )
 
     integration = state.get("integration")
     prebuild_errors = []
-    if integration is not None:
+    integration_is_mocked = "integration" in (state.get("mock_replay") or {})
+    if integration is not None and not integration_is_mocked:
         prebuild_errors = [
             str(item).strip()
             for item in getattr(integration, "prebuild_validation_errors", [])
@@ -374,20 +548,22 @@ def build_node(state: StudioState):
         ]
 
     if prebuild_errors:
-        stderr = "Pre-build C validation failed before compilation:\n" + "\n".join(
-            f"- {issue}" for issue in prebuild_errors[:20]
-        )
+        project_path = str(state.get("generated_project_path") or "")
         build_output = BuildOutput.model_validate(
             _build_failure_payload(
-                stderr,
+                "Pre-build C validation failed before compilation:\n"
+                + "\n".join(f"- {issue}" for issue in prebuild_errors[:20]),
                 "Build skipped due to malformed generated C includes/prototypes.",
+                project_path,
             )
         )
-        project_path = state.get("generated_project_path")
-        return {
-            "build_output": build_output,
-            "generated_project_path": str(Path(project_path).resolve()) if project_path else "",
-        }
+        return _node_result(
+            state,
+            "build",
+            payload_key="build_output",
+            payload=build_output,
+            generated_project_path=project_path,
+        )
 
     project_path = state.get("generated_project_path")
     if not project_path:
@@ -395,12 +571,10 @@ def build_node(state: StudioState):
             _build_failure_payload(
                 "generated_project_path is missing before build_node.",
                 "Build skipped because integration did not provide a project path.",
+                "",
             )
         )
-        return {
-            "build_output": build_output,
-            "generated_project_path": "",
-        }
+        return _node_result(state, "build", payload_key="build_output", payload=build_output)
 
     requested_project_path = Path(project_path).resolve()
 
@@ -409,24 +583,32 @@ def build_node(state: StudioState):
             _build_failure_payload(
                 f"Invalid CPCtelera scaffold: {requested_project_path}",
                 "Build skipped because the integration path is not a valid CPCtelera project.",
+                str(requested_project_path),
             )
         )
-        return {
-            "build_output": build_output,
-            "generated_project_path": str(requested_project_path),
-        }
+        return _node_result(
+            state,
+            "build",
+            payload_key="build_output",
+            payload=build_output,
+            generated_project_path=str(requested_project_path),
+        )
 
     if not _is_build_path_compatible(requested_project_path):
         build_output = BuildOutput.model_validate(
             _build_failure_payload(
                 f"Build path mismatch risk for: {requested_project_path}",
                 "Build skipped to avoid compiling a different directory than integration_node used.",
+                str(requested_project_path),
             )
         )
-        return {
-            "build_output": build_output,
-            "generated_project_path": str(requested_project_path),
-        }
+        return _node_result(
+            state,
+            "build",
+            payload_key="build_output",
+            payload=build_output,
+            generated_project_path=str(requested_project_path),
+        )
 
     build_raw, resolved_project_path = run_build(str(requested_project_path))
     if Path(resolved_project_path).resolve() != requested_project_path:
@@ -437,93 +619,105 @@ def build_node(state: StudioState):
                     f"requested={requested_project_path} resolved={resolved_project_path}"
                 ),
                 "Build aborted to preserve integration/build path consistency.",
+                str(requested_project_path),
             )
         )
-        return {
-            "build_output": build_output,
-            "generated_project_path": str(requested_project_path),
-        }
+        return _node_result(
+            state,
+            "build",
+            payload_key="build_output",
+            payload=build_output,
+            generated_project_path=str(requested_project_path),
+        )
 
-    build_output = BuildOutput.model_validate(build_raw)
+    build_output = BuildOutput.model_validate(build_raw).model_copy(
+        update={"project_path": str(requested_project_path)}
+    )
 
-    return {
-        "build_output": build_output,
-        "generated_project_path": str(requested_project_path),
-    }
+    return _node_result(
+        state,
+        "build",
+        payload_key="build_output",
+        payload=build_output,
+        generated_project_path=str(requested_project_path),
+    )
 
 
 def build_validation_node(state: StudioState):
     print("-> build_validation_node", file=sys.stderr)
-    raw = run_build_validation(
-        state["user_request"],
-        state.get("generated_project_path"),
-        _to_dict(state.get("build_output")),
+    mock_payload = _mock_payload_for_step(state, "build_validation")
+    if mock_payload:
+        build_validation = BuildValidationOutput.model_validate(mock_payload)
+    else:
+        build_validation = BuildValidationOutput.model_validate(
+            run_build_validation(
+                state["user_request"],
+                state.get("generated_project_path"),
+                _to_dict(state.get("build_output")),
+            )
+        )
+    return _node_result(
+        state,
+        "build_validation",
+        payload_key="build_validation",
+        payload=build_validation,
     )
-
-    return {
-        "build_validation": BuildValidationOutput.model_validate(raw)
-    }
 
 
 def qa_node(state: StudioState):
     print("-> qa_node", file=sys.stderr)
-    raw = run_qa(
-        state["user_request"],
-        _to_dict(state.get("orchestrator")) or None,
-        _to_dict(state.get("design")) or None,
-        _to_dict(state.get("art")) or None,
-        _to_dict(state.get("tech")) or None,
-        _to_dict(state.get("integration")) or None,
-        _to_dict(state.get("build_validation")) or None,
-        _to_dict(state.get("build_output")) or None,
-    )
-
-    return {
-        "qa": QAOutput.model_validate(raw)
-    }
+    mock_payload = _mock_payload_for_step(state, "qa")
+    if mock_payload:
+        qa = QAOutput.model_validate(mock_payload)
+    else:
+        qa = QAOutput.model_validate(
+            run_qa(
+                state["user_request"],
+                _to_dict(state.get("orchestrator")) or None,
+                _to_dict(state.get("design")) or None,
+                _to_dict(state.get("art")) or None,
+                _to_dict(state.get("tech")) or None,
+                _to_dict(state.get("integration")) or None,
+                _to_dict(state.get("build_validation")) or None,
+                _to_dict(state.get("build_output")) or None,
+            )
+        )
+    return _node_result(state, "qa", payload_key="qa", payload=qa)
 
 
 def compose_node(state: StudioState):
     print("-> compose_node", file=sys.stderr)
-    parts = ["# CPC Studio Output", ""]
-    if state.get("orchestrator"):
-        parts += ["## Orchestrator", _json_block("spec", state["orchestrator"]), ""]
-    if state.get("narrative"):
-        parts += ["## Narrative", _json_block("narrative", state["narrative"]), ""]
-    if state.get("design"):
-        parts += ["## Design", _json_block("design", state["design"]), ""]
-    if state.get("art"):
-        parts += ["## Art", _json_block("art", state["art"]), ""]
-    if state.get("tech"):
-        parts += ["## Tech", _json_block("tech", state["tech"]), ""]
-    contract_validation = state.get("contractvalidation") or state.get("contract_validation")
-    if contract_validation:
-        parts += [
-            "## Contract Validation",
-            _json_block("contract_validation", contract_validation),
-            "",
-        ]
-    if state.get("integration"):
-        parts += ["## Integration", state["integration"].integration_notes, ""]
-        prebuild_errors = state["integration"].prebuild_validation_errors
-        if prebuild_errors:
-            parts += ["Pre-build Validation Errors:", "\n".join(prebuild_errors[:20]), ""]
-    if state.get("build_output"):
-        bo = state["build_output"]
-        status = "OK" if bo.success else f"FAILED (exit {bo.return_code})"
-        parts += ["## Build", f"Status: {status}", bo.build_notes, ""]
-        if bo.artifacts:
-            parts += ["Artifacts: " + ", ".join(bo.artifacts), ""]
-        if not bo.success and bo.stderr:
-            parts += ["Errors:", bo.stderr[:2000], ""]
-    if state.get("build_validation"):
-        parts += ["## Build Validation", _json_block("build_validation", state["build_validation"]), ""]
-    if state.get("qa"):
-        parts += ["## QA", _json_block("qa", state["qa"]), ""]
+    completed_steps = list(state.get("completed_steps") or [])
+    if "compose" not in completed_steps:
+        completed_steps.append("compose")
 
-    result = "\n".join(parts).strip()
-    print(f"-> compose_node final_output_len={len(result)}", file=sys.stderr)
-    return {"final_output": result}
+    contract_validation = state.get("contract_validation") or state.get("contractvalidation")
+    final_payload = ComposeOutput.model_validate(
+        {
+            "target_platform": state.get("target_platform", ""),
+            "framework": state.get("framework", ""),
+            "workflow_plan": state.get("workflow_plan") or list(DEFAULT_WORKFLOW_PLAN),
+            "completed_steps": completed_steps,
+            "generated_project_path": str(state.get("generated_project_path") or ""),
+            "orchestrator": _to_dict(state.get("orchestrator")),
+            "narrative": _to_dict(state.get("narrative")),
+            "design": _to_dict(state.get("design")),
+            "art": _to_dict(state.get("art")),
+            "tech": _to_dict(state.get("tech")),
+            "contract_validation": _to_dict(contract_validation),
+            "integration": _to_dict(state.get("integration")),
+            "build_output": _to_dict(state.get("build_output")),
+            "build_validation": _to_dict(state.get("build_validation")),
+            "qa": _to_dict(state.get("qa")),
+        }
+    )
+
+    return {
+        "completed_steps": completed_steps,
+        "current_step": "compose",
+        "final_payload": final_payload,
+        "final_output": json.dumps(final_payload.model_dump(), ensure_ascii=False, indent=2),
+    }
 
 
 builder = StateGraph(StudioState)
@@ -540,31 +734,40 @@ builder.add_node("qa_node", qa_node)
 builder.add_node("compose_node", compose_node)
 
 builder.add_edge(START, "orchestrator_node")
-builder.add_edge("orchestrator_node", "narrative_node")
-builder.add_edge("narrative_node", "design_node")
-builder.add_edge("design_node", "art_node")
-builder.add_edge("art_node", "tech_node")
-builder.add_edge("tech_node", "contractvalidationnode")
-builder.add_conditional_edges(
-    "contractvalidationnode",
-    _route_after_contractvalidation,
-    {
-        "integration_node": "integration_node",
-        "compose_node": "compose_node",
-    },
-)
-builder.add_edge("integration_node", "build_node")
-builder.add_edge("build_node", "build_validation_node")
-builder.add_edge("build_validation_node", "qa_node")
-builder.add_edge("qa_node", "compose_node")
+route_map = {node_name: node_name for node_name in WORKFLOW_STEP_TO_NODE.values()}
+builder.add_conditional_edges("orchestrator_node", _route_next_step, route_map)
+builder.add_conditional_edges("narrative_node", _route_next_step, route_map)
+builder.add_conditional_edges("design_node", _route_next_step, route_map)
+builder.add_conditional_edges("art_node", _route_next_step, route_map)
+builder.add_conditional_edges("tech_node", _route_next_step, route_map)
+builder.add_conditional_edges("contractvalidationnode", _route_next_step, route_map)
+builder.add_conditional_edges("integration_node", _route_next_step, route_map)
+builder.add_conditional_edges("build_node", _route_next_step, route_map)
+builder.add_conditional_edges("build_validation_node", _route_next_step, route_map)
+builder.add_conditional_edges("qa_node", _route_next_step, route_map)
 builder.add_edge("compose_node", END)
 
 graph = builder.compile()
 
 
-def run_studio(user_request: str):
-    return graph.invoke({
+def run_studio(
+    user_request: str,
+    mock_replay: dict[str, dict] | None = None,
+    mock_generated_project_path: str | None = None,
+    strict_mocks: bool = False,
+):
+    initial_state = {
         "user_request": user_request,
         "target_platform": "Amstrad CPC 6128",
         "framework": "CPCtelera",
-    })
+        "agent_payloads": {},
+        "completed_steps": [],
+        "workflow_plan": list(DEFAULT_WORKFLOW_PLAN),
+        "mock_replay": mock_replay or {},
+        "strict_mocks": strict_mocks,
+    }
+    if mock_generated_project_path:
+        initial_state["mock_generated_project_path"] = str(mock_generated_project_path)
+        initial_state["generated_project_path"] = str(mock_generated_project_path)
+
+    return graph.invoke(initial_state)

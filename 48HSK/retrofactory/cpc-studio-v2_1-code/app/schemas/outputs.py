@@ -134,7 +134,9 @@ class TechOutputV2(TechOutput):
 
 class IntegrationOutput(BaseModel):
     files: Dict[str, str] = Field(default_factory=dict)
-    integration_notes: str = ""
+    assumptions: List[str] = Field(default_factory=list)
+    integration_notes: List[str] = Field(default_factory=list)
+    manual_followups: List[str] = Field(default_factory=list)
     prebuild_validation_errors: List[str] = Field(default_factory=list)
 
 
@@ -144,16 +146,23 @@ class BuildOutput(BaseModel):
     stdout: str = ""
     stderr: str = ""
     artifacts: List[str] = Field(default_factory=list)
+    project_path: str = ""
     build_notes: str = ""
 
 
 class BuildValidationOutput(BaseModel):
     status: Literal["pass", "fail"] = "fail"
+    scaffold_valid: bool = False
+    build_succeeded: bool = False
+    project_path: str = ""
+    expected_artifacts: List[str] = Field(default_factory=list)
+    found_artifacts: List[str] = Field(default_factory=list)
     missing_files: List[str] = Field(default_factory=list)
     invalid_paths: List[str] = Field(default_factory=list)
     header_source_mismatches: List[str] = Field(default_factory=list)
     suspected_compile_errors: List[str] = Field(default_factory=list)
     fix_recommendations: List[str] = Field(default_factory=list)
+    validation_notes: List[str] = Field(default_factory=list)
 
 
 class QAOutput(BaseModel):
@@ -191,3 +200,21 @@ class ContractValidationOutput(BaseModel):
     missing_assets: List[str] = Field(default_factory=list)
     missing_required_files: List[str] = Field(default_factory=list)
     build_profile_issues: List[str] = Field(default_factory=list)
+
+
+class ComposeOutput(BaseModel):
+    target_platform: str = ""
+    framework: str = ""
+    workflow_plan: List[str] = Field(default_factory=list)
+    completed_steps: List[str] = Field(default_factory=list)
+    generated_project_path: str = ""
+    orchestrator: Dict[str, object] = Field(default_factory=dict)
+    narrative: Dict[str, object] = Field(default_factory=dict)
+    design: Dict[str, object] = Field(default_factory=dict)
+    art: Dict[str, object] = Field(default_factory=dict)
+    tech: Dict[str, object] = Field(default_factory=dict)
+    contract_validation: Dict[str, object] = Field(default_factory=dict)
+    integration: Dict[str, object] = Field(default_factory=dict)
+    build_output: Dict[str, object] = Field(default_factory=dict)
+    build_validation: Dict[str, object] = Field(default_factory=dict)
+    qa: Dict[str, object] = Field(default_factory=dict)

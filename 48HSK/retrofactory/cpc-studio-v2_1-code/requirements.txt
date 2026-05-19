@@ -1,6 +1,9 @@
 langgraph
 langchain
 langchain-openai
+openai
 pydantic
 python-dotenv
 pypdf
+numpy
+tqdm
