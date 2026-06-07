@@ -17,3 +17,6 @@ cpctelera/
 
 # Índices RAG generados (se reconstruyen automáticamente)
 scene_agent/data/rag_index*.json
+
+# Ficheros grandes
+*.pdf
