@@ -11,7 +11,10 @@ COPY scene_agent scene_agent
 # Entry point is the developer agent server
 COPY agents/developer/main.py main.py
 
-RUN mkdir -p scene_agent/outputs
+RUN mkdir -p scene_agent/outputs \
+ && useradd -m -u 1000 appuser \
+ && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
 

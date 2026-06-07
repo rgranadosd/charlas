@@ -35,9 +35,11 @@ RUN cd cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin \
     done
 
 # Ensure the outputs directory exists so the pipeline can write to it at runtime
-RUN mkdir -p scene_agent/outputs
+RUN mkdir -p scene_agent/outputs \
+ && useradd -m -u 1000 appuser \
+ && chown -R appuser:appuser /app
+USER appuser
 
-# CPCT_PATH is read by build_and_run.py and passed to every make invocation
 ENV CPCT_PATH=/app/cpctelera/cpctelera
 
 EXPOSE 8000
