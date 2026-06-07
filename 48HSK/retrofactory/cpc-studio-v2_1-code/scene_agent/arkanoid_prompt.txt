@@ -1,0 +1,58 @@
+Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC using Mode 0.
+
+1. Game mechanics:
+   - Player-controlled paddle at the bottom with smooth left/right movement using cursor keys.
+   - Ball that bounces off walls, paddle, and bricks with AABB collision.
+   - 5 rows x 10 columns of colored bricks at y=20..59.
+   - Ball starts resting on top of the paddle and does not move until Space is pressed.
+   - While NOT launched: every frame set ball_x = paddle_x + PADDLE_WIDTH/2 and ball_y = PADDLE_Y - BALL_H.
+   - Ball always moves at constant speed: ball_vx=1 or -1, ball_vy=1 or -1 — never 0, never ±2.
+   - 3 lives — lose one when ball passes FLOOR_Y=195, ball returns to rest on paddle.
+
+   Physics implementation (MANDATORY — follow exactly):
+   - Use u8 block_grid[BLOCK_ROWS][BLOCK_COLS] to track which bricks are alive (1) or destroyed (0).
+   - Block collision: check `if (block_grid[i][j])` BEFORE AABB. On hit: block_grid[i][j]=0, erase visually, invert ball_vy, increment score, decrement blocks_remaining. After the first hit in a frame, use `goto block_done;` to exit both loops immediately, then put the label `block_done:;` after the outer for loop.
+   - Floor check goes INSIDE the vertical movement else-branch: `else { ball_bottom = ball_y+BALL_H-1; if (ball_bottom < FLOOR_Y) ball_y++; else { g_lives--; ... } }`
+   - Paddle collision uses `ball_vy = -ball_vy` — NEVER hardcode -1.
+   - init_game() MUST explicitly assign: g_lives=3, g_score=0, game_over=0, ball_launched=0, blocks_remaining=BLOCK_COLS*BLOCK_ROWS, paddle_x=35, ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, prev_ball_x=ball_x, prev_ball_y=ball_y.
+   - reset_ball() MUST set: ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, ball_launched=0, prev_ball_x=ball_x, prev_ball_y=ball_y.
+
+2. HUD:
+   - Single row at y=0. Draw labels ONCE in init_game() using EXACTLY this code:
+       pv = cpct_getScreenPtr(CPCT_VMEM_START, 0, 0);
+       cpct_drawStringM0("LIVES:", pv, 1, 0);
+       pv = cpct_getScreenPtr(CPCT_VMEM_START, 40, 0);
+       cpct_drawStringM0("SCORE", pv, 1, 0);
+   - draw_lives(): digit at x=24 only. draw_score(): 3-digit number at x=64 only.
+   - NEVER use local char arrays for labels — use string literals directly as shown above.
+   - No title, no branding text.
+
+3. State:
+   - No start screen, no game over screen, no level complete screen.
+   - Use simple flags only: u8 game_over=0; u8 ball_launched=0;
+   - When game_over: stop updating, show "GAME OVER" in play area.
+   - When all bricks destroyed: reset bricks, increment level, reset ball.
+
+4. Visuals:
+   - Distinct colors per brick row using cpct_px2byteM0.
+   - Erase/draw pattern for ball and paddle every frame.
+
+5. Audio:
+   - Audio API is provided via #include "audio.h" (already in src/).
+   - Call audio_init() once in init_game(), audio_update() at end of main loop.
+   - Call audio_play_sfx() with the appropriate SFX ID on game events:
+       audio_play_sfx(SFX_WALL_HIT)    — ball hits wall
+       audio_play_sfx(SFX_PADDLE_HIT)  — ball hits paddle
+       audio_play_sfx(SFX_BRICK_HIT)   — ball destroys brick
+       audio_play_sfx(SFX_LIFE_LOST)   — ball passes floor
+       audio_play_sfx(SFX_GAME_OVER)   — lives reach zero
+   - Do NOT implement audio functions — they are already implemented in src/audio.c.
+
+6. Technical requirements:
+   - CPCtelera Mode 0: 80 bytes wide x 200 pixels tall.
+   - Palette via cpct_setPALColour, colors via cpct_px2byteM0.
+   - cpct_scanKeyboard_f() in main loop.
+   - cpct_clearScreen(0) only once in init_game().
+   - Single C file for gameplay: src/main.c.
+   - No state machine enums.
+   - cpct_setBorder(HW_BLACK).

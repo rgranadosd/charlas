@@ -1,0 +1,19 @@
+# Entornos
+.env
+.venv/
+
+# Artefactos generados
+__pycache__/
+*.egg-info/
+.cache/
+.pytest_cache/
+
+# Salidas de ejecución
+scene_agent/outputs/
+scene_agent/test_logs/
+
+# SDK CPCtelera (493MB — no subir)
+cpctelera/
+
+# Índices RAG generados (se reconstruyen automáticamente)
+scene_agent/data/rag_index*.json
