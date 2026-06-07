@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
+import httpx
 from langgraph.graph import StateGraph, END
 
 from .build_and_run import _launch_emulator, _new_run_dir, _scaffold, _CPCTELERA_ROOT
@@ -34,6 +35,22 @@ from .contracts import DevelopmentInput, DevelopmentOutput, OrchestratorContract
 from .developer_agent import run_task, input_from_taskdef
 from .audio_agent import run_audio_task
 from .orchestrator_agent import orchestrate
+
+
+# ---------------------------------------------------------------------------
+# HTTP dispatch helpers — call sub-agents by URL when env vars are set,
+# fall back to direct in-process calls for local development.
+# ---------------------------------------------------------------------------
+
+def _http_run(url: str, dev_input: DevelopmentInput, timeout: int = 300) -> DevelopmentOutput:
+    resp = httpx.post(
+        f"{url.rstrip('/')}/run",
+        content=dev_input.model_dump_json(),
+        headers={"Content-Type": "application/json"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return DevelopmentOutput.model_validate(resp.json())
 
 logger = logging.getLogger(__name__)
 
@@ -287,10 +304,18 @@ def _route_task(state: _DispatchState) -> str:
 
 
 def _developer_node(state: _DispatchState) -> dict:
+    url = os.environ.get("DEVELOPER_AGENT_URL", "")
+    if url:
+        logger.info("[PIPE] calling developer agent at %s", url)
+        return {"output": _http_run(url, state["dev_input"])}
     return {"output": run_task(state["dev_input"], state["settings"])}
 
 
 def _audio_node(state: _DispatchState) -> dict:
+    url = os.environ.get("AUDIO_AGENT_URL", "")
+    if url:
+        logger.info("[PIPE] calling audio agent at %s", url)
+        return {"output": _http_run(url, state["dev_input"], timeout=60)}
     print(f"  {_G}✓ audio scaffold already applied — skipping LLM for audio task{_RS}")
     return {"output": DevelopmentOutput(
         task_id=state["dev_input"].task_id,
@@ -402,7 +427,8 @@ def _fix_node(state: _FixState) -> _FixState:
         target_files=["src/main.c"],
     )
     try:
-        fix_output = run_task(fix_input, state["settings"])
+        url = os.environ.get("DEVELOPER_AGENT_URL", "")
+        fix_output = _http_run(url, fix_input) if url else run_task(fix_input, state["settings"])
     except Exception as exc:
         _print_llm_failure(f"FIX_WORKER:{fix_id}", exc)
         # Force exit on exception — set attempt to max

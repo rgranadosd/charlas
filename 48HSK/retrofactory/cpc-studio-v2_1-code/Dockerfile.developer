@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the shared module and the RAG documentation it needs at runtime
+COPY scene_agent scene_agent
+
+# Entry point is the developer agent server
+COPY agents/developer/main.py main.py
+
+RUN mkdir -p scene_agent/outputs
+
+EXPOSE 8000
+
+CMD ["python", "main.py"]
