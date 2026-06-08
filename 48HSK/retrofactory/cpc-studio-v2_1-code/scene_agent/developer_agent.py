@@ -307,24 +307,8 @@ def _make_nvidia_llm(env: dict[str, str]):
     return llm, f"NVIDIA/{model}"
 
 
-def _make_local_llm(env: dict[str, str]):
-    model = env.get("LOCAL_AI_MODEL", "gemma-4-e4b-uncensored-hauhaucs-aggressive")
-    local_url = (
-        env.get("LOCAL_AI_BASE_URL", "http://192.168.1.175:1234/v1/chat/completions")
-        .replace("/chat/completions", "").rstrip("/")
-    )
-    llm = ChatOpenAI(
-        model=model, temperature=0,
-        openai_api_base=local_url,
-        openai_api_key=env.get("LOCAL_AI_API_KEY", "lmstudio"),
-        timeout=_env_int(env, "LOCAL_WORKER_TIMEOUT_SECONDS", 180),
-        max_retries=0,
-    )
-    return llm, f"LOCAL/{model}"
-
-
 def _build_worker_llm(env: dict[str, str]) -> tuple:
-    """Devuelve (llm, label) — Mistral Codestral primero, NVIDIA segundo, local Gemma último recurso."""
+    """Devuelve (llm, label) — Mistral Codestral primero, NVIDIA segundo."""
     mistral_key   = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
     mistral_model = env.get("MISTRAL_WORKER_MODEL", "codestral-latest")
     if mistral_key:
@@ -338,7 +322,10 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
         return llm, f"MISTRAL/{mistral_model}"
     if env.get("NVIDIA_WORKER_API_KEY", ""):
         return _make_nvidia_llm(env)
-    return _make_local_llm(env)
+    raise RuntimeError(
+        "No worker LLM configured. Set MISTRAL_WORKER_API_KEY/MISTRAL_API_KEY "
+        "or NVIDIA_WORKER_API_KEY. Local fallback is disabled."
+    )
 
 
 def build_development_agent(settings) -> tuple:
@@ -472,18 +459,15 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
                 or "timed out" in exc_text_lower
                 or exc.__class__.__name__ in {"APITimeoutError", "ReadTimeout", "TimeoutError"}
             )
-            if is_timeout and "LOCAL" not in model_label:
+            if is_timeout:
                 print(f"{_Y}  ↩  [{model_label}] timeout — activando fallback sin más espera{_RS}")
                 break
-            if "LOCAL" in model_label or not is_rate_limit or _attempt == len(_RETRY_DELAYS):
+            if not is_rate_limit or _attempt == len(_RETRY_DELAYS):
                 break
             # else: retry after delay
 
     if output is None:
         exc = last_exc
-        # If we were already on local (last resort), no further fallback exists
-        if "LOCAL" in model_label:
-            raise exc
         print(f"\n{_R}  ✗ {model_label} falló (definitivo): {exc}{_RS}")
         if last_exc_diag:
             print(f"{_DIM}    detalle proveedor:\n{last_exc_diag}{_RS}")
@@ -554,75 +538,26 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
                         if _att == len(_NV_DELAYS):
                             break
 
-        # ── Local fallback (last resort — code-only prompt, no JSON) ─────────
         if output is None:
-            fallback_llm, local_label = _make_local_llm(env)
-            local_model = local_label.split("/", 1)[1]
-            print(f"{_R}  ↩  Conectando al modelo local [{local_model}] …{_RS}")
-            # Code-only prompt: avoids JSON parse failures on small/quantised models
-            _local_prompt = _CPT.from_messages([
-                ("system",
-                 "Eres un experto en CPCtelera (Amstrad CPC, C89/SDCC). "
-                 "Escribe SOLO el contenido completo y compilable del archivo src/main.c "
-                 "para la tarea recibida. No uses bloques markdown. Solo código C válido."),
-                ("user", "TAREA:\n{task_json}\n\nCONTEXTO DEL PROYECTO:\n{project_context}"),
-            ])
-            simple_input = {
-                "task_json":       lean_task.model_dump_json(indent=2),
-                "project_context": project_context,
-            }
-            model_label = f"LOCAL/{local_model}"
-            print(f"{_Y}  [2/3] [{model_label}]  generando código C …{_RS}")
-            try:
-                raw_local_output = (_local_prompt | fallback_llm | _StrOut()).invoke(simple_input)
-                raw_code = _re.sub(r'^```[a-zA-Z]*\n?', '', raw_local_output.strip())
-                raw_code = _re.sub(r'\n?```\s*$', '', raw_code).strip()
-                if not raw_code:
-                    raise ValueError("Local model returned empty content")
-                output = _validate_for_task({
-                    "task_id": task.task_id,
-                    "status": "done",
-                    "summary": f"Código C generado por fallback local ({raw_code.count(chr(10)) + 1} líneas)",
-                    "files_to_write": [{"path": "src/main.c", "content": raw_code, "mode": "write"}],
-                    "notes": [],
-                    "risks": ["Generado por modelo local sin validación JSON — revisar compilación"],
-                    "follow_up_questions": [],
-                })
-            except Exception as local_exc:
-                local_exc_diag = _extract_llm_error_details(local_exc)
-                local_log = None
-                if "raw_local_output" in locals() and isinstance(raw_local_output, str):
-                    local_log = _write_failed_model_output(
-                        task.task_id, model_label, raw_local_output,
-                        f"{local_exc.__class__.__name__}: {local_exc}",
-                    )
-                print(f"{_R}  ✗ [{model_label}] también falló: {local_exc.__class__.__name__}: {local_exc}{_RS}")
-                if local_exc_diag:
-                    print(f"{_DIM}    detalle proveedor local:\n{local_exc_diag}{_RS}")
-                if local_log is not None:
-                    print(f"{_DIM}    raw local output guardado en {local_log}{_RS}")
-                print(f"{_R}    Todos los modelos fallaron — marcando tarea como blocked{_RS}")
-                failed = f"Primario: {exc}"
-                if nvidia_exc is not None:
-                    failed += f". NVIDIA: {nvidia_exc}"
-                failed += f". Local: {local_exc}"
-                diag_chunks = [
-                    f"Primary diag:\n{last_exc_diag}" if last_exc_diag else "",
-                    f"NVIDIA diag:\n{nvidia_exc_diag}" if nvidia_exc_diag else "",
-                    f"Local diag:\n{local_exc_diag}" if local_exc_diag else "",
-                ]
-                diag_text = "\n\n".join(c for c in diag_chunks if c)
-                output = DevelopmentOutput(
-                    task_id=task.task_id,
-                    status="blocked",
-                    summary=f"Todos los LLMs fallaron. {failed}",
-                    files_to_write=[],
-                    risks=[
-                        "Mistral/NVIDIA/local fallaron — reintenta más tarde",
-                        *([_shorten_diag(diag_text, 1400)] if diag_text else []),
-                        *([f"Raw local output: {local_log}"] if local_log is not None else []),
-                    ],
-                )
+            print(f"{_R}    Mistral/NVIDIA fallaron — marcando tarea como blocked{_RS}")
+            failed = f"Primario: {exc}"
+            if nvidia_exc is not None:
+                failed += f". NVIDIA: {nvidia_exc}"
+            diag_chunks = [
+                f"Primary diag:\n{last_exc_diag}" if last_exc_diag else "",
+                f"NVIDIA diag:\n{nvidia_exc_diag}" if nvidia_exc_diag else "",
+            ]
+            diag_text = "\n\n".join(c for c in diag_chunks if c)
+            output = DevelopmentOutput(
+                task_id=task.task_id,
+                status="blocked",
+                summary=f"Todos los LLMs remotos fallaron. {failed}",
+                files_to_write=[],
+                risks=[
+                    "Mistral/NVIDIA fallaron — reintenta más tarde",
+                    *([_shorten_diag(diag_text, 1400)] if diag_text else []),
+                ],
+            )
 
     # 3. Resultado
     status_col = _G if output.status == "done" else (_Y if output.status == "needs_clarification" else "\033[31m")

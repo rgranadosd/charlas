@@ -78,7 +78,6 @@ _R = "\033[31m"
 _NVIDIA_MAX_RETRIES = 3
 _NVIDIA_RETRY_BASE  = 1.0   # seconds; doubles each retry: 1 → 2 → 4
 _NVIDIA_TIMEOUT     = 240
-_LOCAL_TIMEOUT      = 300
 
 
 def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
@@ -87,7 +86,6 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
     Priority:
       1. Mistral API direct (MISTRAL_ORCHESTRATOR_API_KEY or MISTRAL_API_KEY)
       2. NVIDIA NIM       (NVIDIA_ORCHESTRATOR_API_KEY)
-      3. Local LM Studio  (fallback)
     """
     # 1. Mistral direct API — better JSON schema compliance, faster for orchestration
     mistral_key   = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY", "")
@@ -118,25 +116,10 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
         logger.info("[ORCH] primary LLM: NVIDIA NIM — %s (timeout=%ds)", nvidia_model, timeout)
         return llm, f"NVIDIA/{nvidia_model}"
 
-    return _build_local_llm(env, timeout=timeout)
-
-
-def _build_local_llm(env: dict[str, str], timeout: int = _LOCAL_TIMEOUT):
-    """Return (llm, label) always pointing to the local LM Studio instance."""
-    local_url = (
-        env.get("LOCAL_AI_BASE_URL", "http://192.168.1.175:1234/v1/chat/completions")
-        .replace("/chat/completions", "").rstrip("/")
+    raise RuntimeError(
+        "No orchestrator LLM configured. Set MISTRAL_ORCHESTRATOR_API_KEY/MISTRAL_API_KEY "
+        "or NVIDIA_ORCHESTRATOR_API_KEY. Local fallback is disabled."
     )
-    local_model  = env.get("LOCAL_AI_MODEL", "gemma-4-e4b-uncensored-hauhaucs-aggressive")
-    local_apikey = env.get("LOCAL_AI_API_KEY", "lmstudio")
-    llm = ChatOpenAI(
-        model=local_model, temperature=0,
-        openai_api_base=local_url,
-        openai_api_key=local_apikey,
-        timeout=timeout,
-    )
-    logger.info("[ORCH] local LLM: %s (timeout=%ds)", local_model, timeout)
-    return llm, f"LOCAL/{local_model}"
 
 
 def _tolerant_validate_contract(raw: dict, user_prompt: str) -> "OrchestratorContract":
@@ -209,7 +192,6 @@ def orchestrate(
 
     max_retries  = int(env.get("NVIDIA_MAX_RETRIES", str(_NVIDIA_MAX_RETRIES)))
     retry_base   = float(env.get("NVIDIA_RETRY_BASE", str(_NVIDIA_RETRY_BASE)))
-    local_timeout = int(env.get("LOCAL_TIMEOUT", str(_LOCAL_TIMEOUT)))
     # RAG: retrieve architecture/design context from doc/ root files
     rag_context = ""
     try:
@@ -243,22 +225,19 @@ def orchestrate(
                     time.sleep(delay)
 
         if raw is None:
-            print(f"\n{_R}  NVIDIA agotado tras {max_retries} intentos — activando fallback local{_RS}")
-            fallback_llm, llm_label = _build_local_llm(env, timeout=local_timeout)
-            chain = prompt | fallback_llm | parser
-            print(f"{_Y}  intentando con fallback → {llm_label} …{_RS}")
-            raw = chain.invoke(invoke_input)
-            print(f"{_G}  {llm_label} → OK{_RS}")
+            raise RuntimeError(
+                f"{llm_label} agotado tras {max_retries} intentos y local fallback deshabilitado"
+            )
     else:
         for attempt in range(1, 3):
             try:
                 print(f"\n{_Y}  [{attempt}/2] intentando {llm_label} …{_RS}")
-                logger.info("[ORCH] local attempt %d/2", attempt)
+                logger.info("[ORCH] primary attempt %d/2", attempt)
                 raw = chain.invoke(invoke_input)
                 print(f"{_G}  [{attempt}/2] {llm_label} → OK{_RS}")
                 break
             except Exception as exc:
-                logger.warning("[ORCH] local attempt %d/2 failed: %s", attempt, exc)
+                logger.warning("[ORCH] primary attempt %d/2 failed: %s", attempt, exc)
                 if attempt < 2:
                     print(f"{_Y}  [{attempt}/2] {llm_label} → fallo, reintentando en 2s …{_RS}")
                     time.sleep(2.0)
