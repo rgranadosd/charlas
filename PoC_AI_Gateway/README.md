@@ -4,7 +4,7 @@ This application is a Streamlit interface to interact with LLM models (such as O
 
 ## Requirements
 - Python 3.8+
-- The libraries listed in `requirements.txt` (Streamlit, requests, PyYAML, etc.)
+- The libraries listed in `aigateway-demo/requirements.txt` (Streamlit, requests, PyYAML, etc.)
 
 ## Prerequisites
 
@@ -45,13 +45,17 @@ Before installing the application, you need to set up access to the WSO2 API Gat
 ## Installation
 
 1. Clone the repository or download the files.
-2. Create a virtual environment and install the dependencies:
+2. Move into the demo app folder:
+  ```bash
+  cd aigateway-demo
+  ```
+3. Create a virtual environment and install the dependencies:
    ```bash
-   python -m venv venv
-   source venv/bin/activate
+  python -m venv .venv
+  source .venv/bin/activate
    pip install -r requirements.txt
    ```
-3. Configure your environment:
+4. Configure your environment:
    - Copy `.env.example` to `.env`
    - Fill in your WSO2 credentials obtained from the Developer Portal
    - The `config.yaml` file contains public configuration (models, etc.)
@@ -59,7 +63,13 @@ Before installing the application, you need to set up access to the WSO2 API Gat
 ## Usage
 Start the application with:
 ```bash
+cd aigateway-demo
 streamlit run demo_ui.py
+```
+
+Or run the launcher from the repository root:
+```bash
+./Run_Demo.sh
 ```
 
 A web interface will open where you can:
@@ -71,7 +81,7 @@ A web interface will open where you can:
 ## Configuration
 
 ### Environment Variables (`.env` file)
-Sensitive credentials are stored in a `.env` file that is not tracked by git. Use the credentials and URLs obtained from your WSO2 Developer Portal setup:
+Sensitive credentials are stored in `aigateway-demo/.env` and are not tracked by git. Use the credentials and URLs obtained from your WSO2 Developer Portal setup:
 
 ```env
 # WSO2 Gateway Shared Credentials (from your application in WSO2 Developer Portal)
@@ -91,7 +101,7 @@ ANTHROPIC_CHAT_COMPLETIONS_URL=https://your-wso2-server:8243/anthropicapi/v1/mes
 3. **Chat Completions URLs**: Copy the gateway URLs from each subscribed API in the WSO2 Developer Portal
 
 ### Public Configuration (`config.yaml`)
-The `config.yaml` file contains non-sensitive application and provider settings:
+The `aigateway-demo/config.yaml` file contains non-sensitive application and provider settings:
 
 ```yaml
 # Global configuration
@@ -134,9 +144,9 @@ Example for adding a new "CLAUDE" provider:
   ```
 
 ## Security
-- Sensitive credentials are stored in `.env` file which is not tracked by git
+- Sensitive credentials are stored in `aigateway-demo/.env` which is not tracked by git
 - Never commit your `.env` file or share your keys and secrets
-- Use `.env.example` as a template for setting up credentials
+- Use `aigateway-demo/.env.example` as a template for setting up credentials
 
 ## Notes
 - **SSL/TLS Security**: The application supports both secure and insecure connections via the `USETLS` setting in `config.yaml`
