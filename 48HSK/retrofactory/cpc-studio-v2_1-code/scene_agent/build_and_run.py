@@ -69,6 +69,13 @@ def _scaffold(run_dir: Path) -> None:
             src,
             flags=_re.MULTILINE,
         )
+        cpct_path = str(_CPCTELERA_ROOT.resolve())
+        patched = _re.sub(
+            r"^(CPCT_PATH\s*:=\s*).*",
+            rf"\1{cpct_path}",
+            patched,
+            flags=_re.MULTILINE,
+        )
         cfg_mk.write_text(patched, encoding="utf-8")
 
 
