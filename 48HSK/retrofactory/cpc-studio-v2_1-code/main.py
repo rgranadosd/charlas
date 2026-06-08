@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import uuid
 from pathlib import Path
 
 import uvicorn
@@ -30,6 +31,18 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    project: str
+    message: str
+    run_dir: str | None = None
+    dsk_file: str | None = None
+
+
+_jobs: dict[str, dict[str, str | None]] = {}
 
 
 _CHAT_INTENT_PATTERNS = [
@@ -77,6 +90,56 @@ def _chat_only_response() -> str:
     )
 
 
+async def _run_pipeline_job(job_id: str, prompt: str, project_name: str) -> None:
+    settings = AppSettings()
+    _jobs[job_id] = {
+        "status": "running",
+        "project": project_name,
+        "message": "Procesando pipeline de generación...",
+        "run_dir": None,
+        "dsk_file": None,
+    }
+
+    try:
+        run_dir, compile_ok = await asyncio.to_thread(
+            run_pipeline,
+            prompt,
+            project_name,
+            settings,
+            True,   # no_emu — no emulator available in the container
+            False,  # dry_run
+        )
+
+        run_dir_path = Path(run_dir)
+        dsk_files = list(run_dir_path.glob("*.dsk"))
+        dsk_name = dsk_files[0].name if dsk_files else None
+
+        if compile_ok:
+            _jobs[job_id] = {
+                "status": "succeeded",
+                "project": project_name,
+                "message": "Juego generado correctamente.",
+                "run_dir": run_dir_path.name,
+                "dsk_file": dsk_name,
+            }
+        else:
+            _jobs[job_id] = {
+                "status": "failed",
+                "project": project_name,
+                "message": "El pipeline terminó pero la compilación no fue exitosa.",
+                "run_dir": run_dir_path.name,
+                "dsk_file": dsk_name,
+            }
+    except Exception as exc:
+        _jobs[job_id] = {
+            "status": "failed",
+            "project": project_name,
+            "message": f"Error ejecutando pipeline: {exc}",
+            "run_dir": None,
+            "dsk_file": None,
+        }
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -87,39 +150,40 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if not _should_run_pipeline(req.message):
         return ChatResponse(response=_chat_only_response())
 
-    settings = AppSettings()
     project_name = _project_name(req.session_id)
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {
+        "status": "queued",
+        "project": project_name,
+        "message": "Trabajo en cola.",
+        "run_dir": None,
+        "dsk_file": None,
+    }
+    asyncio.create_task(_run_pipeline_job(job_id, req.message, project_name))
 
-    try:
-        run_dir, compile_ok = await asyncio.to_thread(
-            run_pipeline,
-            req.message,
-            project_name,
-            settings,
-            True,   # no_emu — no emulator available in the container
-            False,  # dry_run
+    return ChatResponse(
+        response=(
+            f"He iniciado la generación en segundo plano. "
+            f"job_id={job_id}. "
+            f"Consulta el estado en GET /jobs/{job_id}."
         )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    )
 
-    run_dir_path = Path(run_dir)
-    if compile_ok:
-        dsk_files = list(run_dir_path.glob("*.dsk"))
-        dsk_name = dsk_files[0].name if dsk_files else "sin .dsk"
-        response = (
-            f"Juego generado correctamente.\n"
-            f"Proyecto: {project_name}\n"
-            f"Directorio de salida: {run_dir_path.name}\n"
-            f"Archivo DSK: {dsk_name}"
-        )
-    else:
-        response = (
-            f"El pipeline se ejecutó pero la compilación no fue exitosa.\n"
-            f"Proyecto: {project_name}\n"
-            f"Revisa los logs del agente para más detalles."
-        )
 
-    return ChatResponse(response=response)
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def job_status(job_id: str) -> JobStatusResponse:
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job_id no encontrado")
+
+    return JobStatusResponse(
+        job_id=job_id,
+        status=str(job.get("status") or "unknown"),
+        project=str(job.get("project") or "unknown"),
+        message=str(job.get("message") or ""),
+        run_dir=job.get("run_dir"),
+        dsk_file=job.get("dsk_file"),
+    )
 
 
 if __name__ == "__main__":
