@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from oauth_session import OAuthCallbackHandler, OAuthClient
+from oauth2_apim import get_gateway_access_token
 from request_identity import CallerIdentity, use_caller_identity
 
 
@@ -27,6 +28,14 @@ class AuthContextTests(unittest.TestCase):
         self.assertEqual(OAuthCallbackHandler.scopes, "openid offline_access")
         self.assertEqual(OAuthCallbackHandler.user_permissions, {"View Products"})
         check_permissions.assert_called_once_with("user-1")
+
+    def test_gateway_access_token_prefers_request_scoped_identity(self) -> None:
+        with use_caller_identity(CallerIdentity(access_token="caller-token", user_id="user-1")):
+            self.assertEqual(get_gateway_access_token(), "caller-token")
+
+    def test_gateway_access_token_uses_cached_end_user_token(self) -> None:
+        with patch("oauth2_apim.Path.read_text", return_value='{"access_token": "cached-user-token", "expires_at": 9999999999}'):
+            self.assertEqual(get_gateway_access_token(), "cached-user-token")
 
 
 if __name__ == "__main__":

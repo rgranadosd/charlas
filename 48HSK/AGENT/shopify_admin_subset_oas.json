@@ -152,7 +152,7 @@
     }
   },
   "paths": {
-    "/products": {
+    "/products.json": {
       "get": {
         "operationId": "listProducts",
         "summary": "List products",
@@ -193,7 +193,7 @@
         }
       }
     },
-    "/products/{product-id}": {
+    "/products.json/{product-id}.json": {
       "parameters": [
         {
           "name": "product-id",
@@ -297,7 +297,7 @@
         }
       }
     },
-    "/custom-collections": {
+    "/custom_collections.json": {
       "get": {
         "operationId": "listCustomCollections",
         "summary": "List custom collections",
@@ -385,7 +385,7 @@
         }
       }
     },
-    "/collects": {
+    "/collects.json": {
       "get": {
         "operationId": "listCollects",
         "summary": "List collects",
@@ -489,7 +489,7 @@
         }
       }
     },
-    "/collects/{collect-id}": {
+    "/collects.json/{collect-id}": {
       "delete": {
         "operationId": "deleteCollect",
         "summary": "Remove product from collection",

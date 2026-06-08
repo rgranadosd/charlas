@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import uuid
 from typing import Any, Dict, Literal, Optional
@@ -155,6 +157,81 @@ def _extract_service_access_token() -> Optional[str]:
     return token or None
 
 
+def _decode_jwt_payload(token: str) -> Dict[str, Any]:
+    """Decode JWT payload without signature verification for identity hints only."""
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return {}
+        payload_segment = parts[1]
+        payload_segment += "=" * (-len(payload_segment) % 4)
+        decoded = base64.urlsafe_b64decode(payload_segment.encode("utf-8"))
+        payload = json.loads(decoded.decode("utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _resolve_user_id_from_token(access_token: Optional[str]) -> Optional[str]:
+    if not access_token:
+        return None
+    payload = _decode_jwt_payload(access_token)
+    # Prefer human-readable login-style claims and keep `sub` as last fallback.
+    for key in (
+        "preferred_username",
+        "username",
+        "http://wso2.org/claims/username",
+        "upn",
+        "email",
+        "name",
+        "sub",
+    ):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _normalize_user_id(user_id: Optional[str]) -> Optional[str]:
+    if not user_id or not isinstance(user_id, str):
+        return None
+    value = user_id.strip()
+    if not value:
+        return None
+
+    # Common WSO2 format: user@carbon.super -> user
+    if "@" in value:
+        local, _, domain = value.partition("@")
+        if local and domain.lower() in {"carbon.super"}:
+            return local
+    return value
+
+
+def _set_trace_identity_attributes(user_id: Optional[str], auth_source: Optional[str]) -> None:
+    """Attach caller identity hints to the active trace span when available."""
+    if not user_id and not auth_source:
+        return
+    try:
+        from opentelemetry import trace
+    except Exception:
+        return
+
+    span = trace.get_current_span()
+    if span is None:
+        return
+
+    context = span.get_span_context()
+    if not context or not context.is_valid:
+        return
+
+    if user_id:
+        # Standard semantic key + compatibility key used by external monitors.
+        span.set_attribute("enduser.id", user_id)
+        span.set_attribute("identified_user_id", user_id)
+    if auth_source:
+        span.set_attribute("auth.source", auth_source)
+
+
 def _build_request_identity(payload: InvokeRequest, request: Request) -> CallerIdentity:
     mode = _service_auth_mode()
     caller_access_token = _extract_caller_access_token(request)
@@ -169,25 +246,29 @@ def _build_request_identity(payload: InvokeRequest, request: Request) -> CallerI
                 headers={"WWW-Authenticate": "Bearer"},
             )
         metadata.setdefault("auth_source", "service_token")
+        resolved_user_id = _normalize_user_id(os.getenv("WSO2_SERVICE_USER_ID"))
         return CallerIdentity(
             access_token=service_access_token,
-            user_id=payload.user_id or os.getenv("WSO2_SERVICE_USER_ID"),
+            user_id=resolved_user_id,
             metadata=metadata,
         )
 
     if caller_access_token:
         metadata.setdefault("auth_source", "caller_token")
+        # Strict mode: caller identity is derived from token claims only.
+        resolved_user_id = _normalize_user_id(_resolve_user_id_from_token(caller_access_token))
         return CallerIdentity(
             access_token=caller_access_token,
-            user_id=payload.user_id,
+            user_id=resolved_user_id,
             metadata=metadata,
         )
 
     if mode == "prefer-caller-token" and service_access_token:
         metadata.setdefault("auth_source", "service_token")
+        resolved_user_id = _normalize_user_id(os.getenv("WSO2_SERVICE_USER_ID"))
         return CallerIdentity(
             access_token=service_access_token,
-            user_id=payload.user_id or os.getenv("WSO2_SERVICE_USER_ID"),
+            user_id=resolved_user_id,
             metadata=metadata,
         )
 
@@ -252,6 +333,10 @@ async def ready() -> ReadyResponse:
 )
 async def invoke(payload: InvokeRequest, request: Request) -> InvokeResponse:
     caller_identity = _build_request_identity(payload, request)
+    auth_source = None
+    if caller_identity.metadata and isinstance(caller_identity.metadata, dict):
+        auth_source = caller_identity.metadata.get("auth_source")
+    _set_trace_identity_attributes(caller_identity.user_id, auth_source)
 
     try:
         with use_caller_identity(caller_identity):

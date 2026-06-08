@@ -105,7 +105,7 @@ components:
         collect:
           $ref: '#/components/schemas/Collect'
 paths:
-  /products:
+  /products.json:
     get:
       operationId: listProducts
       summary: List products
@@ -130,7 +130,7 @@ paths:
           description: Unauthorized (invalid Shopify token)
         '403':
           description: Forbidden
-  /products/{product-id}:
+  /products/{product-id}.json:
     parameters:
       - name: product-id
         in: path
@@ -155,7 +155,7 @@ paths:
           description: Unauthorized
         '404':
           description: Not found
-  /custom-collections:
+  /custom_collections.json:
     get:
       operationId: listCustomCollections
       summary: List custom collections
@@ -208,7 +208,7 @@ paths:
           description: Bad request
         '401':
           description: Unauthorized
-  /collects:
+  /collects.json:
     get:
       operationId: listCollects
       summary: List collects

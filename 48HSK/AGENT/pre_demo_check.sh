@@ -257,6 +257,10 @@ OPENAI_ENDPOINT="${WSO2_OPENAI_API_URL:-${OPENAI_BASE_URL:-https://localhost:825
 if [[ "$OPENAI_ENDPOINT" != */chat/completions ]]; then
   OPENAI_ENDPOINT="${OPENAI_ENDPOINT%/}/chat/completions"
 fi
+OPENAI_ENDPOINT_V3="${WSO2_OPENAI_API_URL_V3:-}"
+if [ -n "$OPENAI_ENDPOINT_V3" ] && [[ "$OPENAI_ENDPOINT_V3" != */chat/completions ]]; then
+  OPENAI_ENDPOINT_V3="${OPENAI_ENDPOINT_V3%/}/chat/completions"
+fi
 
 WEATHER_BASE_URL="${WSO2_WEATHER_MCP_URL:-https://localhost:8253/weather-mcp/1.0.0}"
 WEATHER_MCP_ENDPOINT="${WEATHER_BASE_URL%/}/mcp"
@@ -265,6 +269,8 @@ WEATHER_LOCAL_MCP_ENDPOINT="${WEATHER_LOCAL_BASE_URL%/}/mcp"
 
 SHOPIFY_STORE_URL="${SHOPIFY_STORE_URL:-}"
 SHOPIFY_TOKEN="${SHOPIFY_API_TOKEN:-${SHOPIFY_ACCESS_TOKEN:-}}"
+SHOPIFY_APIM_BASE="${WSO2_SHOPIFY_API_URL:-${WSO2_GW_URL:-https://localhost:8253}/shopify/1.0.0}"
+SHOPIFY_APIM_ENDPOINT="${SHOPIFY_APIM_BASE%/}/products.json?limit=1"
 
 WSO2_IS_BASE="${WSO2_IS_BASE:-}"
 if [ -z "$WSO2_IS_BASE" ]; then
@@ -279,9 +285,13 @@ printf "%b\n" "${ORANGE}=== PRE-DEMO CHECK ===${NC}"
 printf "%b\n" "${YELLOW}WSO2 IS base:${NC} $WSO2_IS_BASE"
 printf "%b\n" "${YELLOW}Token endpoint:${NC} ${WSO2_APIM_TOKEN_ENDPOINT:-NO CONFIGURADO}"
 printf "%b\n" "${YELLOW}OpenAI endpoint:${NC} $OPENAI_ENDPOINT"
+if [ -n "$OPENAI_ENDPOINT_V3" ]; then
+  printf "%b\n" "${YELLOW}OpenAI endpoint (fallback v3):${NC} $OPENAI_ENDPOINT_V3"
+fi
 printf "%b\n" "${YELLOW}Weather MCP endpoint:${NC} $WEATHER_MCP_ENDPOINT"
 printf "%b\n" "${YELLOW}Weather MCP local endpoint:${NC} $WEATHER_LOCAL_MCP_ENDPOINT"
 printf "%b\n" "${YELLOW}Shopify store:${NC} ${SHOPIFY_STORE_URL:-NO CONFIGURADO}"
+printf "%b\n" "${YELLOW}Shopify endpoint (via APIM):${NC} ${SHOPIFY_APIM_ENDPOINT}"
 
 required_vars=(
   WSO2_APIM_TOKEN_ENDPOINT
@@ -376,6 +386,17 @@ else
     -H 'Content-Type: application/json' \
     --data "$PAYLOAD" || true)
 
+  # Some environments still expose only /openai-v3. Retry there on 404.
+  if [ "$HTTP_CODE" = "404" ] && [ -n "$OPENAI_ENDPOINT_V3" ] && [ "$OPENAI_ENDPOINT_V3" != "$OPENAI_ENDPOINT" ]; then
+    HTTP_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_openai_response.json -w '%{http_code}' "$OPENAI_ENDPOINT_V3" \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -H 'Content-Type: application/json' \
+      --data "$PAYLOAD" || true)
+    if [[ "$HTTP_CODE" =~ ^(200|201|202)$ ]]; then
+      OPENAI_ENDPOINT="$OPENAI_ENDPOINT_V3"
+    fi
+  fi
+
   if [[ "$HTTP_CODE" =~ ^(200|201|202)$ ]]; then
     mark_ok "OpenAI por Gateway responde correctamente (HTTP $HTTP_CODE)"
   else
@@ -389,17 +410,20 @@ else
 fi
 
 printf "%b\n" "${ORANGE}--- Shopify ---${NC}"
-if [ -z "$SHOPIFY_STORE_URL" ] || [ -z "$SHOPIFY_TOKEN" ]; then
-  mark_fail "Falta SHOPIFY_STORE_URL o SHOPIFY_API_TOKEN/SHOPIFY_ACCESS_TOKEN en .env"
+if [ -z "$SHOPIFY_TOKEN" ]; then
+  mark_fail "Falta SHOPIFY_API_TOKEN/SHOPIFY_ACCESS_TOKEN en .env"
+elif [ -z "$ACCESS_TOKEN" ]; then
+  mark_fail "Shopify por APIM no validado porque no hay access_token de APIM"
 else
-  SHOPIFY_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_shopify_response.json -w '%{http_code}' "${SHOPIFY_STORE_URL%/}/admin/api/2024-01/shop.json" \
+  SHOPIFY_CODE=$(curl -sk --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /tmp/pre_demo_shopify_response.json -w '%{http_code}' "$SHOPIFY_APIM_ENDPOINT" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "X-Shopify-Access-Token: $SHOPIFY_TOKEN" \
     -H 'Content-Type: application/json' || true)
 
   if [ "$SHOPIFY_CODE" = "200" ]; then
-    mark_ok "Shopify API responde correctamente"
+    mark_ok "Shopify por APIM responde correctamente"
   else
-    mark_fail "Shopify devolvió HTTP ${SHOPIFY_CODE:-000}"
+    mark_fail "Shopify por APIM devolvió HTTP ${SHOPIFY_CODE:-000}"
     if [ -f /tmp/pre_demo_shopify_response.json ]; then
       printf "%b\n" "${YELLOW}Body Shopify:${NC}"
       cat /tmp/pre_demo_shopify_response.json
@@ -417,21 +441,21 @@ else
     mark_ok "Weather MCP responde correctamente"
   else
     printf "%b\n" "${YELLOW}Weather MCP falló al primer intento:${NC} $WEATHER_FAIL_MSG"
-    if [[ "$WEATHER_FAIL_MSG" == *"HTTP 000"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* ]] && check_local_weather_tool_call; then
+      if [[ "$WEATHER_FAIL_MSG" == *"HTTP 000"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* || "$WEATHER_FAIL_MSG" == *"HTTP 500"* || "$WEATHER_FAIL_MSG" == *"101503"* || "$WEATHER_FAIL_MSG" == *"303001"* || "$WEATHER_FAIL_MSG" == *"SUSPENDED"* ]] && check_local_weather_tool_call; then
       mark_ok "Weather MCP local responde correctamente (fallback por conectividad/ruta APIM)"
     elif start_weather_mcp; then
       printf "%b\n" "${YELLOW}Reintentando check de Weather MCP tras autoarranque...${NC}"
       if check_weather_mcp_with_token; then
         mark_ok "Weather MCP responde correctamente (tras autoarranque)"
       else
-        if [[ "$WEATHER_FAIL_MSG" == *"900900"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* || "$WEATHER_FAIL_MSG" == *"HTTP 000"* ]] && check_local_weather_tool_call; then
+          if [[ "$WEATHER_FAIL_MSG" == *"900900"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* || "$WEATHER_FAIL_MSG" == *"HTTP 000"* || "$WEATHER_FAIL_MSG" == *"HTTP 500"* || "$WEATHER_FAIL_MSG" == *"101503"* || "$WEATHER_FAIL_MSG" == *"303001"* || "$WEATHER_FAIL_MSG" == *"SUSPENDED"* ]] && check_local_weather_tool_call; then
           mark_ok "Weather MCP local responde correctamente (fallback por APIM)"
         else
           mark_fail "$WEATHER_FAIL_MSG"
         fi
       fi
     else
-      if [[ "$WEATHER_FAIL_MSG" == *"900900"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* || "$WEATHER_FAIL_MSG" == *"HTTP 000"* ]] && check_local_weather_tool_call; then
+        if [[ "$WEATHER_FAIL_MSG" == *"900900"* || "$WEATHER_FAIL_MSG" == *"HTTP 404"* || "$WEATHER_FAIL_MSG" == *"HTTP 000"* || "$WEATHER_FAIL_MSG" == *"HTTP 500"* || "$WEATHER_FAIL_MSG" == *"101503"* || "$WEATHER_FAIL_MSG" == *"303001"* || "$WEATHER_FAIL_MSG" == *"SUSPENDED"* ]] && check_local_weather_tool_call; then
         mark_ok "Weather MCP local responde correctamente (fallback por APIM)"
       else
         mark_fail "$WEATHER_FAIL_MSG (y no se pudo arrancar automáticamente)"
