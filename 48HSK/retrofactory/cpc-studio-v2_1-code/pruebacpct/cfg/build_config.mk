@@ -48,7 +48,7 @@ CPCT_PATH:=/Users/rafagranados/develop/charlas/48HSK/retrofactory/cpc-studio-v2_
 
 # Name of the project (without spaces, as it will be used as filename)
 #   and Z80 memory location where code will start in the generated binary
-PROJNAME   := pruebacpct
+PROJNAME := scene
 Z80CODELOC := 0x4000
 
 ##

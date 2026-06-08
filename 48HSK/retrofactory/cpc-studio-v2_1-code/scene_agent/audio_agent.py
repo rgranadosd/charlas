@@ -179,8 +179,35 @@ def run_audio_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
         "rag_context":     rag_context,
     }
 
+    usage_data: dict[str, int] = {}
+
     try:
-        raw = chain.invoke(invoke_input)
+        try:
+            from langchain_core.callbacks.base import BaseCallbackHandler
+
+            class _UsageCapture(BaseCallbackHandler):
+                def __init__(self):
+                    self.usage: dict[str, int] = {}
+                def on_llm_end(self, response, **kwargs):
+                    try:
+                        for gen_list in response.generations:
+                            for gen in gen_list:
+                                meta = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
+                                if meta:
+                                    self.usage = {
+                                        "input_tokens": int(meta.get("input_tokens") or 0),
+                                        "output_tokens": int(meta.get("output_tokens") or 0),
+                                        "total_tokens": int(meta.get("total_tokens") or 0),
+                                    }
+                    except Exception:
+                        pass
+
+            cb = _UsageCapture()
+            raw = chain.invoke(invoke_input, config={"callbacks": [cb]})
+            if cb.usage:
+                usage_data = cb.usage
+        except Exception:
+            raw = chain.invoke(invoke_input)
         normalized = _normalize_development_output(raw, task.task_id)
         output = DevelopmentOutput.model_validate(normalized)
     except Exception as exc:
@@ -192,6 +219,13 @@ def run_audio_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
             files_to_write=[],
             risks=[str(exc)],
         )
+
+    if usage_data:
+        output = output.model_copy(update={
+            "input_tokens": usage_data.get("input_tokens"),
+            "output_tokens": usage_data.get("output_tokens"),
+            "total_tokens": usage_data.get("total_tokens"),
+        })
 
     status_col = _G if output.status == "done" else _Y
     print(f"\n{status_col}{_W}  [3/3] [{label}]  [{task.task_id}] → {output.status}{_RS}")

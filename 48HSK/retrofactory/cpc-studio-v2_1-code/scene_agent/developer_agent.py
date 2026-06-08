@@ -432,6 +432,37 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
         "rag_context":     rag_context,
     }
 
+    def _invoke_with_usage(_chain, _input) -> tuple[dict[str, Any], dict[str, int]]:
+        """Invoke a LangChain chain and collect token usage via AIMessage.usage_metadata."""
+        usage: dict[str, int] = {}
+        try:
+            from langchain_core.callbacks.base import BaseCallbackHandler
+
+            class _UsageCapture(BaseCallbackHandler):
+                def __init__(self):
+                    self.usage: dict[str, int] = {}
+                def on_llm_end(self, response, **kwargs):
+                    try:
+                        for gen_list in response.generations:
+                            for gen in gen_list:
+                                meta = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
+                                if meta:
+                                    self.usage = {
+                                        "input_tokens": int(meta.get("input_tokens") or 0),
+                                        "output_tokens": int(meta.get("output_tokens") or 0),
+                                        "total_tokens": int(meta.get("total_tokens") or 0),
+                                    }
+                    except Exception:
+                        pass
+
+            cb = _UsageCapture()
+            raw = _chain.invoke(_input, config={"callbacks": [cb]})
+            if cb.usage:
+                usage = cb.usage
+            return raw, usage
+        except Exception:
+            return _chain.invoke(_input), usage
+
     def _validate_for_task(raw: dict[str, Any]) -> DevelopmentOutput:
         normalized = _normalize_development_output(raw, task.task_id)
         return DevelopmentOutput.model_validate(normalized)
@@ -439,6 +470,7 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
     # Primary LLM call with 429-retry before activating fallback chain
     _RETRY_DELAYS = _env_retry_delays(env, "NVIDIA_WORKER_RETRY_DELAYS", [5, 10])
     output = None
+    usage_data: dict[str, int] = {}
     last_exc: Exception | None = None
     last_exc_diag = ""
     for _attempt, _delay in enumerate([0] + _RETRY_DELAYS):
@@ -446,7 +478,8 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
             print(f"{_Y}  ↺  [{model_label}]  429 rate-limit — esperando {_delay}s …{_RS}")
             _time.sleep(_delay)
         try:
-            output = _validate_for_task(chain.invoke(invoke_input))
+            raw_out, usage_data = _invoke_with_usage(chain, invoke_input)
+            output = _validate_for_task(raw_out)
             break
         except Exception as exc:
             last_exc = exc
@@ -521,7 +554,7 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
                         print(f"{_Y}  ↺  [{nvidia_label}]  429 — esperando {_dly}s …{_RS}")
                         _time.sleep(_dly)
                     try:
-                        raw_nv = (_prompt_json | nvidia_llm | _StrOut()).invoke(lean_input)
+                        raw_nv, usage_data = _invoke_with_usage((_prompt_json | nvidia_llm | _StrOut()), lean_input)
                         output = _validate_for_task(_parse_output(raw_nv))
                         model_label = nvidia_label
                         break
@@ -558,6 +591,13 @@ def run_task(task: DevelopmentInput, settings) -> DevelopmentOutput:
                     *([_shorten_diag(diag_text, 1400)] if diag_text else []),
                 ],
             )
+
+    if usage_data:
+        output = output.model_copy(update={
+            "input_tokens": usage_data.get("input_tokens"),
+            "output_tokens": usage_data.get("output_tokens"),
+            "total_tokens": usage_data.get("total_tokens"),
+        })
 
     # 3. Resultado
     status_col = _G if output.status == "done" else (_Y if output.status == "needs_clarification" else "\033[31m")

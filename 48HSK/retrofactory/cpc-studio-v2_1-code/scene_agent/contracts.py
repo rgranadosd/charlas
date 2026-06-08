@@ -191,6 +191,9 @@ class DevelopmentOutput(BaseModel):
     notes: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     follow_up_questions: list[str] = Field(default_factory=list)
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
     @field_validator("files_to_write", mode="before")
     @classmethod

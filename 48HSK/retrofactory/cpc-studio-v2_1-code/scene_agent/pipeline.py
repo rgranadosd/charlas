@@ -43,10 +43,17 @@ from .orchestrator_agent import orchestrate
 # ---------------------------------------------------------------------------
 
 def _http_run(url: str, dev_input: DevelopmentInput, timeout: int = 300) -> DevelopmentOutput:
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    # Propagate W3C trace context so sub-agent spans appear as children of the current span
+    try:
+        from opentelemetry.propagate import inject as _otel_inject
+        _otel_inject(headers)
+    except Exception:
+        pass
     resp = httpx.post(
         f"{url.rstrip('/')}/run",
         content=dev_input.model_dump_json(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         timeout=timeout,
     )
     resp.raise_for_status()

@@ -18,6 +18,13 @@ from pathlib import Path
 from threading import Lock
 from time import time
 
+try:
+    from opentelemetry import trace, context as otel_context
+    from opentelemetry.propagate import inject as otel_inject
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -37,6 +44,9 @@ class ChatResponse(BaseModel):
     response: str
     job_id: str | None = None
     status: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 class JobStatusResponse(BaseModel):
@@ -128,7 +138,91 @@ def _chat_only_response() -> str:
     )
 
 
-def _run_pipeline_job(job_id: str, message: str, project_name: str) -> None:
+_PM_CHAT_SYSTEM_PROMPT = (
+    "Eres CPC-PM, Product Manager de juegos retro para Amstrad CPC en CPCtelera. "
+    "Respondes siempre en el mismo idioma del usuario, de forma breve y útil. "
+    "Tu rol: ayudar a definir el juego (mecánicas, escenas, HUD, assets) y, "
+    "cuando el usuario lo pida, lanzar el pipeline de generación. "
+    "No inventes herramientas ni APIs; no afirmes haber generado código si no se ha lanzado el pipeline."
+)
+
+
+def _llm_chat_response(message: str) -> tuple[str, dict[str, int]]:
+    """Invoke the worker LLM for a PM chat reply and capture token usage.
+
+    Returns (text, usage_dict). Falls back to the canned response on any failure.
+    """
+    try:
+        from langchain_core.callbacks.base import BaseCallbackHandler
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from scene_agent.developer_agent import _build_worker_llm, _read_env
+
+        env = _read_env()
+        llm, _label = _build_worker_llm(env)
+
+        class _UsageCapture(BaseCallbackHandler):
+            def __init__(self):
+                self.usage: dict[str, int] = {}
+
+            def on_llm_end(self, response, **kwargs):
+                try:
+                    for gen_list in response.generations:
+                        for gen in gen_list:
+                            meta = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
+                            if meta:
+                                self.usage = {
+                                    "input_tokens": int(meta.get("input_tokens") or 0),
+                                    "output_tokens": int(meta.get("output_tokens") or 0),
+                                    "total_tokens": int(meta.get("total_tokens") or 0),
+                                }
+                except Exception:
+                    pass
+
+        cb = _UsageCapture()
+        result = llm.invoke(
+            [SystemMessage(content=_PM_CHAT_SYSTEM_PROMPT), HumanMessage(content=message)],
+            config={"callbacks": [cb]},
+        )
+        text = getattr(result, "content", None) or _chat_only_response()
+        if isinstance(text, list):  # some providers may return content parts
+            text = "".join(str(part) for part in text)
+        return str(text), cb.usage
+    except Exception:
+        return _chat_only_response(), {}
+
+
+def _run_pipeline_job(job_id: str, message: str, project_name: str, trace_ctx: object | None = None) -> None:
+    # Restore OTEL context from the HTTP handler so this thread is linked to the parent trace
+    if _OTEL_AVAILABLE and trace_ctx is not None:
+        token = otel_context.attach(trace_ctx)
+    else:
+        token = None
+
+    tracer = trace.get_tracer("amp.cpc-pm.pipeline") if _OTEL_AVAILABLE else None
+    span_cm = tracer.start_as_current_span(
+        "pipeline",
+        attributes={
+            "gen_ai.operation.name": "pipeline",
+            "gen_ai.agent.name": "cpc-pm",
+            "gen_ai.project": project_name,
+            "gen_ai.job_id": job_id,
+        },
+    ) if tracer else _null_context()
+
+    with span_cm:
+        _run_pipeline_job_inner(job_id, message, project_name)
+
+    if _OTEL_AVAILABLE and token is not None:
+        otel_context.detach(token)
+
+
+class _null_context:
+    """Fallback context manager when OTEL is not available."""
+    def __enter__(self): return self
+    def __exit__(self, *_): pass
+
+
+def _run_pipeline_job_inner(job_id: str, message: str, project_name: str) -> None:
     settings = AppSettings()
     with _PIPELINE_JOBS_LOCK:
         job = _PIPELINE_JOBS.get(job_id, {})
@@ -198,7 +292,14 @@ async def health() -> dict:
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     if not _should_run_pipeline(req.message):
-        return ChatResponse(response=_chat_only_response(), status="completed")
+        text, usage = await asyncio.to_thread(_llm_chat_response, req.message)
+        return ChatResponse(
+            response=text,
+            status="completed",
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            total_tokens=usage.get("total_tokens"),
+        )
 
     job_id = uuid.uuid4().hex
     project_name = _project_name(req.session_id)
@@ -215,8 +316,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
         }
         _save_jobs_to_disk()
 
+    # Capture current OTEL context so the background thread can link its spans
+    ctx = otel_context.get_current() if _OTEL_AVAILABLE else None
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_pipeline_job, job_id, req.message, project_name)
+    loop.run_in_executor(None, _run_pipeline_job, job_id, req.message, project_name, ctx)
 
     return ChatResponse(
         response=(
