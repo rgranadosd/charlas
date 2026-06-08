@@ -187,6 +187,36 @@ class ShopifyPlugin:
     
     def __init__(self):
         self.price_memory = PriceMemory()  # Sistema de memoria de precios
+        # Configuración de SSL: permite usar un CA bundle personalizado o desactivar verificación
+        self._verify_ssl = self._resolve_ssl_verify()
+
+    def _resolve_ssl_verify(self):
+        """Determina cómo verificar SSL en requests según variables de entorno.
+
+        Variables soportadas:
+        - WSO2_CA_CERT: ruta a un fichero PEM con el certificado/CA a confiar.
+        - WSO2_VERIFY_SSL: "true"/"false" (por defecto: true si hay CA, sino False para desarrollo).
+        """
+        ca_bundle_path = os.getenv("WSO2_CA_CERT")
+        verify_env = os.getenv("WSO2_VERIFY_SSL")
+
+        # Si se proporciona un CA bundle válido, úsalo
+        if ca_bundle_path and os.path.isfile(ca_bundle_path):
+            if DEBUG_MODE:
+                print(Colors.blue(f"Usando CA bundle para SSL: {ca_bundle_path}"))
+            return ca_bundle_path
+
+        # Si no hay CA bundle, respeta bandera explícita
+        if verify_env is not None:
+            verify_flag = str(verify_env).strip().lower() in ["1", "true", "yes", "y"]
+            if DEBUG_MODE:
+                print(Colors.yellow(f"WSO2_VERIFY_SSL={verify_env} -> verify={verify_flag}"))
+            return verify_flag
+
+        # Comportamiento por defecto en desarrollo: no verificar (evita errores con self-signed)
+        if DEBUG_MODE:
+            print(Colors.yellow("SSL verify desactivado por defecto (dev). Configure WSO2_CA_CERT o WSO2_VERIFY_SSL=true para habilitarlo"))
+        return False
     
     def _get_wso2_access_token(self) -> str or None:
         """Obtiene un token de acceso de WSO2."""
@@ -206,7 +236,7 @@ class ShopifyPlugin:
         payload = "grant_type=client_credentials"
         
         try:
-            response = requests.post(token_endpoint, headers=headers, data=payload, verify=False)
+            response = requests.post(token_endpoint, headers=headers, data=payload, verify=self._verify_ssl)
             if response.status_code == 200:
                 if DEBUG_MODE:
                     print(f"   {Colors.green('OK')} Token de acceso de WSO2 obtenido.")
@@ -243,10 +273,10 @@ class ShopifyPlugin:
         # Paso 3: Realizar la petición
         try:
             if method.upper() == 'GET':
-                response = requests.get(full_url, headers=headers, verify=False)
+                response = requests.get(full_url, headers=headers, verify=self._verify_ssl)
             elif method.upper() == 'PUT':
                  headers["Content-Type"] = "application/json"
-                 response = requests.put(full_url, headers=headers, json=payload, verify=False)
+                 response = requests.put(full_url, headers=headers, json=payload, verify=self._verify_ssl)
             else:
                 return {"error": f"Método {method} no implementado."}
             

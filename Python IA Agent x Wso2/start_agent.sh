@@ -94,11 +94,17 @@ echo ""
 
 # Ejecutar el agente
 echo -e "${GREEN}Starting agent...${NC}"
+
+# Verificar si se pasó el parámetro --debug
+if [[ "$*" == *"--debug"* ]]; then
+    echo -e "${YELLOW}Debug mode enabled${NC}"
+fi
+
 echo -e "${YELLOW}Press Ctrl+C to stop the agent${NC}"
 echo ""
 
-# Ejecutar el script Python
-python3 agent_gpt4.py
+# Ejecutar el script Python con todos los parámetros recibidos
+python3 agent_gpt4.py "$@"
 
 # Si llegamos aquí, el script terminó
 echo -e "${BLUE}============================================${NC}"
