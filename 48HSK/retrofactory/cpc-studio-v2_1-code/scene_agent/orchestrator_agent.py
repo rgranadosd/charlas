@@ -61,13 +61,14 @@ _HUMAN  = _load_prompt("orchestrator_human_prompt.md")
 
 
 def _read_env() -> dict[str, str]:
-    env: dict[str, str] = {}
+    import os
+    env: dict[str, str] = dict(os.environ)
     if _REPO_ROOT_ENV.exists():
         for line in _REPO_ROOT_ENV.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and "=" in line and not line.startswith("#"):
                 k, _, v = line.partition("=")
-                env[k.strip()] = v.strip()
+                env.setdefault(k.strip(), v.strip())
     return env
 
 
