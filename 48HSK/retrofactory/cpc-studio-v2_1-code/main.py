@@ -32,10 +32,49 @@ class ChatResponse(BaseModel):
     response: str
 
 
+_CHAT_INTENT_PATTERNS = [
+    r"\bquien\s+eres\b",
+    r"\bqui[eé]n\s+eres\b",
+    r"\bwhat\s+are\s+you\b",
+    r"\bwho\s+are\s+you\b",
+    r"\bhello\b",
+    r"\bhi\b",
+    r"\bhola\b",
+    r"\bhelp\b",
+    r"\bayuda\b",
+]
+
+_GAME_INTENT_PATTERNS = [
+    r"\b(game|juego)\b",
+    r"\b(build|crear|create|genera|generate)\b",
+    r"\b(level|nivel|sprite|hud|score|lives|paddle|ball)\b",
+    r"\b(cpc|cpctelera|amstrad|dsk)\b",
+]
+
+
 def _project_name(session_id: str) -> str:
     """Derive a filesystem-safe project name from the session ID."""
     slug = re.sub(r"[^a-z0-9]", "_", session_id[:24].lower()).strip("_")
     return slug or "game"
+
+
+def _should_run_pipeline(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    if any(re.search(p, text) for p in _CHAT_INTENT_PATTERNS):
+        return any(re.search(p, text) for p in _GAME_INTENT_PATTERNS)
+
+    return True
+
+
+def _chat_only_response() -> str:
+    return (
+        "Soy CPC-PM, el Product Manager de juegos para Amstrad CPC. "
+        "Puedo ayudarte a definir y generar un juego (escenas, HUD, reglas, assets y build). "
+        "Si quieres que empiece a construir, dime el juego que quieres crear."
+    )
 
 
 @app.get("/health")
@@ -45,6 +84,9 @@ async def health() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
+    if not _should_run_pipeline(req.message):
+        return ChatResponse(response=_chat_only_response())
+
     settings = AppSettings()
     project_name = _project_name(req.session_id)
 
