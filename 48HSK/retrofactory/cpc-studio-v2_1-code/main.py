@@ -10,10 +10,13 @@ The pipeline runs synchronously in a thread to avoid blocking the event loop.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import re
 import uuid
 from pathlib import Path
 from threading import Lock
+from time import time
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -43,6 +46,18 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
 
 
+class JobSummary(BaseModel):
+    job_id: str
+    session_id: str | None = None
+    status: str
+    created_at: float | None = None
+    updated_at: float | None = None
+
+
+class JobListResponse(BaseModel):
+    jobs: list[JobSummary]
+
+
 _CHAT_INTENT_PATTERNS = [
     r"\bquien\s+eres\b",
     r"\bqui[eé]n\s+eres\b",
@@ -65,6 +80,27 @@ _GAME_INTENT_PATTERNS = [
 
 _PIPELINE_JOBS: dict[str, dict[str, str | None]] = {}
 _PIPELINE_JOBS_LOCK = Lock()
+_JOBS_FILE = os.getenv("CPC_PM_JOBS_FILE", "/tmp/cpc_pm_jobs.json")
+
+
+def _save_jobs_to_disk() -> None:
+    tmp_path = f"{_JOBS_FILE}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(_PIPELINE_JOBS, f, ensure_ascii=False)
+    os.replace(tmp_path, _JOBS_FILE)
+
+
+def _load_jobs_from_disk() -> None:
+    if not os.path.exists(_JOBS_FILE):
+        return
+    try:
+        with open(_JOBS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                _PIPELINE_JOBS.update(data)
+    except Exception:
+        # Keep startup resilient even if jobs file is corrupt.
+        return
 
 
 def _project_name(session_id: str) -> str:
@@ -95,11 +131,13 @@ def _chat_only_response() -> str:
 def _run_pipeline_job(job_id: str, message: str, project_name: str) -> None:
     settings = AppSettings()
     with _PIPELINE_JOBS_LOCK:
-        _PIPELINE_JOBS[job_id] = {
-            "status": "running",
-            "response": None,
-            "error": None,
-        }
+        job = _PIPELINE_JOBS.get(job_id, {})
+        job["status"] = "running"
+        job["response"] = None
+        job["error"] = None
+        job["updated_at"] = time()
+        _PIPELINE_JOBS[job_id] = job
+        _save_jobs_to_disk()
 
     try:
         run_dir, compile_ok = run_pipeline(
@@ -128,18 +166,28 @@ def _run_pipeline_job(job_id: str, message: str, project_name: str) -> None:
             )
 
         with _PIPELINE_JOBS_LOCK:
-            _PIPELINE_JOBS[job_id] = {
-                "status": "completed",
-                "response": response,
-                "error": None,
-            }
+            job = _PIPELINE_JOBS.get(job_id, {})
+            job["status"] = "completed"
+            job["response"] = response
+            job["error"] = None
+            job["updated_at"] = time()
+            _PIPELINE_JOBS[job_id] = job
+            _save_jobs_to_disk()
     except Exception as exc:
         with _PIPELINE_JOBS_LOCK:
-            _PIPELINE_JOBS[job_id] = {
-                "status": "failed",
-                "response": None,
-                "error": str(exc),
-            }
+            job = _PIPELINE_JOBS.get(job_id, {})
+            job["status"] = "failed"
+            job["response"] = None
+            job["error"] = str(exc)
+            job["updated_at"] = time()
+            _PIPELINE_JOBS[job_id] = job
+            _save_jobs_to_disk()
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    with _PIPELINE_JOBS_LOCK:
+        _load_jobs_from_disk()
 
 
 @app.get("/health")
@@ -154,6 +202,18 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
     job_id = uuid.uuid4().hex
     project_name = _project_name(req.session_id)
+
+    with _PIPELINE_JOBS_LOCK:
+        _PIPELINE_JOBS[job_id] = {
+            "status": "accepted",
+            "response": None,
+            "error": None,
+            "session_id": req.session_id,
+            "project_name": project_name,
+            "created_at": time(),
+            "updated_at": time(),
+        }
+        _save_jobs_to_disk()
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _run_pipeline_job, job_id, req.message, project_name)
@@ -182,6 +242,35 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         response=job.get("response"),
         error=job.get("error"),
     )
+
+
+@app.get("/jobs", response_model=JobListResponse)
+async def list_jobs(session_id: str | None = None, limit: int = 20) -> JobListResponse:
+    if limit < 1:
+        limit = 1
+    if limit > 200:
+        limit = 200
+
+    with _PIPELINE_JOBS_LOCK:
+        items = list(_PIPELINE_JOBS.items())
+
+    summaries: list[JobSummary] = []
+    for job_id, job in items:
+        sid = job.get("session_id")
+        if session_id and sid != session_id:
+            continue
+        summaries.append(
+            JobSummary(
+                job_id=job_id,
+                session_id=str(sid) if sid is not None else None,
+                status=str(job.get("status") or "unknown"),
+                created_at=float(job.get("created_at")) if job.get("created_at") is not None else None,
+                updated_at=float(job.get("updated_at")) if job.get("updated_at") is not None else None,
+            )
+        )
+
+    summaries.sort(key=lambda j: j.updated_at or 0.0, reverse=True)
+    return JobListResponse(jobs=summaries[:limit])
 
 
 if __name__ == "__main__":
