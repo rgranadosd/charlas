@@ -35,6 +35,7 @@ from .contracts import DevelopmentInput, DevelopmentOutput, OrchestratorContract
 from .developer_agent import run_task, input_from_taskdef
 from .audio_agent import run_audio_task
 from .orchestrator_agent import orchestrate
+from .qa_agent import run_qa
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +72,19 @@ _RS  = "\033[0m"
 
 
 _MAX_FIX_ATTEMPTS = 3
+_MAX_QA_ROUNDS    = 2
+
+
+def _is_env_error(errors: str) -> bool:
+    """Detect toolchain/environment make failures that no C-code fix can solve.
+
+    E.g. the cpc-pm container image ships without the cpctelera subtree, so
+    `make` dies on global_paths.mk before ever compiling a line of C. Burning
+    fix-loop LLM calls on these is pointless.
+    """
+    if "No such file or directory" not in errors:
+        return False
+    return ".mk" in errors or "cpctelera" in errors
 
 
 def _shorten(text: str, limit: int = 1200) -> str:
@@ -378,14 +392,17 @@ def _topological_sort(tasks: list[TaskDef]) -> list[TaskDef]:
 # ---------------------------------------------------------------------------
 
 class _FixState(TypedDict):
-    run_dir:      Path
-    project_name: str
-    settings:     Any
-    current_code: dict[str, str]
-    compile_ok:   bool
-    errors:       str
-    guard_errors: list[str]
-    fix_attempt:  int
+    run_dir:       Path
+    project_name:  str
+    settings:      Any
+    current_code:  dict[str, str]
+    compile_ok:    bool
+    errors:        str
+    guard_errors:  list[str]
+    fix_attempt:   int
+    user_prompt:   str
+    qa_rounds:     int
+    qa_violations: list[str]
 
 
 def _compile_node(state: _FixState) -> _FixState:
@@ -401,17 +418,26 @@ def _compile_node(state: _FixState) -> _FixState:
 
 
 def _fix_node(state: _FixState) -> _FixState:
-    fix_attempt  = state["fix_attempt"] + 1
-    fix_id       = f"FIX_{fix_attempt:02d}"
-    current_code = dict(state["current_code"])
-    errors       = state["errors"]
-    guard_errors = state["guard_errors"]
+    fix_attempt   = state["fix_attempt"] + 1
+    fix_id        = f"FIX_{fix_attempt:02d}"
+    current_code  = dict(state["current_code"])
+    errors        = state["errors"]
+    guard_errors  = state["guard_errors"]
+    qa_violations = state.get("qa_violations") or []
+    # Environment errors (missing toolchain) are not fixable from C code —
+    # don't present them to the fix agent as if they were.
+    if errors and _is_env_error(errors):
+        errors = ""
 
     print(f"\n{_Y}{_W}  ── Corrección {fix_attempt}/{_MAX_FIX_ATTEMPTS} [{fix_id}] ──────────────────────────{_RS}")
     fix_input = DevelopmentInput(
         task_id=fix_id,
         project_name=state["project_name"],
-        goal="Corregir todos los errores de compilación en src/main.c",
+        goal=(
+            "Corregir todos los errores de compilación en src/main.c"
+            if errors else
+            "Corregir en src/main.c los requisitos del prompt incumplidos sin romper la compilación"
+        ),
         context=[
             f"ESTADO ACTUAL src/main.c (DEBES incluir todo y solo corregir los errores):\n"
             f"{current_code.get('src/main.c', '')}",
@@ -420,6 +446,13 @@ def _fix_node(state: _FixState) -> _FixState:
                 f"ERRORES SEMÁNTICOS (code guard — deben corregirse aunque compile):\n"
                 + "\n".join(guard_errors)
             ] if guard_errors else []),
+            *([
+                "REQUISITOS DEL PROMPT ORIGINAL INCUMPLIDOS (QA — corrígelos TODOS):\n"
+                + "\n".join(f"- {v}" for v in qa_violations)
+            ] if qa_violations else []),
+            *([
+                f"PROMPT ORIGINAL DEL USUARIO (fuente de verdad):\n{state['user_prompt']}"
+            ] if qa_violations and state.get("user_prompt") else []),
         ],
         acceptance_criteria=["make termina con rc=0 sin errores"],
         constraints=[
@@ -458,21 +491,51 @@ def _fix_node(state: _FixState) -> _FixState:
     return {**state, "fix_attempt": fix_attempt, "current_code": current_code}
 
 
+def _qa_node(state: _FixState) -> _FixState:
+    """Semantic QA: review the compiled code against the ORIGINAL user prompt."""
+    violations: list[str] = []
+    main_c = state["current_code"].get("src/main.c", "")
+    if main_c and state.get("user_prompt"):
+        violations = run_qa(state["user_prompt"], main_c, state["settings"])
+    return {**state, "qa_violations": violations, "qa_rounds": state["qa_rounds"] + 1}
+
+
+def _qa_possible(state: _FixState) -> bool:
+    return bool(
+        state.get("user_prompt")
+        and state["qa_rounds"] < _MAX_QA_ROUNDS
+        and state["fix_attempt"] < _MAX_FIX_ATTEMPTS
+    )
+
+
 def _route_after_compile(state: _FixState) -> str:
+    # Toolchain/environment failure: no C fix can help, but semantic QA still can.
+    if not state["compile_ok"] and _is_env_error(state["errors"]):
+        print(f"{_Y}  ⚠ error de entorno (toolchain ausente) — saltando fix de compilación{_RS}")
+        return "qa" if _qa_possible(state) else "end"
     if state["compile_ok"] and not state["guard_errors"]:
-        return "end"
+        return "qa" if _qa_possible(state) else "end"
     if state["fix_attempt"] >= _MAX_FIX_ATTEMPTS:
         print(f"{_R}  ✗ máximo de intentos de corrección alcanzado ({_MAX_FIX_ATTEMPTS}){_RS}")
         return "end"
     return "fix"
 
 
+def _route_after_qa(state: _FixState) -> str:
+    pending = state["qa_violations"] or state["guard_errors"]
+    if pending and state["fix_attempt"] < _MAX_FIX_ATTEMPTS:
+        return "fix"
+    return "end"
+
+
 def _build_fix_graph():
     g = StateGraph(_FixState)
     g.add_node("compile", _compile_node)
     g.add_node("fix", _fix_node)
+    g.add_node("qa", _qa_node)
     g.set_entry_point("compile")
-    g.add_conditional_edges("compile", _route_after_compile, {"end": END, "fix": "fix"})
+    g.add_conditional_edges("compile", _route_after_compile, {"end": END, "fix": "fix", "qa": "qa"})
+    g.add_conditional_edges("qa", _route_after_qa, {"end": END, "fix": "fix"})
     g.add_edge("fix", "compile")
     return g.compile()
 
@@ -485,17 +548,21 @@ def _run_fix_loop(
     project_name: str,
     settings:     Any,
     current_code: dict[str, str],
+    user_prompt:  str = "",
 ) -> tuple[bool, dict[str, str]]:
-    """Execute the compile→fix cycle via LangGraph. Returns (compile_ok, updated_code)."""
+    """Execute the compile→fix→QA cycle via LangGraph. Returns (compile_ok, updated_code)."""
     final = _fix_graph.invoke({
-        "run_dir":      run_dir,
-        "project_name": project_name,
-        "settings":     settings,
-        "current_code": current_code,
-        "compile_ok":   False,
-        "errors":       "",
-        "guard_errors": [],
-        "fix_attempt":  0,
+        "run_dir":       run_dir,
+        "project_name":  project_name,
+        "settings":      settings,
+        "current_code":  current_code,
+        "compile_ok":    False,
+        "errors":        "",
+        "guard_errors":  [],
+        "fix_attempt":   0,
+        "user_prompt":   user_prompt,
+        "qa_rounds":     0,
+        "qa_violations": [],
     })
     return final["compile_ok"], final["current_code"]
 
@@ -560,6 +627,16 @@ def run_pipeline(
             continue
 
         dev_input: DevelopmentInput = input_from_taskdef(task, project_name)
+        # The orchestrator's one-line summaries lose literal mandates ("EXACTLY
+        # this code", "draw ONCE in init") — every worker gets the full prompt.
+        if contract.user_prompt:
+            dev_input = dev_input.model_copy(update={
+                "context": [
+                    "PROMPT ORIGINAL DEL USUARIO (fuente de verdad — sus mandatos "
+                    "literales prevalecen sobre cualquier resumen de tarea):\n"
+                    + contract.user_prompt
+                ] + dev_input.context
+            })
         if current_code.get("src/main.c"):
             dev_input = dev_input.model_copy(update={
                 "context": dev_input.context + [
@@ -605,8 +682,11 @@ def run_pipeline(
         print(f"{_R}  ✗ ningún archivo generado — abortando compilación{_RS}")
         return run_dir, False
 
-    # 5. Compile + fix loop (LangGraph cycle) ──────────────────────────
-    compile_ok, current_code = _run_fix_loop(run_dir, project_name, settings, current_code)
+    # 5. Compile + fix + QA loop (LangGraph cycle) ─────────────────────
+    compile_ok, current_code = _run_fix_loop(
+        run_dir, project_name, settings, current_code,
+        user_prompt=contract.user_prompt or "",
+    )
 
     # 6. Emulator ───────────────────────────────────────────────────
     if compile_ok and not no_emu:

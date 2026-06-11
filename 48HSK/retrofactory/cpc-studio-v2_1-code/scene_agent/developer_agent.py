@@ -622,19 +622,20 @@ def input_from_taskdef(taskdef, project_name: str = "testproject") -> Developmen
         goal=taskdef.functional_instruction,
         context=list(taskdef.input_context),
         acceptance_criteria=list(taskdef.acceptance_checks),
+        # Universal platform constraints ONLY (C89/SDCC/CPCtelera/Mode 0).
+        # Game-specific rules (physics, entity behaviour) are the orchestrator's
+        # job via implementation_hint/input_context — it knows which game it is.
         constraints=[
             "C89/SDCC — declare ALL variables before any statement",
             "No stdio.h, stdlib.h, printf, puts",
             "CPCtelera API only — <cpctelera.h>",
-            "Colour bytes via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode 0xC0/0xCC/0x03/0x0F",
+            "Colour bytes via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour byte values",
             "Key constants: Key_Space Key_CursorLeft Key_CursorRight Key_Return — NEVER KEY_Space or CPCT_KEY_*",
             "cpct_getScreenPtr: x in BYTES 0-79, y in pixels 0-199",
             "Strings in Mode 0: each char = 4 bytes. Max chars from x: x=0→20 x=20→15 x=40→10 x=60→5",
-            "Ball y-movement: NEVER clamp ball_y at any maximum — no 'if (ball_y>=FLOOR_Y-BALL_H) ball_y=FLOOR_Y-BALL_H' and no 'if (ball_y>=200-BALL_H) ball_vy=-1'. Only the floor boundary check handles life loss.",
-            "ball_vx and ball_vy are GLOBAL i8 variables. NEVER redeclare them as local variables inside update_game() or any function — a local 'i8 ball_vx=1' shadows the global and resets direction every frame, breaking all bouncing.",
-            "Ceiling bounce: if (ball_vy < 0 && ball_y == 0) ball_vy = 1; — ONLY invert ball_vy, NEVER touch ball_vx.",
-            "ball_bottom MUST be declared without initializer (u8 ball_bottom;) and computed AFTER moving ball_y (ball_bottom = ball_y + BALL_H - 1). Never initialize it at the start of update_game — stale value causes wrong floor/paddle collision timing.",
-            "Audio API available via #include \"audio.h\" (already in src/): call audio_init() once in init_game(), audio_update() at end of main loop, audio_play_sfx(SFX_WALL_HIT/SFX_PADDLE_HIT/SFX_BRICK_HIT/SFX_LIFE_LOST/SFX_GAME_OVER) on events. Do NOT implement audio — just call the API.",
+            "Static scenery (grids, walls, mazes, HUD labels AND initial HUD values) is drawn ONCE in init_game(). The main loop only erases/redraws MOVING entities (erase/draw pattern) and HUD values when they change. NEVER redraw the full scene or a full grid every frame — it destroys the frame budget on a 4MHz Z80.",
+            "Game state variables shared between functions are GLOBAL — never shadow a global with a local of the same name inside update functions.",
+            "Audio API available via #include \"audio.h\" (already in src/): call audio_init() once in init_game(), audio_update() at end of main loop, audio_play_sfx(<SFX_* constants defined in audio.h>) on game events. Do NOT implement audio — just call the API.",
             getattr(taskdef, "implementation_hint", "") or "",
         ],
         target_files=["src/main.c"],
