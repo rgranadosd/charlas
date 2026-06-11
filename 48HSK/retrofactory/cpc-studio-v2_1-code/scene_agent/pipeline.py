@@ -307,7 +307,7 @@ class _DispatchState(TypedDict):
 
 
 def _route_task(state: _DispatchState) -> str:
-    return "audio" if getattr(state["task"], "agent_type", "") == "audio_c_agent" else "developer"
+    return "audio" if state["task"].subagent == "audio_c_agent" else "developer"
 
 
 def _developer_node(state: _DispatchState) -> dict:
@@ -336,7 +336,6 @@ def _build_dispatch_graph():
     g = StateGraph(_DispatchState)
     g.add_node("developer", _developer_node)
     g.add_node("audio",     _audio_node)
-    g.set_entry_point("developer")  # overridden by conditional below
     g.add_conditional_edges("__start__", _route_task, {"developer": "developer", "audio": "audio"})
     g.add_edge("developer", END)
     g.add_edge("audio", END)
