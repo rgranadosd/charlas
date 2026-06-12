@@ -72,7 +72,10 @@ _RS  = "\033[0m"
 
 
 _MAX_FIX_ATTEMPTS = 3
-_MAX_QA_ROUNDS    = 2
+# One QA round more than fix attempts: every fix gets RE-REVIEWED before the
+# loop can end. The loop never terminates on an unverified fix — it terminates
+# on a clean QA or on exhausted fix budget (with the residual violations logged).
+_MAX_QA_ROUNDS    = _MAX_FIX_ATTEMPTS + 1
 
 
 def _is_env_error(errors: str) -> bool:
@@ -456,6 +459,12 @@ def _fix_node(state: _FixState) -> _FixState:
         ],
         acceptance_criteria=["make termina con rc=0 sin errores"],
         constraints=[
+            "REGLA ANTI-REGRESIÓN: PROHIBIDO eliminar funcionalidad existente al corregir "
+            "(llamadas de dibujo, borrado, audio, lógica de juego). Si el problema es "
+            "DUPLICACIÓN, conserva exactamente UNA copia (la del lugar correcto según el "
+            "prompt) y elimina solo las redundantes. Cada elemento visible debe seguir "
+            "dibujándose en algún sitio y cada entidad móvil debe seguir borrando su "
+            "posición anterior.",
             "C89/SDCC — declara TODAS las variables antes de cualquier sentencia",
             "No stdio.h, stdlib.h, printf, puts",
             "Solo CPCtelera API — <cpctelera.h>",
@@ -535,11 +544,10 @@ def _qa_node(state: _FixState) -> _FixState:
 
 
 def _qa_possible(state: _FixState) -> bool:
-    return bool(
-        state.get("user_prompt")
-        and state["qa_rounds"] < _MAX_QA_ROUNDS
-        and state["fix_attempt"] < _MAX_FIX_ATTEMPTS
-    )
+    # Deliberately NOT gated on fix budget: even when no more fixes are
+    # possible, the final state must be QA-assessed so an unverified last fix
+    # never ships silently.
+    return bool(state.get("user_prompt") and state["qa_rounds"] < _MAX_QA_ROUNDS)
 
 
 def _route_after_compile(state: _FixState) -> str:
@@ -559,6 +567,9 @@ def _route_after_qa(state: _FixState) -> str:
     pending = state["qa_violations"] or state["guard_errors"]
     if pending and state["fix_attempt"] < _MAX_FIX_ATTEMPTS:
         return "fix"
+    if pending:
+        print(f"{_R}{_W}  ⚠ QA final: quedan {len(state['qa_violations'])} violación(es) "
+              f"sin presupuesto de corrección — revisa el resultado{_RS}")
     return "end"
 
 
