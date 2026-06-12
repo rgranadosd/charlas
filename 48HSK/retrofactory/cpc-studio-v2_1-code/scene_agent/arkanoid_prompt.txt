@@ -45,7 +45,8 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - When game_over becomes 1: stop updating the game and draw "GAME OVER" once, centered inside the play area (e.g. x=30, y=100). No start screen, no separate game-over screen, no level-complete screen or message.
 
 6. AUDIO:
-   - The audio API already exists in src/ via #include "audio.h" — do NOT implement it, just call it:
+   - The audio subsystem is implemented by the AUDIO SPECIALIST AGENT in src/audio.h + src/audio.c (AY-3-8912 beep backend, no external assets). It must expose: audio_init(), audio_update(), audio_play_sfx(u8 sfx_id) and exactly these SFX ids: SFX_WALL_HIT, SFX_PADDLE_HIT, SFX_BRICK_HIT, SFX_LIFE_LOST, SFX_GAME_OVER.
+   - The gameplay code (src/main.c) NEVER implements audio — it only includes "audio.h" and calls:
      audio_init() once in init_game(); audio_update() at the end of every main-loop iteration;
      audio_play_sfx(SFX_WALL_HIT) on wall/ceiling bounce, SFX_PADDLE_HIT on paddle bounce, SFX_BRICK_HIT on brick destruction, SFX_LIFE_LOST when losing a life, SFX_GAME_OVER when lives reach zero.
 

@@ -192,7 +192,9 @@ def _compile_with_errors(run_dir: Path) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Audio scaffold — fixed templates, no LLM needed
+# Audio EMERGENCY fallback — fixed templates, used ONLY when the audio agent
+# fails to deliver src/audio.h + src/audio.c. The primary path is the
+# audio_c_agent (cpc-audio service or in-process run_audio_task).
 # ---------------------------------------------------------------------------
 
 _AUDIO_H = """\
@@ -288,11 +290,12 @@ void audio_play_sfx(u8 sfx_id) {
 """
 
 
-def _scaffold_audio(run_dir: Path) -> None:
-    """Write fixed audio.h and audio.c templates — no LLM needed."""
+def _scaffold_audio_fallback(run_dir: Path) -> None:
+    """EMERGENCY ONLY: write fixed audio templates when the audio agent failed."""
     (run_dir / "src" / "audio.h").write_text(_AUDIO_H, encoding="utf-8")
     (run_dir / "src" / "audio.c").write_text(_AUDIO_C, encoding="utf-8")
-    print(f"{_G}  ✓ audio scaffold → src/audio.h + src/audio.c{_RS}")
+    print(f"{_Y}  ⚠ FALLBACK: el agente de audio no entregó ficheros — "
+          f"plantilla de emergencia en src/audio.h + src/audio.c{_RS}")
 
 
 # ---------------------------------------------------------------------------
@@ -339,14 +342,9 @@ def _audio_node(state: _DispatchState) -> dict:
     url = os.environ.get("AUDIO_AGENT_URL", "")
     if url:
         logger.info("[PIPE] calling audio agent at %s", url)
-        return {"output": _http_run(url, state["dev_input"], timeout=60)}
-    print(f"  {_G}✓ audio scaffold already applied — skipping LLM for audio task{_RS}")
-    return {"output": DevelopmentOutput(
-        task_id=state["dev_input"].task_id,
-        status="done",
-        summary="Audio handled by scaffold (audio.h + audio.c already written).",
-        files_to_write=[],
-    )}
+        return {"output": _http_run(url, state["dev_input"], timeout=180)}
+    # In-process fallback: run the real audio agent locally (no stub).
+    return {"output": run_audio_task(state["dev_input"], state["settings"])}
 
 
 def _build_dispatch_graph():
@@ -639,7 +637,6 @@ def run_pipeline(
     # 2. Scaffold run directory ─────────────────────────────────────
     run_dir = _new_run_dir()
     _scaffold(run_dir)
-    _scaffold_audio(run_dir)  # write fixed audio.h + audio.c before any task runs
     print(f"\n{_DIM}  run_dir : {run_dir}{_RS}")
 
     # Save contract for debugging
@@ -652,7 +649,30 @@ def run_pipeline(
         return run_dir, False
 
     # 3. Execute tasks ──────────────────────────────────────────────
-    ordered = _topological_sort(contract.tasks)
+    # The audio subsystem is ALWAYS produced by the audio agent: if the
+    # orchestrator didn't emit an audio task, inject one with top priority so
+    # src/audio.h exists before any gameplay task needs its SFX constants.
+    tasks = list(contract.tasks)
+    if not any(t.subagent == "audio_c_agent" for t in tasks):
+        tasks.insert(0, TaskDef(
+            task_id="T000",
+            subagent="audio_c_agent",
+            title="implement audio subsystem",
+            functional_instruction=(
+                "Implementa el subsistema de audio del juego en src/audio.h y "
+                "src/audio.c: API audio_init()/audio_update()/audio_play_sfx(id) "
+                "y un #define por cada efecto de sonido que el juego descrito en "
+                "el prompt del usuario necesita, usando EXACTAMENTE los nombres "
+                "SFX_* que el prompt mencione."
+            ),
+            priority=0,
+            acceptance_checks=[
+                "src/audio.h y src/audio.c compilables con SDCC/C89",
+                "Define todos los SFX_* que el gameplay del prompt utiliza",
+            ],
+        ))
+        print(f"{_DIM}  [PIPE] tarea de audio inyectada (T000 → audio_c_agent){_RS}")
+    ordered = _topological_sort(tasks)
     completed:    dict[str, object] = {}
     current_code: dict[str, str]   = {}
 
@@ -687,6 +707,14 @@ def run_pipeline(
                 "context": dev_input.context + [
                     f"ESTADO ACTUAL src/main.c (DEBES incluir todo esto y añadir tu funcionalidad):\n"
                     f"{current_code['src/main.c']}"
+                ]
+            })
+        # Gameplay tasks must call the EXACT API the audio agent generated.
+        if task.subagent != "audio_c_agent" and current_code.get("src/audio.h"):
+            dev_input = dev_input.model_copy(update={
+                "context": dev_input.context + [
+                    "INTERFAZ DE AUDIO GENERADA (src/audio.h) — usa EXACTAMENTE "
+                    "estas constantes y funciones:\n" + current_code["src/audio.h"]
                 ]
             })
 
@@ -726,6 +754,12 @@ def run_pipeline(
     if not current_code:
         print(f"{_R}  ✗ ningún archivo generado — abortando compilación{_RS}")
         return run_dir, False
+
+    # Emergency net: the game cannot compile without the audio subsystem.
+    if "src/audio.c" not in current_code or "src/audio.h" not in current_code:
+        _scaffold_audio_fallback(run_dir)
+        current_code.setdefault("src/audio.h", _AUDIO_H)
+        current_code.setdefault("src/audio.c", _AUDIO_C)
 
     # 5. Compile + fix + QA loop (LangGraph cycle) ─────────────────────
     compile_ok, current_code = _run_fix_loop(
