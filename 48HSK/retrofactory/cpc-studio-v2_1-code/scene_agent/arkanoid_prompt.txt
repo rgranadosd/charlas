@@ -1,58 +1,65 @@
 Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC using Mode 0.
 
-1. Game mechanics:
-   - Player-controlled paddle at the bottom with smooth left/right movement using cursor keys.
-   - Ball that bounces off walls, paddle, and bricks with AABB collision.
-   - 5 rows x 10 columns of colored bricks at y=20..59.
-   - Ball starts resting on top of the paddle and does not move until Space is pressed.
-   - While NOT launched: every frame set ball_x = paddle_x + PADDLE_WIDTH/2 and ball_y = PADDLE_Y - BALL_H.
-   - Ball always moves at constant speed: ball_vx=1 or -1, ball_vy=1 or -1 — never 0, never ±2.
-   - 3 lives — lose one when ball passes FLOOR_Y=195, ball returns to rest on paddle.
+0. SCREEN LAYOUT (MANDATORY — zones are disjoint and must NEVER overlap):
+   - Mode 0 coordinates: x in BYTES 0..79, y in PIXELS 0..199. Each text character is 4 bytes wide and 8 pixels tall.
+   - HUD ZONE: rows y=0..7. ONLY the four HUD texts defined in section 1 live here. Nothing else is ever drawn here, and no moving entity ever enters here.
+   - PLAY AREA: rows y=8..199. Ball, bricks and paddle exist ONLY inside the play area.
+   - Bricks: 5 rows x 10 columns at y=20..59. Each brick is BLOCK_WIDTH=8 bytes wide, BLOCK_HEIGHT=8 pixels tall.
+   - Paddle: PADDLE_Y=190, PADDLE_WIDTH=10 bytes. Ball: BALL_W=2 bytes, BALL_H=4 pixels. FLOOR_Y=195.
 
-   Physics implementation (MANDATORY — follow exactly):
-   - Use u8 block_grid[BLOCK_ROWS][BLOCK_COLS] to track which bricks are alive (1) or destroyed (0).
-   - Block collision: check `if (block_grid[i][j])` BEFORE AABB. On hit: block_grid[i][j]=0, erase visually, invert ball_vy, increment score, decrement blocks_remaining. After the first hit in a frame, use `goto block_done;` to exit both loops immediately, then put the label `block_done:;` after the outer for loop.
-   - Floor check goes INSIDE the vertical movement else-branch: `else { ball_bottom = ball_y+BALL_H-1; if (ball_bottom < FLOOR_Y) ball_y++; else { g_lives--; ... } }`
-   - Paddle collision uses `ball_vy = -ball_vy` — NEVER hardcode -1.
-   - init_game() MUST explicitly assign: g_lives=3, g_score=0, game_over=0, ball_launched=0, blocks_remaining=BLOCK_COLS*BLOCK_ROWS, paddle_x=35, ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, prev_ball_x=ball_x, prev_ball_y=ball_y.
-   - reset_ball() MUST set: ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, ball_launched=0, prev_ball_x=ball_x, prev_ball_y=ball_y.
-
-2. HUD:
-   - Single row at y=0. Draw labels ONCE in init_game() using EXACTLY this code:
+1. HUD (MANDATORY):
+   - Draw labels AND initial values ONCE in init_game() using EXACTLY this code:
        pv = cpct_getScreenPtr(CPCT_VMEM_START, 0, 0);
        cpct_drawStringM0("LIVES:", pv, 1, 0);
        pv = cpct_getScreenPtr(CPCT_VMEM_START, 40, 0);
        cpct_drawStringM0("SCORE", pv, 1, 0);
-   - draw_lives(): digit at x=24 only. draw_score(): 3-digit number at x=64 only.
-   - NEVER use local char arrays for labels — use string literals directly as shown above.
-   - No title, no branding text.
+     then draw the initial lives digit at x=24,y=0 and the initial 3-digit score at x=64,y=0.
+   - During the game, redraw ONLY the digits, ONLY when their value changes: lives digit at x=24, 3-digit score at x=64.
+   - The complete list of HUD draws is: x=0 (label), x=24 (digit), x=40 (label), x=64 (3 digits). FORBIDDEN: any other text or element in the HUD zone (no LEVEL, no HIGH SCORE, no title, no branding). FORBIDDEN: local char arrays for labels — string literals only; digits may use a small null-terminated buffer.
 
-3. State:
-   - No start screen, no game over screen, no level complete screen.
-   - Use simple flags only: u8 game_over=0; u8 ball_launched=0;
-   - When game_over: stop updating, show "GAME OVER" in play area.
-   - When all bricks destroyed: reset bricks, increment level, reset ball.
+2. GAME STATE:
+   - Globals: g_lives (3 at start), g_score (0 at start), game_over=0, ball_launched=0, blocks_remaining=50, u8 block_grid[5][10], paddle_x, ball_x, ball_y, i8 ball_vx, i8 ball_vy, prev_ball_x, prev_ball_y, prev_paddle_x.
+   - All state variables shared between functions are GLOBAL. NEVER shadow a global with a local of the same name.
+   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_lives=3, g_score=0, game_over=0, ball_launched=0, blocks_remaining=50, all block_grid cells=1, paddle_x=35, prev_paddle_x=35, ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, prev_ball_x=ball_x, prev_ball_y=ball_y.
+   - reset_ball() MUST set: ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, ball_launched=0, prev_ball_x=ball_x, prev_ball_y=ball_y.
+   - No state machine enums. Flags only: game_over, ball_launched.
 
-4. Visuals:
-   - Distinct colors per brick row using cpct_px2byteM0.
-   - Erase/draw pattern for ball and paddle every frame.
+3. PHYSICS (MANDATORY — implement EXACTLY these steps and ADD NOTHING ELSE.
+   In particular: NEVER reposition ball_x/ball_y after a collision except where this section explicitly says so):
+   - Ball speed is constant: ball_vx is 1 or -1, ball_vy is 1 or -1 — never 0, never ±2.
+   - While NOT launched: every frame set ball_x = paddle_x + PADDLE_WIDTH/2 and ball_y = PADDLE_Y - BALL_H. Launch with Space: set ball_launched=1.
+   - Side walls: if moving right and ball_x reaches 80-BALL_W, invert ball_vx. If moving left and ball_x reaches 0, invert ball_vx. Only ball_vx changes.
+   - Ceiling (top of PLAY AREA, not of the screen): if (ball_vy < 0 && ball_y <= 8) { ball_y = 8; ball_vy = 1; } — the ball NEVER enters rows y=0..7. Only ball_vy changes.
+   - Brick collision: iterate the grid; check `if (block_grid[i][j])` BEFORE the AABB test. On hit do EXACTLY: block_grid[i][j]=0; blocks_remaining--; g_score += 10; ball_vy = -ball_vy; erase that brick from screen (cpct_drawSolidBox with colour 0x00 at the brick position); play SFX_BRICK_HIT; then `goto block_done;` so AT MOST ONE brick is destroyed per frame. Put the label `block_done:;` right after the outer loop. Do NOT touch ball_x or ball_y here.
+   - Paddle collision: if ball moving down overlaps the paddle (AABB), do EXACTLY: ball_vy = -ball_vy; ball_y = PADDLE_Y - BALL_H; play SFX_PADDLE_HIT. (This is the ONLY collision allowed to set ball_y.) NEVER hardcode ball_vy = -1 — always use ball_vy = -ball_vy.
+   - Floor: the check goes INSIDE the downward-movement branch: when moving down, compute ball_bottom = ball_y + BALL_H - 1 AFTER moving; if ball_bottom >= FLOOR_Y then g_lives--, play SFX_LIFE_LOST, and either reset_ball() (lives left) or set game_over=1 and play SFX_GAME_OVER. NEVER clamp ball_y at any maximum — only this floor check handles the bottom.
 
-5. Audio:
-   - Audio API is provided via #include "audio.h" (already in src/).
-   - Call audio_init() once in init_game(), audio_update() at end of main loop.
-   - Call audio_play_sfx() with the appropriate SFX ID on game events:
-       audio_play_sfx(SFX_WALL_HIT)    — ball hits wall
-       audio_play_sfx(SFX_PADDLE_HIT)  — ball hits paddle
-       audio_play_sfx(SFX_BRICK_HIT)   — ball destroys brick
-       audio_play_sfx(SFX_LIFE_LOST)   — ball passes floor
-       audio_play_sfx(SFX_GAME_OVER)   — lives reach zero
-   - Do NOT implement audio functions — they are already implemented in src/audio.c.
+4. RENDERING OWNERSHIP (MANDATORY):
+   - init_game() draws ONCE: cpct_clearScreen(0), the full brick grid, the HUD labels and initial values.
+   - The main loop draws ONLY: (a) ball erase/draw using prev_ball_x/prev_ball_y, (b) paddle erase/draw using prev_paddle_x, (c) HUD digits when their value changed. Always update prev_* after drawing.
+   - Bricks are erased individually at the moment of destruction (inside the collision step). FORBIDDEN: redrawing the brick grid, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
+   - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. Distinct colour per brick row. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
 
-6. Technical requirements:
-   - CPCtelera Mode 0: 80 bytes wide x 200 pixels tall.
-   - Palette via cpct_setPALColour, colors via cpct_px2byteM0.
-   - cpct_scanKeyboard_f() in main loop.
-   - cpct_clearScreen(0) only once in init_game().
-   - Single C file for gameplay: src/main.c.
-   - No state machine enums.
-   - cpct_setBorder(HW_BLACK).
+5. LEVEL FLOW:
+   - When blocks_remaining reaches 0: refill block_grid with 1s, blocks_remaining=50, redraw the brick grid once, reset_ball(). g_score and g_lives KEEP their values — they are NEVER reset during a session.
+   - When game_over becomes 1: stop updating the game and draw "GAME OVER" once, centered inside the play area (e.g. x=30, y=100). No start screen, no separate game-over screen, no level-complete screen or message.
+
+6. AUDIO:
+   - The audio API already exists in src/ via #include "audio.h" — do NOT implement it, just call it:
+     audio_init() once in init_game(); audio_update() at the end of every main-loop iteration;
+     audio_play_sfx(SFX_WALL_HIT) on wall/ceiling bounce, SFX_PADDLE_HIT on paddle bounce, SFX_BRICK_HIT on brick destruction, SFX_LIFE_LOST when losing a life, SFX_GAME_OVER when lives reach zero.
+
+7. TECHNICAL REQUIREMENTS:
+   - C89/SDCC: declare ALL variables at the top of each function, before any statement.
+   - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>).
+   - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_Space, Key_CursorLeft, Key_CursorRight (NEVER KEY_Space or CPCT_KEY_*). Cursor keys move the paddle within 0..80-PADDLE_WIDTH.
+   - cpct_waitVSYNC() once per main-loop iteration.
+   - Single gameplay file: src/main.c.
+
+8. INVARIANTS (the final code must satisfy ALL of these — they are checkable by reading the code):
+   - At most ONE brick is destroyed per frame (the goto guarantees it).
+   - ball_y is never smaller than 8 once the game runs (HUD zone is untouchable).
+   - g_score and g_lives are assigned their starting values in init_game() ONLY — no other assignment except g_score += 10 and g_lives--.
+   - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=40, x=64 at y=0 (plus the single GAME OVER text inside the play area).
+   - Every draw of a moving entity in the main loop is preceded by erasing its previous position (or guarded to run only on change).
+   - The collision steps contain no statements beyond those listed in section 3.
