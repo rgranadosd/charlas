@@ -33,9 +33,18 @@ QA_SYSTEM_PROMPT = """Eres un revisor QA de juegos CPCtelera (Amstrad CPC, C89/S
 Recibes el PROMPT ORIGINAL del usuario (la especificación) y el src/main.c final.
 Tu trabajo: detectar requisitos EXPLÍCITOS del prompt que el código INCUMPLE.
 
+Método (en este orden):
+1. PRIMERO: localiza cada bloque del prompt marcado MANDATORY / EXACTLY /
+   "follow exactly" y compáralo LÍNEA A LÍNEA con su implementación. Reporta
+   tanto pasos omitidos como pasos AÑADIDOS que el prompt no especifica
+   (reposiciones de coordenadas tras colisión, ajustes, efectos extra).
+2. Después aplica el resto de criterios de atención.
+
 Reglas:
 - Solo violaciones verificables leyendo el código (estructura, llamadas, orden de
   ejecución). Nada de estilo, micro-optimizaciones ni mejoras opcionales.
+- Antes de afirmar que algo FALTA en el código, búscalo en TODO el fichero: una
+  queja sobre código inexistente que sí existe invalida toda tu revisión.
 - Presta especial atención a:
   * qué se dibuja en init vs. en el bucle principal (el decorado estático y las
     etiquetas/valores iniciales del HUD deben pintarse UNA vez en init);
@@ -45,6 +54,12 @@ Reglas:
   * ELEMENTOS INVENTADOS: cualquier elemento visual (etiquetas, textos, contadores,
     decoración) que el prompt NO pide dibujar es una violación — aunque parezca
     una mejora;
+  * COMPORTAMIENTO INVENTADO: cuando el prompt define una operación como secuencia
+    exacta (MANDATORY / EXACTLY / "follow exactly"), el código no debe AÑADIR pasos
+    extra (reposiciones de coordenadas, ajustes, efectos colaterales) ni omitir los
+    especificados. Un paso añadido a una secuencia mandatoria es violación
+    [NO SOLICITADO] aunque parezca razonable — las reposiciones de posición tras una
+    colisión son el caso típico y causan túneles y reacciones en cadena;
   * SOLAPAMIENTOS de coordenadas: en Mode 0 cada carácter ocupa 4 bytes de x, así
     que un string de N caracteres en x ocupa de x a x+4N-1. Dos draws en la misma
     fila cuyos rangos se crucen se pisan en pantalla — violación.
@@ -67,14 +82,19 @@ Recibes el PROMPT ORIGINAL (la especificación) y una lista numerada de supuesta
 violaciones, cada una con su ancla (cita del prompt, [NO SOLICITADO] o
 [SOLAPAMIENTO]).
 
-Para cada una decide si es REAL:
-- Si el ancla es una cita: ¿esa frase del prompt realmente exige lo que la
-  violación afirma? Una cita que habla de OTRA cosa (otro elemento, otra
-  función) NO sostiene la violación → descártala.
-- Si es [NO SOLICITADO]: ¿de verdad el prompt no pide ese elemento en ninguna
-  parte? Si el prompt lo menciona como algo a mostrar, descártala.
-- Si es [SOLAPAMIENTO]: ¿los rangos de x calculados (4 bytes por carácter en
-  Mode 0) realmente se cruzan en la misma fila?
+Recibes también el CÓDIGO revisado. Para cada violación decide si es REAL con
+DOS comprobaciones obligatorias:
+A. ¿Es CIERTA sobre el código? Busca en el código: si la violación dice que
+   falta algo que SÍ está (un goto, una llamada, una condición) o que existe
+   algo que NO está, es falsa → descártala.
+B. ¿El ancla la sostiene?
+   - Cita del prompt: ¿esa frase realmente exige lo que la violación afirma?
+     Una cita que habla de OTRA cosa (otro elemento, otra función) NO la
+     sostiene → descártala.
+   - [NO SOLICITADO]: ¿de verdad el prompt no pide ese elemento o paso en
+     ninguna parte? Si el prompt lo menciona, descártala.
+   - [SOLAPAMIENTO]: ¿los rangos de x calculados (4 bytes por carácter en
+     Mode 0) realmente se cruzan en la misma fila?
 - En caso de duda, DESCARTA: un falso positivo provoca correcciones que rompen
   código correcto, que es peor que dejar pasar un hallazgo dudoso.
 
@@ -85,6 +105,53 @@ Devuelve SOLO JSON válido (sin markdown), razonando ANTES de decidir cada una:
 afirma sobre EL MISMO elemento. Cita sobre la bola usada para quejarse de los
 ladrillos → real: false.
 """
+
+
+QA_MANDATED_PROMPT = """Eres un auditor de conformidad de especificaciones.
+Recibes un PROMPT (especificación de un juego CPCtelera) y el src/main.c final.
+
+Tu ÚNICA tarea: para cada bloque del prompt marcado MANDATORY / EXACTLY /
+"follow exactly" / "MUST":
+1. Lista mentalmente los pasos EXACTOS que el prompt exige para esa operación.
+2. Localiza la implementación en el código.
+3. Compara paso a paso, en ambas direcciones:
+   - paso exigido que falta en el código → violación;
+   - paso EXTRA en el código que el prompt no especifica para esa operación
+     (reposiciones de coordenadas, ajustes de estado, efectos colaterales)
+     → violación [NO SOLICITADO], aunque parezca razonable. Las reposiciones
+     de posición tras colisión son el caso típico: causan túneles y
+     reacciones en cadena.
+
+NO revises nada más (ni HUD, ni rendimiento, ni estilo) — solo conformidad de
+bloques mandatorios. Máximo 4 violaciones, las más graves primero, cada una
+citando la frase del prompt o [NO SOLICITADO] y la línea de código implicada.
+
+Devuelve SOLO JSON válido (sin markdown):
+{"violations": ["..."]}
+Lista vacía si todos los bloques mandatorios se implementan exactamente.
+"""
+
+
+def _mandated_block_audit(env: dict[str, str], user_prompt: str, main_c: str) -> list[str]:
+    """Focused pass: step-by-step diff of MANDATORY blocks vs implementation."""
+    llm = _build_verifier_llm(env)  # the meticulous model, not the code generator
+    if llm is None:
+        return []
+    sys_esc = QA_MANDATED_PROMPT.replace("{", "{{").replace("}", "}}")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", sys_esc),
+        ("user", "=== PROMPT ===\n{user_prompt}\n\n=== src/main.c ===\n{code}"),
+    ])
+    chain = prompt | llm | StrOutputParser() | _parse_output
+    try:
+        raw = chain.invoke({"user_prompt": user_prompt, "code": main_c})
+        v = raw.get("violations") if isinstance(raw, dict) else None
+        if not isinstance(v, list):
+            return []
+        return [str(x).strip() for x in v if str(x).strip()][:4]
+    except Exception as exc:
+        logger.warning("[QA] mandated-block audit failed (%s) — skipping", exc)
+        return []
 
 
 def _build_verifier_llm(env: dict[str, str]):
@@ -104,8 +171,9 @@ def _build_verifier_llm(env: dict[str, str]):
     )
 
 
-def _verify_violations(env: dict[str, str], user_prompt: str, violations: list[str]) -> list[str]:
-    """Second adversarial pass: drop findings whose anchor doesn't hold up."""
+def _verify_violations(env: dict[str, str], user_prompt: str, main_c: str, violations: list[str]) -> list[str]:
+    """Second adversarial pass: drop findings whose anchor doesn't hold up
+    against the prompt OR whose claim is factually false about the code."""
     llm = _build_verifier_llm(env)
     if llm is None:
         return violations
@@ -113,11 +181,13 @@ def _verify_violations(env: dict[str, str], user_prompt: str, violations: list[s
     sys_esc = QA_VERIFIER_PROMPT.replace("{", "{{").replace("}", "}}")
     prompt = ChatPromptTemplate.from_messages([
         ("system", sys_esc),
-        ("user", "=== PROMPT ORIGINAL ===\n{user_prompt}\n\n=== VIOLACIONES ===\n{violations}"),
+        ("user", "=== PROMPT ORIGINAL ===\n{user_prompt}\n\n"
+                 "=== CÓDIGO REVISADO ===\n{code}\n\n"
+                 "=== VIOLACIONES ===\n{violations}"),
     ])
     chain = prompt | llm | StrOutputParser() | _parse_output
     try:
-        raw = chain.invoke({"user_prompt": user_prompt, "violations": numbered})
+        raw = chain.invoke({"user_prompt": user_prompt, "code": main_c, "violations": numbered})
         verdicts = raw.get("verdicts") if isinstance(raw, dict) else None
         if not isinstance(verdicts, list):
             return violations
@@ -175,8 +245,12 @@ def run_qa(user_prompt: str, main_c: str, settings) -> list[str]:
     if not isinstance(violations, list):
         return []
     cleaned = [str(v).strip() for v in violations if str(v).strip()][:_MAX_VIOLATIONS]
+    # Focused conformance audit of MANDATORY blocks — a meticulous diff the
+    # general reviewer tends to miss (e.g. invented post-collision repositions)
+    cleaned.extend(_mandated_block_audit(env, user_prompt, main_c))
     if cleaned:
-        cleaned = _verify_violations(env, user_prompt, cleaned)
+        cleaned = _verify_violations(env, user_prompt, main_c, cleaned)
+    cleaned = cleaned[:_MAX_VIOLATIONS]
 
     if cleaned:
         print(f"{_Y}{_W}  [QA] {len(cleaned)} requisito(s) del prompt incumplido(s):{_RS}")
