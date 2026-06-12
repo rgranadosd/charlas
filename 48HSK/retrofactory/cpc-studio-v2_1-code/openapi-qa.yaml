@@ -1,0 +1,37 @@
+openapi: 3.0.3
+info:
+  title: CPC QA Agent
+  description: Semantic review of generated game code against the original user prompt.
+  version: 1.0.0
+paths:
+  /run:
+    post:
+      operationId: runQAReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QAInput'
+      responses:
+        '200':
+          description: Review result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QAOutput'
+components:
+  schemas:
+    QAInput:
+      type: object
+      required: [user_prompt, main_c]
+      properties:
+        user_prompt: { type: string, description: "Original user prompt (the spec)" }
+        main_c:      { type: string, description: "Final src/main.c to review" }
+    QAOutput:
+      type: object
+      properties:
+        violations:
+          type: array
+          items: { type: string }
+          description: "Violated requirements; empty when the code honours the prompt"

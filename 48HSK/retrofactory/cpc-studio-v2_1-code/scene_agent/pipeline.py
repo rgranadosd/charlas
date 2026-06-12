@@ -491,12 +491,46 @@ def _fix_node(state: _FixState) -> _FixState:
     return {**state, "fix_attempt": fix_attempt, "current_code": current_code}
 
 
+def _qa_http_run(url: str, user_prompt: str, main_c: str, timeout: int = 180) -> list[str]:
+    """Call the standalone QA agent service (monitored in Agent Manager)."""
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    try:
+        from opentelemetry.propagate import inject as _otel_inject
+        _otel_inject(headers)
+    except Exception:
+        pass
+    resp = httpx.post(
+        f"{url.rstrip('/')}/run",
+        json={"user_prompt": user_prompt, "main_c": main_c},
+        headers=headers,
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    violations = resp.json().get("violations") or []
+    return [str(v).strip() for v in violations if str(v).strip()][:5]
+
+
 def _qa_node(state: _FixState) -> _FixState:
     """Semantic QA: review the compiled code against the ORIGINAL user prompt."""
     violations: list[str] = []
     main_c = state["current_code"].get("src/main.c", "")
     if main_c and state.get("user_prompt"):
-        violations = run_qa(state["user_prompt"], main_c, state["settings"])
+        url = os.environ.get("QA_AGENT_URL", "")
+        if url:
+            try:
+                logger.info("[PIPE] calling QA agent at %s", url)
+                violations = _qa_http_run(url, state["user_prompt"], main_c)
+                if violations:
+                    print(f"{_Y}{_W}  [QA remoto] {len(violations)} requisito(s) incumplido(s):{_RS}")
+                    for v in violations:
+                        print(f"     {_R}✗{_RS} {v[:110]}")
+                else:
+                    print(f"{_G}{_W}  [QA remoto] ✓ el código cumple el prompt{_RS}")
+            except Exception as exc:
+                logger.warning("[PIPE] QA agent at %s failed (%s) — in-process fallback", url, exc)
+                violations = run_qa(state["user_prompt"], main_c, state["settings"])
+        else:
+            violations = run_qa(state["user_prompt"], main_c, state["settings"])
     return {**state, "qa_violations": violations, "qa_rounds": state["qa_rounds"] + 1}
 
 
