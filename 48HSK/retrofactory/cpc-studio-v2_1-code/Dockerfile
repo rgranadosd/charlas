@@ -35,6 +35,16 @@ RUN if [ -d "cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin" ]; then \
           done; \
     fi
 
+# OTEL auto-instrumentation baked into the image (replaces the fragile
+# custom-otel-init container that was lost on every component re-render).
+# AMP_OTEL_ENDPOINT / AMP_AGENT_API_KEY are still injected by the
+# instrumentation trait at deploy time; sitecustomize.py auto-loads via PYTHONPATH.
+RUN pip install --no-cache-dir --target /otel-custom \
+        opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+        opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asgi
+COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
+ENV PYTHONPATH=/otel-custom
+
 # Ensure the outputs directory exists so the pipeline can write to it at runtime
 RUN mkdir -p scene_agent/outputs \
  && useradd -m -u 1000 appuser \
