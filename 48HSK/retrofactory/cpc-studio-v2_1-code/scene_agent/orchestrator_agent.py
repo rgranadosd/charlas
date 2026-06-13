@@ -124,6 +124,12 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
 
 def _tolerant_validate_contract(raw: dict, user_prompt: str) -> "OrchestratorContract":
     """Validate raw dict → OrchestratorContract; coerce bad literal values before final raise."""
+    # The LLM occasionally returns a bare `null`/list instead of a JSON object;
+    # JsonOutputParser passes it straight through. Coerce to {} so the schema
+    # repair below can rebuild a minimal valid contract instead of crashing.
+    if not isinstance(raw, dict):
+        logger.warning("[ORCH] LLM returned non-object (%s) — coercing to empty contract", type(raw).__name__)
+        raw = {}
     try:
         return OrchestratorContract.model_validate(raw)
     except Exception as exc:
@@ -214,6 +220,8 @@ def orchestrate(
                 print(f"\n{_Y}  [{attempt}/{max_retries}] intentando {llm_label} …{_RS}")
                 logger.info("[ORCH] NVIDIA attempt %d/%d", attempt, max_retries)
                 raw = chain.invoke(invoke_input)
+                if not isinstance(raw, dict):
+                    raise ValueError(f"respuesta no-objeto del LLM: {type(raw).__name__}")
                 print(f"{_G}  [{attempt}/{max_retries}] {llm_label} → OK{_RS}")
                 break
             except Exception as exc:
@@ -234,6 +242,8 @@ def orchestrate(
                 print(f"\n{_Y}  [{attempt}/2] intentando {llm_label} …{_RS}")
                 logger.info("[ORCH] primary attempt %d/2", attempt)
                 raw = chain.invoke(invoke_input)
+                if not isinstance(raw, dict):
+                    raise ValueError(f"respuesta no-objeto del LLM: {type(raw).__name__}")
                 print(f"{_G}  [{attempt}/2] {llm_label} → OK{_RS}")
                 break
             except Exception as exc:
