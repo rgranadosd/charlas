@@ -11,6 +11,7 @@ Contract:
 from __future__ import annotations
 
 import logging
+import re
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -107,51 +108,131 @@ ladrillos → real: false.
 """
 
 
-QA_MANDATED_PROMPT = """Eres un auditor de conformidad de especificaciones.
-Recibes un PROMPT (especificación de un juego CPCtelera) y el src/main.c final.
+# Strong requirement markers — game-agnostic: they're a writing convention in
+# the prompt, not domain rules. A line carrying one of these is a checkable item.
+_MARK_RE = re.compile(
+    r"\b(MANDATORY|EXACTLY|MUST|NEVER|ONCE|FORBIDDEN|AT MOST|follow exactly)\b",
+    re.IGNORECASE,
+)
+_SECTION_RE = re.compile(r"^\s*\d+\.\s")          # "3. PHYSICS ..."  section header
+_MAX_CHECKLIST = 20
 
-Tu ÚNICA tarea: para cada bloque del prompt marcado MANDATORY / EXACTLY /
-"follow exactly" / "MUST":
-1. Lista mentalmente los pasos EXACTOS que el prompt exige para esa operación.
-2. Localiza la implementación en el código.
-3. Compara paso a paso, en ambas direcciones:
-   - paso exigido que falta en el código → violación;
-   - paso EXTRA en el código que el prompt no especifica para esa operación
-     (reposiciones de coordenadas, ajustes de estado, efectos colaterales)
-     → violación [NO SOLICITADO], aunque parezca razonable. Las reposiciones
-     de posición tras colisión son el caso típico: causan túneles y
-     reacciones en cadena.
 
-NO revises nada más (ni HUD, ni rendimiento, ni estilo) — solo conformidad de
-bloques mandatorios. Máximo 4 violaciones, las más graves primero, cada una
-citando la frase del prompt o [NO SOLICITADO] y la línea de código implicada.
+def _extract_checkable_items(user_prompt: str) -> list[str]:
+    """Mechanically pull the prompt's checkable requirements — game-agnostic.
 
-Devuelve SOLO JSON válido (sin markdown):
-{"violations": ["..."]}
-Lista vacía si todos los bloques mandatorios se implementan exactamente.
+    Two sources, both convention-based (no game knowledge):
+      (a) every bullet under an INVARIANTS section (the user's distilled,
+          code-checkable assertions);
+      (b) any other bullet/line carrying a strong marker (MANDATORY/MUST/
+          NEVER/EXACTLY/ONCE/FORBIDDEN/AT MOST).
+    Section headers themselves are skipped (the bullets under them are the rules).
+    """
+    lines = user_prompt.splitlines()
+    items: list[str] = []
+
+    in_invariants = False
+    for ln in lines:
+        if _SECTION_RE.match(ln):
+            in_invariants = bool(re.search(r"INVARIANT", ln, re.IGNORECASE))
+            continue
+        if in_invariants:
+            s = ln.strip().lstrip("-•").strip()
+            if len(s) > 12:
+                items.append(s)
+
+    for ln in lines:
+        if _SECTION_RE.match(ln):
+            continue
+        s = ln.strip()
+        if _MARK_RE.search(s):
+            s = s.lstrip("-•").strip()
+            if len(s) > 12:
+                items.append(s)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for it in items:
+        key = it[:90]
+        if key not in seen:
+            seen.add(key)
+            unique.append(it)
+    return unique[:_MAX_CHECKLIST]
+
+
+QA_CHECKLIST_PROMPT = """Eres un auditor de conformidad de código CPCtelera.
+Recibes (1) una CHECKLIST NUMERADA de requisitos extraídos del prompt del
+usuario y (2) el src/main.c final.
+
+Tu tarea: para CADA ítem de la checklist —sin saltarte NINGUNO— determina si el
+código lo CUMPLE o lo INCUMPLE, leyendo el código.
+
+Reglas de juicio:
+- Decide leyendo el código real: estructura, llamadas, orden, condiciones.
+- Antes de decir que algo FALTA, búscalo en TODO el fichero.
+- Si el ítem prohíbe algo ("NEVER", "FORBIDDEN", "ADD NOTHING ELSE"), incumple
+  si el código LO HACE.
+- Si el ítem exige algo ("MUST", "ONCE", "AT MOST ONE", "EXACTLY"), incumple si
+  el código NO lo hace o lo hace de más.
+- En caso de duda razonable, marca cumple=true (no inventes fallos).
+
+DEBES devolver un veredicto por CADA índice de la checklist. SOLO JSON válido:
+{"verdicts": [{"i": 0, "cumple": true, "motivo": "una frase con la evidencia en el código"}]}
 """
 
 
-def _mandated_block_audit(env: dict[str, str], user_prompt: str, main_c: str) -> list[str]:
-    """Focused pass: step-by-step diff of MANDATORY blocks vs implementation."""
-    llm = _build_verifier_llm(env)  # the meticulous model, not the code generator
+def _checklist_audit(env: dict[str, str], user_prompt: str, main_c: str) -> list[str]:
+    """Closed-checklist conformance pass.
+
+    Instead of an open 'find violations' question (which skips items), we extract
+    every marked requirement and force a verdict per item. Coverage is guaranteed
+    by enumerating the checklist, not by any per-game rule.
+    """
+    items = _extract_checkable_items(user_prompt)
+    if not items:
+        return []
+    llm = _build_verifier_llm(env)  # meticulous reasoner
     if llm is None:
         return []
-    sys_esc = QA_MANDATED_PROMPT.replace("{", "{{").replace("}", "}}")
+
+    numbered = "\n".join(f"[{i}] {it}" for i, it in enumerate(items))
+    sys_esc = QA_CHECKLIST_PROMPT.replace("{", "{{").replace("}", "}}")
     prompt = ChatPromptTemplate.from_messages([
         ("system", sys_esc),
-        ("user", "=== PROMPT ===\n{user_prompt}\n\n=== src/main.c ===\n{code}"),
+        ("user", "=== CHECKLIST ({n} ítems — responde a TODOS) ===\n{checklist}\n\n"
+                 "=== src/main.c ===\n{code}"),
     ])
     chain = prompt | llm | StrOutputParser() | _parse_output
+    print(f"{_DIM}  [QA checklist] {len(items)} requisitos marcados extraídos del prompt{_RS}")
     try:
-        raw = chain.invoke({"user_prompt": user_prompt, "code": main_c})
-        v = raw.get("violations") if isinstance(raw, dict) else None
-        if not isinstance(v, list):
-            return []
-        return [str(x).strip() for x in v if str(x).strip()][:4]
+        raw = chain.invoke({"n": len(items), "checklist": numbered, "code": main_c})
     except Exception as exc:
-        logger.warning("[QA] mandated-block audit failed (%s) — skipping", exc)
+        logger.warning("[QA] checklist audit failed (%s) — skipping", exc)
         return []
+
+    verdicts = raw.get("verdicts") if isinstance(raw, dict) else None
+    if not isinstance(verdicts, list):
+        return []
+
+    failed: list[str] = []
+    judged: set[int] = set()
+    for v in verdicts:
+        if not isinstance(v, dict):
+            continue
+        try:
+            idx = int(v.get("i"))
+        except (TypeError, ValueError):
+            continue
+        judged.add(idx)
+        if v.get("cumple") is False and 0 <= idx < len(items):
+            motivo = str(v.get("motivo", "")).strip()
+            failed.append(f"INCUMPLE: {items[idx]}" + (f" — {motivo}" if motivo else ""))
+
+    # Items the auditor silently skipped are coverage gaps — surface them.
+    missed = [i for i in range(len(items)) if i not in judged]
+    if missed:
+        logger.warning("[QA] checklist: %d ítem(s) sin veredicto", len(missed))
+    return failed
 
 
 def _build_verifier_llm(env: dict[str, str]):
@@ -245,12 +326,15 @@ def run_qa(user_prompt: str, main_c: str, settings) -> list[str]:
     if not isinstance(violations, list):
         return []
     cleaned = [str(v).strip() for v in violations if str(v).strip()][:_MAX_VIOLATIONS]
-    # Focused conformance audit of MANDATORY blocks — a meticulous diff the
-    # general reviewer tends to miss (e.g. invented post-collision repositions)
-    cleaned.extend(_mandated_block_audit(env, user_prompt, main_c))
+    # Closed-checklist conformance audit: enumerate every marked requirement in
+    # the prompt and force a verdict per item, so nothing gets silently skipped.
+    checklist_fails = _checklist_audit(env, user_prompt, main_c)
+    # Checklist failures are anchored by construction (they ARE prompt items), so
+    # only the open-ended finder's hits go through the skeptical verifier.
     if cleaned:
         cleaned = _verify_violations(env, user_prompt, main_c, cleaned)
-    cleaned = cleaned[:_MAX_VIOLATIONS]
+    # Checklist items first — they're the user-marked critical requirements.
+    cleaned = (checklist_fails + cleaned)[:_MAX_VIOLATIONS]
 
     if cleaned:
         print(f"{_Y}{_W}  [QA] {len(cleaned)} requisito(s) del prompt incumplido(s):{_RS}")
