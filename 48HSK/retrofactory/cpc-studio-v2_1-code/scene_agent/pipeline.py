@@ -406,6 +406,36 @@ class _FixState(TypedDict):
     qa_violations: list[str]
 
 
+def _compile_via_service(url: str, current_code: dict[str, str], run_dir: Path) -> tuple[bool, str]:
+    """Compile through the dedicated build agent (has the full CPCtelera SDK).
+
+    Returns (ok, errors). On HTTP failure raises, so the caller can fall back.
+    """
+    files = [{"path": p, "content": c} for p, c in current_code.items()]
+    headers = {"Content-Type": "application/json"}
+    try:
+        from opentelemetry.propagate import inject as _otel_inject
+        _otel_inject(headers)
+    except Exception:
+        pass
+    print(f"\n{_G}{_W}  BUILD  (servicio cpc-build) {len(files)} fichero(s){_RS}")
+    resp = httpx.post(f"{url.rstrip('/')}/compile", json={"files": files}, headers=headers, timeout=240)
+    resp.raise_for_status()
+    data = resp.json()
+    ok = bool(data.get("ok"))
+    if ok:
+        print(f"{_G}  ✓ compilación OK (build agent){_RS}")
+        dsk_b64 = data.get("dsk_base64")
+        if dsk_b64:
+            import base64
+            (run_dir / "scene.dsk").write_bytes(base64.b64decode(dsk_b64))
+            print(f"{_G}  ✓ DSK recibido del build agent → scene.dsk{_RS}")
+    else:
+        errs = (data.get("errors") or "")[:1200]
+        print(f"{_R}  ✗ FAILED (build agent)\n{errs}{_RS}")
+    return ok, (data.get("errors") or "")[:1200]
+
+
 def _compile_node(state: _FixState) -> _FixState:
     main_c = state["current_code"].get("src/main.c", "")
     guard_result = _guard_check(main_c) if main_c else None
@@ -414,7 +444,18 @@ def _compile_node(state: _FixState) -> _FixState:
         print(f"{_Y}  ⚠  CODE GUARD: {len(guard_errors)} error(es) semántico(s) detectado(s){_RS}")
         for _ge in guard_errors:
             print(f"     {_R}✗{_RS} {_ge[:120]}")
-    compile_ok, errors = _compile_with_errors(state["run_dir"])
+    # Prefer the dedicated build service (real CPCtelera SDK). cpc-pm ships
+    # without the SDK, so local `make` only works in dev; the service makes the
+    # compile step real in k3s and feeds genuine compiler errors to the fix loop.
+    build_url = os.environ.get("BUILD_AGENT_URL", "")
+    if build_url:
+        try:
+            compile_ok, errors = _compile_via_service(build_url, state["current_code"], state["run_dir"])
+        except Exception as exc:
+            logger.warning("[PIPE] build agent at %s failed (%s) — local make fallback", build_url, exc)
+            compile_ok, errors = _compile_with_errors(state["run_dir"])
+    else:
+        compile_ok, errors = _compile_with_errors(state["run_dir"])
     return {**state, "compile_ok": compile_ok, "errors": errors, "guard_errors": guard_errors}
 
 

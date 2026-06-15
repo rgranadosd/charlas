@@ -1,0 +1,58 @@
+FROM python:3.12-slim
+
+# sdcc — Z80 C compiler used by CPCtelera; g++/make — to build iDSK & hex2bin
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sdcc g++ make file \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir fastapi==0.115.0 uvicorn==0.30.6 pydantic==2.9.2
+
+# The CPCtelera SDK + project template (Makefile + cfg). cpctelera/ is .gitignored
+# (493MB), so this image MUST be built locally with podman where the tree exists,
+# then pushed to the k3d registry — it is never built from the git checkout.
+COPY cpctelera cpctelera
+COPY pruebacpct/Makefile pruebacpct/Makefile
+COPY pruebacpct/cfg pruebacpct/cfg
+
+# Rebuild ALL CPCtelera tools FROM SOURCE inside the (linux/amd64) container.
+# The checked-out binaries were compiled on the host (arm64 macOS) and die with
+# "Exec format error". Wipe any host-built binaries/objects, then make each tool
+# that ships a Makefile (sdcc is handled separately below via symlinks).
+RUN for d in cpctelera/cpctelera/tools/2cdt \
+             cpctelera/cpctelera/tools/dskgen \
+             cpctelera/cpctelera/tools/hex2bin-2.0 \
+             cpctelera/cpctelera/tools/iDSK-0.13 \
+             cpctelera/cpctelera/tools/img2cpc; do \
+      [ -f "$d/Makefile" ] || continue; \
+      make -C "$d" clean || true; \
+      find "$d" -type f -exec sh -c 'file "$1" | grep -q "Mach-O" && rm -f "$1"' _ {} \; ; \
+      make -C "$d" || echo "WARN: build of $d failed"; \
+    done
+RUN if [ -d "cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin" ]; then \
+      cd cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin \
+       && rm -f * \
+       && for t in sdcc sdasz80 sdar sdcpp sdld sdldz80; do \
+              p="$(which "$t" 2>/dev/null)"; \
+              [ -n "$p" ] && ln -s "$p" "$t"; \
+          done; \
+    fi
+
+COPY agents/build/main.py main.py
+
+# OTEL auto-instrumentation baked in (same as the other agents).
+RUN pip install --no-cache-dir --target /otel-custom \
+        opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+        opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asgi
+COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
+ENV PYTHONPATH=/otel-custom
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+ENV CPCT_PATH=/app/cpctelera/cpctelera
+ENV CPC_TEMPLATE=/app/pruebacpct
+
+EXPOSE 8000
+CMD ["python", "main.py"]
