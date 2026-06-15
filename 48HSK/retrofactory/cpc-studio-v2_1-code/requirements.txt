@@ -9,3 +9,4 @@ openai==2.35.1
 pydantic==2.13.4
 pydantic-settings==2.14.1
 json_repair==0.59.10
+fastembed==0.8.0   # local embeddings for the per-agent RAG (BAAI/bge-small-en-v1.5)

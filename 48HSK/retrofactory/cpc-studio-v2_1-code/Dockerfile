@@ -15,6 +15,9 @@ WORKDIR /app
 # requirements.txt changes, not on every code change.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Pre-download the RAG embedding model so it is baked into the image
+# (no runtime fetch, which would depend on HuggingFace reachability).
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5')"
 
 COPY . .
 
