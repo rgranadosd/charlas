@@ -148,9 +148,14 @@ def _source_weight(source: str, section: str = "") -> float:
     s = (source or "").lower()
     sec = (section or "").lower()
 
-    # Highest-confidence sources: real code and explicitly curated rules
-    if s.endswith("arkanoid_working_reference.md"):
-        return 1.50   # proven working arkanoid — highest priority
+    # Single-game implementation references must NOT carry a global priority
+    # boost: a fixed 1.50 made the Arkanoid reference outrank everything for any
+    # game, contaminating e.g. a Pac-Man build with ball/paddle/brick code. Leave
+    # them at neutral weight so cosine similarity decides relevance per game
+    # (high for the matching game, low for others). Game-agnostic technical
+    # sources below keep their boost because they apply to every game.
+    if s.endswith("_working_reference.md") or s.endswith("_reference.md"):
+        return 1.00   # concrete single-game example — relevance via similarity only
     if "cpctelera/examples/" in s or sec == "cpct_example":
         return 1.35
     if s.endswith("c89_sdcc_codegen_rules.md"):

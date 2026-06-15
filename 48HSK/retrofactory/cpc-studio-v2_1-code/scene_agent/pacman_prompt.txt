@@ -1,0 +1,65 @@
+Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 0.
+
+0. SCREEN LAYOUT (MANDATORY — zones are disjoint and must NEVER overlap):
+   - Mode 0 coordinates: x in BYTES 0..79, y in PIXELS 0..199. Each text character is 4 bytes wide and 8 pixels tall.
+   - HUD ZONE: rows y=0..7. ONLY the two HUD texts defined in section 1 live here. Nothing else is ever drawn here, and no moving entity ever enters here.
+   - PLAY AREA: rows y=8..199. The maze, the player and the ghost exist ONLY inside the play area.
+   - Maze grid: MAZE_ROWS=11 rows x MAZE_COLS=19 columns of tiles. Each tile is TILE=4 bytes wide and 16 pixels tall, starting at y=16. A tile is either a WALL or an open CORRIDOR; open corridors contain a dot until eaten.
+
+1. HUD (MANDATORY):
+   - Draw labels AND initial values ONCE in init_game() using EXACTLY this code:
+       pv = cpct_getScreenPtr(CPCT_VMEM_START, 0, 0);
+       cpct_drawStringM0("SCORE", pv, 1, 0);
+       pv = cpct_getScreenPtr(CPCT_VMEM_START, 48, 0);
+       cpct_drawStringM0("LIVES:", pv, 1, 0);
+     then draw the initial 3-digit score at x=24,y=0 and the initial lives digit at x=72,y=0.
+   - During the game, redraw ONLY the digits, ONLY when their value changes: 3-digit score at x=24, lives digit at x=72.
+   - The complete list of HUD draws is: x=0 (label), x=24 (3 digits), x=48 (label), x=72 (digit). FORBIDDEN: any other text or element in the HUD zone (no LEVEL, no title, no branding). FORBIDDEN: local char arrays for labels — string literals only; digits may use a small null-terminated buffer.
+
+2. GAME STATE:
+   - Globals: g_score (0 at start), g_lives (3 at start), game_over=0, dots_remaining, player_x, player_y, prev_player_x, prev_player_y, player_dir, ghost_x, ghost_y, prev_ghost_x, prev_ghost_y, u8 maze[MAZE_ROWS][MAZE_COLS] (1=wall, 0=corridor), u8 dots[MAZE_ROWS][MAZE_COLS] (1=dot present).
+   - Player and ghost positions are TILE indices (column, row), not pixels. Convert to screen with x_byte = col*TILE, y_pix = 16 + row*16.
+   - All state variables shared between functions are GLOBAL. NEVER shadow a global with a local of the same name.
+   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_score=0, g_lives=3, game_over=0, fill maze/dots, count dots_remaining, place player at a corridor tile, place ghost at a different corridor tile, prev_* = current positions, player_dir = stopped.
+   - reset_positions() MUST set player and ghost back to their start tiles and update prev_* accordingly, WITHOUT resetting g_score, g_lives, the maze or the dots.
+   - No state machine enums. Flags only: game_over.
+
+3. MOVEMENT & RULES (MANDATORY — implement EXACTLY these steps and ADD NOTHING ELSE.
+   In particular: NEVER move a character onto a WALL tile, and NEVER move more than one tile per frame):
+   - Read cursor keys; they set player_dir (up/down/left/right). The player moves ONE tile per frame in player_dir ONLY IF the destination tile is a corridor (maze cell == 0); otherwise it stays put. NEVER let the player pass through a wall.
+   - Dot eating: when the player enters a tile whose dot is present, set its dot to 0, g_score += 10, dots_remaining--, and erase the dot visually. AT MOST ONE dot is eaten per frame (it is the player's single destination tile).
+   - Ghost moves ONE tile per frame toward the player (greedy: reduce row or column distance) but NEVER onto a wall tile; if blocked, it may stay. NEVER move the ghost more than one tile per frame.
+   - Collision: if player and ghost occupy the same tile, g_lives--, then either reset_positions() (lives left) or set game_over=1.
+   - When dots_remaining reaches 0: refill all dots, recount dots_remaining, reset_positions(). g_score and g_lives KEEP their values — they are NEVER reset during a session.
+
+4. RENDERING OWNERSHIP (MANDATORY):
+   - init_game() draws ONCE: cpct_clearScreen(0), the full maze (walls + initial dots), the HUD labels and initial values.
+   - The main loop draws ONLY: (a) player erase/draw using prev_player_x/prev_player_y, (b) ghost erase/draw using prev_ghost_x/prev_ghost_y, (c) HUD digits when their value changed. Always update prev_* after drawing.
+   - Dots are erased individually at the moment they are eaten. FORBIDDEN: redrawing the maze, the dots, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
+   - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. Walls, dots, player and ghost use distinct pens. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
+
+5. STATE FLOW:
+   - When game_over becomes 1: stop updating and draw "GAME OVER" once, centered inside the play area (e.g. x=30, y=100). No start screen, no separate game-over screen.
+
+6. AUDIO:
+   - The audio subsystem is implemented by the AUDIO SPECIALIST AGENT in src/audio.h + src/audio.c (AY-3-8912 beep backend, no external assets). It must expose: audio_init(), audio_update(), audio_play_sfx(u8 sfx_id) and exactly these SFX ids: SFX_DOT_EAT, SFX_DEATH, SFX_GAME_OVER.
+   - The gameplay code (src/main.c) NEVER implements audio — it only includes "audio.h" and calls:
+     audio_init() once in init_game(); audio_update() at the end of every main-loop iteration;
+     audio_play_sfx(SFX_DOT_EAT) when a dot is eaten, SFX_DEATH when the ghost catches the player, SFX_GAME_OVER when lives reach zero.
+
+7. TECHNICAL REQUIREMENTS:
+   - C89/SDCC: declare ALL variables at the top of each function, before any statement.
+   - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>).
+   - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_CursorUp, Key_CursorDown, Key_CursorLeft, Key_CursorRight (NEVER KEY_* or CPCT_KEY_*).
+   - cpct_waitVSYNC() once per main-loop iteration.
+   - Single gameplay file: src/main.c.
+
+8. INVARIANTS (the final code must satisfy ALL of these — they are checkable by reading the code):
+   - The player NEVER moves onto a wall tile (every move is guarded by a maze cell == 0 check).
+   - The ghost NEVER moves onto a wall tile.
+   - Each character moves AT MOST one tile per frame.
+   - AT MOST one dot is eaten per frame.
+   - g_score and g_lives are assigned their starting values in init_game() ONLY — no other assignment except g_score += 10 and g_lives--.
+   - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=48, x=72 at y=0 (plus the single GAME OVER text inside the play area).
+   - Every draw of a moving entity in the main loop is preceded by erasing its previous position.
+   - The maze and dots are drawn once in init_game(), never redrawn wholesale in the main loop.
