@@ -122,7 +122,19 @@ def embed_all(texts: list[str]) -> list[list[float]]:
 
 
 def _embed_query(text: str) -> list[float]:
-    """Embed a single query string for retrieval."""
+    """Embed a single query string for retrieval.
+
+    In k3s, EMBED_AGENT_URL points to the shared embedding service so the heavy
+    onnxruntime model loads ONCE there instead of in every agent (which OOM-ed
+    the node). Falls back to local fastembed when the var is unset (dev).
+    """
+    import os
+    url = os.environ.get("EMBED_AGENT_URL", "")
+    if url:
+        import httpx
+        resp = httpx.post(f"{url.rstrip('/')}/embed", json={"texts": [text]}, timeout=60)
+        resp.raise_for_status()
+        return resp.json()["embeddings"][0]
     fe = _get_fastembed()
     result = list(fe.query_embed([text]))
     return result[0].tolist()
