@@ -478,7 +478,7 @@ class RagStore:
 
             added   = current_names - stored_names
             removed = stored_names  - current_names
-            stale   = [p.name for p in current_sources if p.stat().st_mtime > index_mtime]
+            stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
             if not added and not removed and not stale:
                 size_kb = _INDEX_FILE.stat().st_size // 1024
@@ -528,7 +528,7 @@ class RagStore:
 
             added   = current_names - stored_names
             removed = stored_names  - current_names
-            stale   = [p.name for p in current_sources if p.stat().st_mtime > index_mtime]
+            stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
             if not added and not removed and not stale:
                 size_kb = _ORCH_INDEX_FILE.stat().st_size // 1024
@@ -581,7 +581,7 @@ class RagStore:
 
             added   = current_names - stored_names
             removed = stored_names  - current_names
-            stale   = [p.name for p in current_sources if p.stat().st_mtime > index_mtime]
+            stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
             if not added and not removed and not stale:
                 size_kb = _AUDIO_INDEX_FILE.stat().st_size // 1024
