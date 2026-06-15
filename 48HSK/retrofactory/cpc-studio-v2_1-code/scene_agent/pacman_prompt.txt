@@ -5,6 +5,19 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    - HUD ZONE: rows y=0..7. ONLY the two HUD texts defined in section 1 live here. Nothing else is ever drawn here, and no moving entity ever enters here.
    - PLAY AREA: rows y=8..199. The maze, the player and the ghost exist ONLY inside the play area.
    - Maze grid: MAZE_ROWS=11 rows x MAZE_COLS=19 columns of tiles. Each tile is TILE=4 bytes wide and 16 pixels tall, starting at y=16. A tile is either a WALL or an open CORRIDOR; open corridors contain a dot until eaten.
+   - MAZE LAYOUT (MANDATORY — the maze MUST be this exact map, NOT a generated/empty box). Hardcode it as a static array of 11 string literals of 19 chars each, '#'=wall '.'=corridor, and copy it into g_maze (g_maze[i][j]=1 if '#', else 0) in init_game(). The interior MUST contain internal walls exactly as drawn — never just a hollow rectangle:
+       "###################"
+       "#........#........#"
+       "#.###.##.#.##.###.#"
+       "#.................#"
+       "#.###.#.###.#.###.#"
+       "#...#...#.#...#...##"
+       "#.#.#.#.###.#.#.#..#"
+       "#.................#"
+       "#.###.##.#.##.###.#"
+       "#........#........#"
+       "###################"
+   - Player starts at tile (row=9, col=9) and the ghost at (row=1, col=1) — both are corridor tiles in the map above. A dot exists on every corridor tile except the two starting tiles.
 
 1. HUD (MANDATORY):
    - Draw labels AND initial values ONCE in init_game() using EXACTLY this code:
@@ -20,7 +33,7 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    - Globals: g_score (0 at start), g_lives (3 at start), game_over=0, dots_remaining, player_x, player_y, prev_player_x, prev_player_y, player_dir, ghost_x, ghost_y, prev_ghost_x, prev_ghost_y, u8 maze[MAZE_ROWS][MAZE_COLS] (1=wall, 0=corridor), u8 dots[MAZE_ROWS][MAZE_COLS] (1=dot present).
    - Player and ghost positions are TILE indices (column, row), not pixels. Convert to screen with x_byte = col*TILE, y_pix = 16 + row*16.
    - All state variables shared between functions are GLOBAL. NEVER shadow a global with a local of the same name.
-   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_score=0, g_lives=3, game_over=0, fill maze/dots, count dots_remaining, place player at a corridor tile, place ghost at a different corridor tile, prev_* = current positions, player_dir = stopped.
+   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_score=0, g_lives=3, game_over=0; copy g_maze from the MANDATORY map in section 0 (NEVER fill it procedurally with a hollow rectangle); set a dot on every corridor tile except the player/ghost start tiles and count them into dots_remaining; place player at (9,9) and ghost at (1,1); prev_* = current positions, player_dir = stopped.
    - reset_positions() MUST set player and ghost back to their start tiles and update prev_* accordingly, WITHOUT resetting g_score, g_lives, the maze or the dots.
    - No state machine enums. Flags only: game_over.
 
@@ -63,3 +76,4 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=48, x=72 at y=0 (plus the single GAME OVER text inside the play area).
    - Every draw of a moving entity in the main loop is preceded by erasing its previous position.
    - The maze and dots are drawn once in init_game(), never redrawn wholesale in the main loop.
+   - g_maze is initialized by copying the exact MANDATORY map in section 0 (with internal walls), NEVER as a hollow border-only rectangle.
