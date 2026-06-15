@@ -77,7 +77,34 @@ class TaskDef(BaseModel):
     @field_validator("input_context", "depends_on", "acceptance_checks", mode="before")
     @classmethod
     def _to_list(cls, v: Any) -> Any:
-        return _coerce_to_list(v)
+        # Coerce to list, then flatten any dict/non-str items to text — the
+        # detail-rich PM sometimes returns structured items (e.g. {"rule": ...}).
+        items = _coerce_to_list(v)
+        out = []
+        for it in items:
+            if isinstance(it, dict):
+                out.append("; ".join(f"{k}: {val}" for k, val in it.items()))
+            elif isinstance(it, str):
+                out.append(it)
+            else:
+                out.append(str(it))
+        return out
+
+    @field_validator("implementation_hint", "functional_instruction", "title", mode="before")
+    @classmethod
+    def _to_str(cls, v: Any) -> Any:
+        # The PM sometimes returns a dict/list instead of a string (e.g.
+        # implementation_hint as {"header_file": ...}). Flatten to text so the
+        # worker still receives the guidance instead of failing validation.
+        if v is None:
+            return ""
+        if isinstance(v, str):
+            return v
+        if isinstance(v, dict):
+            return "; ".join(f"{k}: {val}" for k, val in v.items())
+        if isinstance(v, list):
+            return "; ".join(str(x) for x in v)
+        return str(v)
 
 
 class IntentSpec(BaseModel):
