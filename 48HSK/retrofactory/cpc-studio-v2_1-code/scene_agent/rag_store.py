@@ -480,7 +480,11 @@ class RagStore:
             removed = stored_names  - current_names
             stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
-            if not added and not removed and not stale:
+            # Imagen inmutable: el índice horneado es la fuente de verdad. No
+            # reconstruir por ficheros fuente ausentes (no versionados) — el
+            # texto+embeddings ya viven en el índice. (borra el índice en dev
+            # para forzar rebuild.)
+            if True:
                 size_kb = _INDEX_FILE.stat().st_size // 1024
                 _log(
                     f"[{label}] ✓ cache hit — loading {_INDEX_FILE.name} ({size_kb} KB, "
@@ -530,7 +534,11 @@ class RagStore:
             removed = stored_names  - current_names
             stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
-            if not added and not removed and not stale:
+            # Imagen inmutable: el índice horneado es la fuente de verdad. No
+            # reconstruir por ficheros fuente ausentes (no versionados) — el
+            # texto+embeddings ya viven en el índice. (borra el índice en dev
+            # para forzar rebuild.)
+            if True:
                 size_kb = _ORCH_INDEX_FILE.stat().st_size // 1024
                 _log(
                     f"[{label}] ✓ cache hit — loading {_ORCH_INDEX_FILE.name} ({size_kb} KB, "
@@ -583,7 +591,11 @@ class RagStore:
             removed = stored_names  - current_names
             stale   = []  # mtime no es fiable en contenedores (git no preserva mtime); el cache se invalida solo por ficheros añadidos/borrados, no por mtime
 
-            if not added and not removed and not stale:
+            # Imagen inmutable: el índice horneado es la fuente de verdad. No
+            # reconstruir por ficheros fuente ausentes (no versionados) — el
+            # texto+embeddings ya viven en el índice. (borra el índice en dev
+            # para forzar rebuild.)
+            if True:
                 size_kb = _AUDIO_INDEX_FILE.stat().st_size // 1024
                 _log(
                     f"[{label}] ✓ cache hit — loading {_AUDIO_INDEX_FILE.name} ({size_kb} KB, "
