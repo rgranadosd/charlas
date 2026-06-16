@@ -67,7 +67,14 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    - cpct_waitVSYNC() once per main-loop iteration.
    - Single gameplay file: src/main.c.
 
+7b. FORBIDDEN CROSS-GAME CODE (this is a MAZE game — it has NO paddle, NO ball, NO bricks/blocks):
+   - NEVER declare, assign, read or reference ANY of these identifiers (they belong to a different game and DO NOT exist here): ball_x, ball_y, ball_vx, ball_vy, ball_launched, BALL_W, BALL_H, paddle_x, prev_paddle_x, PADDLE_WIDTH, PADDLE_Y, PADDLE_HEIGHT, blocks_remaining, block_grid, BLOCK_WIDTH, BLOCK_HEIGHT, BLOCK_ROWS, BLOCK_COLS, FLOOR_Y, g_level, reset_ball().
+   - init_game() assigns EXACTLY the globals listed in section 2 GAME STATE and NOTHING ELSE. There is exactly ONE assignment of g_score, g_lives and game_over in the whole program (inside init_game). Do NOT add a second/duplicate "reset state" block, and do NOT add a generic state-reset block copied from any other game.
+   - If you are about to write a variable that is not declared in section 2, STOP — it is wrong. Every assignment in init_game must correspond to a variable from section 2.
+
 8. INVARIANTS (the final code must satisfy ALL of these — they are checkable by reading the code):
+   - NONE of the forbidden cross-game identifiers in section 7b appear anywhere in the file.
+   - init_game() contains exactly one assignment block; g_score/g_lives/game_over are each assigned exactly once.
    - The player NEVER moves onto a wall tile (every move is guarded by a maze cell == 0 check).
    - The ghost NEVER moves onto a wall tile.
    - Each character moves AT MOST one tile per frame.

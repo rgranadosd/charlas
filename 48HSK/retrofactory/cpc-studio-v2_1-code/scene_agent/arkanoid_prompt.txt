@@ -4,7 +4,7 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - Mode 0 coordinates: x in BYTES 0..79, y in PIXELS 0..199. Each text character is 4 bytes wide and 8 pixels tall.
    - HUD ZONE: rows y=0..7. ONLY the four HUD texts defined in section 1 live here. Nothing else is ever drawn here, and no moving entity ever enters here.
    - PLAY AREA: rows y=8..199. Ball, bricks and paddle exist ONLY inside the play area.
-   - Bricks: 5 rows x 10 columns at y=20..59. Each brick is BLOCK_WIDTH=8 bytes wide, BLOCK_HEIGHT=8 pixels tall.
+   - Bricks: 5 rows x 10 columns at y=20..59. The CELL pitch is BLOCK_WIDTH=8 bytes by BLOCK_HEIGHT=8 pixels; brick (i,j) occupies the cell whose top-left is x=j*BLOCK_WIDTH, y=20+i*BLOCK_HEIGHT. To make bricks look like SEPARATE blocks (never solid full-width stripes), DRAW each brick as a solid box of (BLOCK_WIDTH-1) bytes by (BLOCK_HEIGHT-1) pixels at that top-left — leaving a 1-byte / 1-pixel gutter. Collision and erase still use the FULL BLOCK_WIDTH x BLOCK_HEIGHT cell.
    - Paddle: PADDLE_Y=190, PADDLE_WIDTH=10 bytes, PADDLE_HEIGHT=6 pixels (it is a solid BAR, not a thin line). Ball: BALL_W=2 bytes, BALL_H=4 pixels. FLOOR_Y=195.
 
 1. HUD (MANDATORY):
@@ -35,8 +35,13 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - Floor: the check goes INSIDE the downward-movement branch: when moving down, compute ball_bottom = ball_y + BALL_H - 1 AFTER moving; if ball_bottom >= FLOOR_Y then g_lives--, play SFX_LIFE_LOST, and either reset_ball() (lives left) or set game_over=1 and play SFX_GAME_OVER. NEVER clamp ball_y at any maximum — only this floor check handles the bottom.
 
 4. RENDERING OWNERSHIP (MANDATORY):
-   - init_game() draws ONCE: cpct_clearScreen(0), the full brick grid, the HUD labels and initial values.
-   - The main loop draws ONLY: (a) ball erase/draw using prev_ball_x/prev_ball_y (cpct_drawSolidBox with BALL_W x BALL_H), (b) paddle erase/draw using prev_paddle_x (cpct_drawSolidBox with PADDLE_WIDTH x PADDLE_HEIGHT — the paddle is a solid bar PADDLE_HEIGHT pixels tall, NEVER 1 or 2 px), (c) HUD digits when their value changed. Always update prev_* after drawing.
+   - init_game() draws ONCE: cpct_clearScreen(0), the full brick grid, the HUD labels and initial values, AND the paddle at (paddle_x, PADDLE_Y) and the ball at (ball_x, ball_y) so BOTH are visible before the first key press. (A game that only draws the paddle/ball once they move is WRONG.)
+   - prev_ball_x, prev_ball_y and prev_paddle_x are the "previous frame" positions used ONLY to erase. They are updated in EXACTLY ONE place: inside draw_game(), AFTER erasing the old position and drawing the new one. The physics/update step moves ball_x/ball_y/paddle_x but MUST NEVER read or assign prev_*. (If prev_* is set before draw_game runs, the erase clears the wrong cell and the entity leaves a TRAIL across the screen — this is the #1 bug to avoid.)
+   - draw_game(), every frame, in this exact order:
+       (a) BALL: erase at (prev_ball_x, prev_ball_y) with colour 0 (BALL_W x BALL_H); draw at (ball_x, ball_y) with the ball colour; THEN prev_ball_x=ball_x; prev_ball_y=ball_y;
+       (b) PADDLE: erase at (prev_paddle_x, PADDLE_Y) with colour 0 (PADDLE_WIDTH x PADDLE_HEIGHT — a solid bar PADDLE_HEIGHT px tall, NEVER 1-2 px); draw at (paddle_x, PADDLE_Y) with the paddle colour; THEN prev_paddle_x=paddle_x;
+     Always erase+draw every frame — do NOT skip with an `if (prev != cur)` guard (re-erasing the same cell is harmless and guarantees no trail and a permanently visible entity).
+   - HUD digits: redraw ONLY when the value changed.
    - Bricks are erased individually at the moment of destruction (inside the collision step). FORBIDDEN: redrawing the brick grid, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
    - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. Distinct colour per brick row. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
 
@@ -53,7 +58,8 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
 7. TECHNICAL REQUIREMENTS:
    - C89/SDCC: declare ALL variables at the top of each function, before any statement.
    - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>).
-   - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_Space, Key_CursorLeft, Key_CursorRight (NEVER KEY_Space or CPCT_KEY_*). Cursor keys move the paddle within 0..80-PADDLE_WIDTH.
+   - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_Space, Key_CursorLeft, Key_CursorRight (NEVER KEY_Space or CPCT_KEY_*). Read Space exactly ONCE (no duplicated Space block).
+   - Paddle movement uses a fixed step PADDLE_STEP=2 and MUST stay clamped within 0..(80-PADDLE_WIDTH) at both ends (apply the safe u8 movement pattern).
    - cpct_waitVSYNC() once per main-loop iteration.
    - Single gameplay file: src/main.c.
 
@@ -62,7 +68,11 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - ball_y is never smaller than 8 once the game runs (HUD zone is untouchable).
    - g_score and g_lives are assigned their starting values in init_game() ONLY — no other assignment except g_score += 10 and g_lives--.
    - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=40, x=64 at y=0 (plus the single GAME OVER text inside the play area).
-   - Every draw of a moving entity in the main loop is preceded by erasing its previous position (or guarded to run only on change).
+   - Every draw of a moving entity in the main loop is preceded by erasing its previous position.
+   - prev_ball_x, prev_ball_y and prev_paddle_x are ASSIGNED in exactly one place — inside draw_game(), AFTER the erase+draw — and are NEVER assigned inside update_game()/the physics step. (Guarantees no trail.)
+   - init_game() draws the paddle and the ball at least once, so both are visible before any key is pressed.
+   - Each brick is drawn (BLOCK_WIDTH-1) x (BLOCK_HEIGHT-1) so a gutter separates it from its neighbours; the brick grid is NEVER rendered as solid full-width stripes.
+   - paddle_x always stays within 0..(80-PADDLE_WIDTH) and never wraps around (no u8 underflow at the left edge).
    - The collision steps contain no statements beyond those listed in section 3.
    - The paddle is drawn as a solid box of PADDLE_WIDTH x PADDLE_HEIGHT (6 px tall), NEVER a 1 or 2 px line.
    - C89: every variable (including static) is declared at the TOP of its function, before any statement — no declaration appears after a statement.

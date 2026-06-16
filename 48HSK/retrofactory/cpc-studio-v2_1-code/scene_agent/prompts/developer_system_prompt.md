@@ -25,12 +25,23 @@ i8 = -128..127. Las coordenadas Y van hasta 199 → NO caben en i8.
     i8 ball_x, ball_y, ball_vx, ball_vy;  ← INCORRECTO: ball_y=180 desborda i8
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MOVIMIENTO SEGURO: guard antes de sumar delta a u8
+MOVIMIENTO SEGURO en u8: el guard debe contemplar el TAMAÑO DEL PASO (step)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ERROR:   pos += delta;   /* u8+i8_negativo → underflow a 255 → crash */
-  CORRECTO:
-    if (vel > 0) { pos++; if (pos >= MAX) { pos = MAX; vel = -1; } }
-    else         { if (pos > 0) pos--; else vel = 1; }
+  Un u8 que baja de 0 NO da negativo: envuelve a ~255 y corrompe la dirección de
+  vídeo (la entidad "teletransporta" a otra zona de la pantalla). Por eso NUNCA
+  restes de un u8 sin garantizar que no cae por debajo de 0, y el guard debe usar
+  el PASO real (step), no un simple "> 0" (que solo es válido si el paso es 1).
+
+  ERROR:   pos -= step;                 /* si pos < step → underflow a ~255 */
+  ERROR:   if (pos > 0) pos -= step;    /* step=2, pos=1 → 1-2 = 255 (teletransporta) */
+
+  CORRECTO — mover a la izquierda/abajo con clamp a 0 (cualquier step):
+    if (pos >= step) pos -= step; else pos = 0;
+  CORRECTO — mover a la derecha/arriba con clamp a MAX (cualquier step):
+    if (pos + step <= MAX) pos += step; else pos = MAX;
+  CORRECTO — rebote de una entidad con velocidad ±step:
+    if (vel > 0) { if (pos + step <= MAX) pos += step; else { pos = MAX; vel = -vel; } }
+    else         { if (pos >= step)      pos -= step; else { pos = 0;   vel = -vel; } }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INICIALIZACIÓN HARDWARE (patrón obligatorio)
