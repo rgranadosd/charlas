@@ -41,7 +41,7 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    In particular: NEVER move a character onto a WALL tile, and NEVER move more than one tile per frame):
    - Read cursor keys; they set player_dir (up/down/left/right). The player moves ONE tile per frame in player_dir ONLY IF the destination tile is a corridor (maze cell == 0); otherwise it stays put. NEVER let the player pass through a wall.
    - Dot eating: when the player enters a tile whose dot is present, set its dot to 0, g_score += 10, dots_remaining--, and erase the dot visually. AT MOST ONE dot is eaten per frame (it is the player's single destination tile).
-   - Ghost moves ONE tile per frame toward the player (greedy: reduce row or column distance) but NEVER onto a wall tile; if blocked, it may stay. NEVER move the ghost more than one tile per frame.
+   - Ghost moves ONE tile per frame toward the player (greedy: reduce row or column distance) but NEVER onto a wall tile; if blocked, it may stay. NEVER move the ghost more than one tile per frame. To compare row/column distance, do NOT use abs() (it does not exist without stdlib) — compute each absolute difference inline with an if (e.g. dr = (player_row>=ghost_row) ? player_row-ghost_row : ghost_row-player_row;).
    - Collision: if player and ghost occupy the same tile, g_lives--, then either reset_positions() (lives left) or set game_over=1.
    - When dots_remaining reaches 0: refill all dots, recount dots_remaining, reset_positions(). g_score and g_lives KEEP their values — they are NEVER reset during a session.
 
@@ -62,7 +62,7 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
 
 7. TECHNICAL REQUIREMENTS:
    - C89/SDCC: declare ALL variables at the top of each function, before any statement.
-   - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>).
+   - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>). NEVER call abs(), min(), max() or any stdlib function — compute them inline with if-comparisons.
    - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_CursorUp, Key_CursorDown, Key_CursorLeft, Key_CursorRight (NEVER KEY_* or CPCT_KEY_*).
    - cpct_waitVSYNC() once per main-loop iteration.
    - Single gameplay file: src/main.c.
