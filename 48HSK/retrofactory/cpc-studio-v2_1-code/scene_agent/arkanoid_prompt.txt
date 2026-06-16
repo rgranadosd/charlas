@@ -5,7 +5,7 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - HUD ZONE: rows y=0..7. ONLY the four HUD texts defined in section 1 live here. Nothing else is ever drawn here, and no moving entity ever enters here.
    - PLAY AREA: rows y=8..199. Ball, bricks and paddle exist ONLY inside the play area.
    - Bricks: 5 rows x 10 columns at y=20..59. Each brick is BLOCK_WIDTH=8 bytes wide, BLOCK_HEIGHT=8 pixels tall.
-   - Paddle: PADDLE_Y=190, PADDLE_WIDTH=10 bytes. Ball: BALL_W=2 bytes, BALL_H=4 pixels. FLOOR_Y=195.
+   - Paddle: PADDLE_Y=190, PADDLE_WIDTH=10 bytes, PADDLE_HEIGHT=6 pixels (it is a solid BAR, not a thin line). Ball: BALL_W=2 bytes, BALL_H=4 pixels. FLOOR_Y=195.
 
 1. HUD (MANDATORY):
    - Draw labels AND initial values ONCE in init_game() using EXACTLY this code:
@@ -36,7 +36,7 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
 
 4. RENDERING OWNERSHIP (MANDATORY):
    - init_game() draws ONCE: cpct_clearScreen(0), the full brick grid, the HUD labels and initial values.
-   - The main loop draws ONLY: (a) ball erase/draw using prev_ball_x/prev_ball_y, (b) paddle erase/draw using prev_paddle_x, (c) HUD digits when their value changed. Always update prev_* after drawing.
+   - The main loop draws ONLY: (a) ball erase/draw using prev_ball_x/prev_ball_y (cpct_drawSolidBox with BALL_W x BALL_H), (b) paddle erase/draw using prev_paddle_x (cpct_drawSolidBox with PADDLE_WIDTH x PADDLE_HEIGHT — the paddle is a solid bar PADDLE_HEIGHT pixels tall, NEVER 1 or 2 px), (c) HUD digits when their value changed. Always update prev_* after drawing.
    - Bricks are erased individually at the moment of destruction (inside the collision step). FORBIDDEN: redrawing the brick grid, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
    - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. Distinct colour per brick row. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
 
@@ -64,3 +64,5 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=40, x=64 at y=0 (plus the single GAME OVER text inside the play area).
    - Every draw of a moving entity in the main loop is preceded by erasing its previous position (or guarded to run only on change).
    - The collision steps contain no statements beyond those listed in section 3.
+   - The paddle is drawn as a solid box of PADDLE_WIDTH x PADDLE_HEIGHT (6 px tall), NEVER a 1 or 2 px line.
+   - C89: every variable (including static) is declared at the TOP of its function, before any statement — no declaration appears after a statement.
