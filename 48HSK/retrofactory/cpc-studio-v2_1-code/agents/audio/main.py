@@ -40,6 +40,41 @@ class ChatResponse(BaseModel):
     total_tokens: int | None = None
 
 
+_IDENTITY = (
+    "Soy el **Audio Agent** de CPC Studio.\n\n"
+    "Genero `src/audio.h` y `src/audio.c` con los efectos de sonido para el "
+    "AY-3-8912 del Amstrad CPC: tonos, buzzes y melodías simples.\n\n"
+    "Dime qué sonidos necesita el juego, por ejemplo:\n"
+    "- *'sonido de rebote de bola, destrucción de ladrillo y pérdida de vida'*\n"
+    "- *'SFX de comer punto, muerte y subir de nivel para un Pac-Man'*\n\n"
+    "Te devuelvo la API de audio lista para incluir en `src/main.c`."
+)
+
+_CONVERSATIONAL = re.compile(
+    r"^\s*(?:"
+    r"qui[eé]n?\s+eres|who\s+are\s+you|what\s+are\s+you"
+    r"|hola|hello|hi|hey|help|ayuda|qu[eé]\s+haces|what\s+do\s+you\s+do"
+    r"|buenas?|saludos?|cpc.?audio|audio.?agent"
+    r")\s*\??$",
+    re.IGNORECASE,
+)
+
+_TASK_HINT = re.compile(
+    r"\b(?:sfx|sound|audio|music|sonido|efecto|effect|beep|tone|buzz|melody|melodia"
+    r"|rebote|bounce|death|muerte|jump|salto|collect|coin|disparo|shot|explosion"
+    r"|ay.?3|chip|audio_init|audio_play|SFX_)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_task(message: str) -> bool:
+    if _CONVERSATIONAL.match(message):
+        return False
+    if _TASK_HINT.search(message):
+        return True
+    return len(message.split()) > 8
+
+
 def _project_name(session_id: str) -> str:
     slug = re.sub(r"[^a-z0-9]", "_", (session_id or "")[:24].lower()).strip("_")
     return slug or "chat"
@@ -75,8 +110,8 @@ async def run(dev_input: DevelopmentInput) -> DevelopmentOutput:
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     message = (req.message or "").strip()
-    if not message:
-        return ChatResponse(response="Describe the sound effects / music the game needs.", status="needs_clarification")
+    if not message or not _is_task(message):
+        return ChatResponse(response=_IDENTITY, status="ready")
     dev_input = DevelopmentInput(
         task_id=f"chat-{_project_name(req.session_id)}",
         project_name=_project_name(req.session_id),

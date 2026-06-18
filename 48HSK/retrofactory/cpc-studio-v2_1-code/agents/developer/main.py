@@ -37,8 +37,43 @@ class ChatResponse(BaseModel):
     total_tokens: int | None = None
 
 
+_IDENTITY = (
+    "Soy el **Developer Agent** de CPC Studio.\n\n"
+    "Genero código C89 para juegos en CPCtelera (Amstrad CPC): gameplay, HUD, "
+    "colisiones, render de sprites y cualquier lógica de juego.\n\n"
+    "Dime qué implementar, por ejemplo:\n"
+    "- *'implementa el movimiento del paddle y la colisión con la bola'*\n"
+    "- *'añade el sistema de puntuación y vidas al HUD'*\n\n"
+    "Te devuelvo un `src/main.c` completo y compilable."
+)
+
+_CONVERSATIONAL = re.compile(
+    r"^\s*(?:"
+    r"qui[eé]n?\s+eres|who\s+are\s+you|what\s+are\s+you"
+    r"|hola|hello|hi|hey|help|ayuda|qu[eé]\s+haces|what\s+do\s+you\s+do"
+    r"|buenas?|saludos?|cpc.?developer"
+    r")\s*\??$",
+    re.IGNORECASE,
+)
+
+_TASK_HINT = re.compile(
+    r"\b(?:implement[ae]?|a[ñn]ade?|add|crea?(?:te)?|genera?(?:te)?|fix|escribe?|write"
+    r"|src/main|main\.c|hud|score|lives|paddle|ball|brick|ghost|maze|player|sprite"
+    r"|colisi[oó]n|collision|movimiento|movement|render|draw|init|loop|game"
+    r"|cpct_|cpctelera|sdcc)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_task(message: str) -> bool:
+    if _CONVERSATIONAL.match(message):
+        return False
+    if _TASK_HINT.search(message):
+        return True
+    return len(message.split()) > 8
+
+
 def _project_name(session_id: str) -> str:
-    """Derive a filesystem-safe project name from the session ID."""
     slug = re.sub(r"[^a-z0-9]", "_", (session_id or "")[:24].lower()).strip("_")
     return slug or "chat"
 
@@ -77,8 +112,8 @@ async def run(dev_input: DevelopmentInput) -> DevelopmentOutput:
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     message = (req.message or "").strip()
-    if not message:
-        return ChatResponse(response="Describe the task you want me to implement.", status="needs_clarification")
+    if not message or not _is_task(message):
+        return ChatResponse(response=_IDENTITY, status="ready")
     dev_input = DevelopmentInput(
         task_id=f"chat-{_project_name(req.session_id)}",
         project_name=_project_name(req.session_id),
