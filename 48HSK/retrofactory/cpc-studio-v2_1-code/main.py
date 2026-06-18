@@ -252,21 +252,30 @@ def _run_pipeline_job_inner(job_id: str, message: str, project_name: str) -> Non
                 f"Directorio de salida: {run_dir_path.name}\n"
                 f"Archivo DSK: {dsk_name}"
             )
+            with _PIPELINE_JOBS_LOCK:
+                job = _PIPELINE_JOBS.get(job_id, {})
+                job["status"] = "completed"
+                job["response"] = response
+                job["error"] = None
+                job["updated_at"] = time()
+                _PIPELINE_JOBS[job_id] = job
+                _save_jobs_to_disk()
         else:
-            response = (
-                f"El pipeline se ejecutó pero la compilación no fue exitosa.\n"
-                f"Proyecto: {project_name}\n"
-                f"Revisa los logs del agente para más detalles."
-            )
-
-        with _PIPELINE_JOBS_LOCK:
-            job = _PIPELINE_JOBS.get(job_id, {})
-            job["status"] = "completed"
-            job["response"] = response
-            job["error"] = None
-            job["updated_at"] = time()
-            _PIPELINE_JOBS[job_id] = job
-            _save_jobs_to_disk()
+            # Borrar el run para que pick_and_play no lo liste como válido.
+            import shutil
+            shutil.rmtree(run_dir_path, ignore_errors=True)
+            with _PIPELINE_JOBS_LOCK:
+                job = _PIPELINE_JOBS.get(job_id, {})
+                job["status"] = "failed"
+                job["response"] = None
+                job["error"] = (
+                    f"El pipeline se ejecutó pero la compilación no fue exitosa tras todos los intentos.\n"
+                    f"Proyecto: {project_name}\n"
+                    f"Revisa los logs del agente para más detalles."
+                )
+                job["updated_at"] = time()
+                _PIPELINE_JOBS[job_id] = job
+                _save_jobs_to_disk()
     except Exception as exc:
         with _PIPELINE_JOBS_LOCK:
             job = _PIPELINE_JOBS.get(job_id, {})

@@ -380,8 +380,21 @@ def auto_fix(code: str) -> str:
     if code and not code.endswith("\n"):
         code += "\n"
 
-    # Fix 2 — remove ball_y bottom clamp
-    code = _remove_ball_y_clamp(code)
+    # Detect whether this file is the Arkanoid game. ONLY a real Arkanoid DECLARES
+    # these globals / macros; a maze game (Pac-Man) or any other game never does.
+    # The repairs further down are Arkanoid-specific (they inject paddle/ball/brick
+    # state, fix LIVES/SCORE HUD slots, tweak ball velocity, …) and would CORRUPT a
+    # non-Arkanoid file — that is the real source of the "cross-game contamination".
+    # Gate on DECLARATIONS, never on references, so a stray contaminated assignment
+    # (e.g. `paddle_x = 35;`) can never trip the detector.
+    _arkanoid = bool(re.search(
+        r'\bu8\s+paddle_x\b|\bu8\s+ball_x\b|\bu8\s+block_grid\b'
+        r'|#\s*define\s+PADDLE_WIDTH\b|#\s*define\s+BLOCK_ROWS\b',
+        code))
+
+    # Fix 2 — remove ball_y bottom clamp (Arkanoid-specific)
+    if _arkanoid:
+        code = _remove_ball_y_clamp(code)
 
     # Fix 3 — split function-call initialisers out of declarations
     code = _split_funcall_decls(code)
@@ -462,6 +475,67 @@ def auto_fix(code: str) -> str:
             result.append(line)
         return '\n'.join(result)
     code = _strip_global_inits(code)
+
+    # Fix 4c — GUARANTEE hardware init (AGNOSTIC). The model sometimes drops the whole
+    # hardware setup in init_game(), so the program runs in the firmware's default Mode 1
+    # (blue background) and Mode-0-encoded graphics render as garbage stripes. If
+    # cpct_setVideoMode is absent ANYWHERE, inject the standard Mode 0 + palette block at
+    # the TOP of init_game() — after the local declarations (so C89 stays valid).
+    def _ensure_hardware_init(src: str) -> str:
+        if re.search(r'\bcpct_setVideoMode\b', src):
+            return src  # already sets the mode — leave it alone
+        m = re.search(r'(void\s+init_game\s*\(\s*void\s*\)\s*\{)', src)
+        if not m:
+            return src
+        block = (
+            "\n    /* [guard] hardware init injected — model omitted it (would run in Mode 1) */\n"
+            "    cpct_disableFirmware();\n"
+            "    cpct_setVideoMode(0);\n"
+            "    cpct_setPALColour(0, HW_BLACK);\n"
+            "    cpct_setPALColour(1, HW_BRIGHT_WHITE);\n"
+            "    cpct_setPALColour(2, HW_BRIGHT_YELLOW);\n"
+            "    cpct_setPALColour(3, HW_BRIGHT_CYAN);\n"
+            "    cpct_setPALColour(4, HW_BRIGHT_RED);\n"
+            "    cpct_setBorder(HW_BLACK);\n"
+            "    cpct_clearScreen(0);\n"
+        )
+        lines = src.splitlines(keepends=True)
+        # locate the line index where init_game's opening brace is
+        brace_off = m.end(1)
+        consumed = 0
+        start_idx = 0
+        for i, ln in enumerate(lines):
+            consumed += len(ln)
+            if consumed >= brace_off:
+                start_idx = i + 1
+                break
+        # skip the contiguous declaration/blank/comment prefix so we insert AFTER decls
+        decl_re = re.compile(
+            r'^\s*(?:(?:const\s+|static\s+|volatile\s+|register\s+)*'
+            r'(?:u8|i8|u16|i16|u32|i32|char|int|short|long|unsigned|signed|void)\b[^=;{}]*;'
+            r'|/\*.*?\*/|//.*)?\s*$')
+        insert_idx = start_idx
+        for i in range(start_idx, len(lines)):
+            if decl_re.match(lines[i]):
+                insert_idx = i + 1
+            else:
+                break
+        lines.insert(insert_idx, block)
+        return ''.join(lines)
+    code = _ensure_hardware_init(code)
+
+    # ── BOUNDARY ─────────────────────────────────────────────────────────────────
+    # Everything above is AGNOSTIC (preprocessor, C89 declaration hoisting, hardware
+    # init guarantee, stripping global initializers) — platform correctness that serves
+    # every game equally. Everything below is Arkanoid-specific gameplay repair.
+    #
+    # RETIRED (more-prompt-less-hardcode migration): the game-specific repairs below are
+    # now mandated by arkanoid_prompt.txt (§2 init state, §3 physics, §1 HUD, §4 render)
+    # and enforced by the agnostic QA loop, so the guard no longer needs to hardcode
+    # Arkanoid logic. We stop here for ALL games. The block below is kept temporarily
+    # (unreachable) for reference until the migration is confirmed, then it is deleted.
+    return code
+    _UNUSED = _arkanoid  # noqa: keeps the detector referenced while the block below is dead
 
     # Fix 3d — block collision loop must exit after first hit (prevent dual-row/dual-col cancellation).
     # When ball straddles a row boundary, two rows can fire in the same frame, inverting ball_vy
@@ -545,55 +619,11 @@ def auto_fix(code: str) -> str:
         return src
     code = _fix_block_grid(code)
 
-    # Fix 4b — init_game() must explicitly initialize ALL critical state variables.
-    # The model often uses global initializers instead of explicit assignments in init_game().
-    # In SDCC/CPCtelera the DATA section copy may not work if there are too many initialized
-    # globals (e.g. u8 g_score[4]="000"), causing all globals to be 0 at runtime.
-    # Inject explicit initialization after audio_init() in init_game().
-    _INIT_BLOCK = (
-        '\n    /* Explicit state init — always reset, never rely on global initializers */\n'
-        '    g_lives = 3;\n'
-        '    g_score = 0;\n'
-        '    g_level = 1;\n'
-        '    game_over = 0;\n'
-        '    ball_launched = 0;\n'
-        '    blocks_remaining = BLOCK_COLS * BLOCK_ROWS;\n'
-        '    paddle_x = 35;\n'
-        '    prev_paddle_x = 35;\n'
-        '    ball_x = paddle_x + (PADDLE_WIDTH / 2);\n'
-        '    ball_y = PADDLE_Y - BALL_H;\n'
-        '    ball_vx = 1;\n'
-        '    ball_vy = -1;\n'
-        '    prev_ball_x = ball_x;\n'
-        '    prev_ball_y = ball_y;\n'
-    )
-    def _fix_init_game_state(src: str) -> str:
-        # Only inject if not already present (check for g_lives = 3 inside a function)
-        fn_body_pat = re.compile(
-            r'(void\s+init_game\s*\(\s*void\s*\)\s*\{.*?)(audio_init\s*\(\s*\)\s*;)',
-            re.DOTALL,
-        )
-        m = fn_body_pat.search(src)
-        if not m:
-            return src
-        # Check if g_lives = 3 is already in init_game
-        if 'g_lives = 3' in m.group(0):
-            return src
-        # Also: g_score might be an array — if so, replace with scalar
-        src = re.sub(
-            r'\bu8\s+g_score\s*\[\s*\d+\s*\]\s*=[^;]+;',
-            'u8 g_score;',
-            src,
-        )
-        # Remove draw_score call that uses g_score as string (now scalar)
-        # draw_score will use digit extraction so it stays
-        # Inject state init
-        src = fn_body_pat.sub(
-            lambda mm: mm.group(1) + mm.group(2) + _INIT_BLOCK,
-            src,
-        )
-        return src
-    code = _fix_init_game_state(code)
+    # Fix 4b — REMOVED (migrated to prompt). The Arkanoid-specific init_game() state
+    # block (paddle_x=35, ball_x=…, ball_vx/vy, blocks_remaining, …) is now mandated
+    # directly by arkanoid_prompt.txt §2 ("init_game() MUST explicitly assign every
+    # state variable exactly once: …") and enforced by the agnostic QA loop. Injecting
+    # it here was game-specific hardcode; the prompt + QA make it game-agnostic.
 
     # Fix 5 — enforce HUD label/digit positions
     code = _fix_hud_positions(code)

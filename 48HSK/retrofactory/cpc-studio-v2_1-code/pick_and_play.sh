@@ -7,16 +7,18 @@
 # 5. Lanza el DSK en Caprice32
 #
 # Uso:
-#   ./pick_and_play.sh            modo normal: elegir run, compilar y jugar
-#   ./pick_and_play.sh --delete   muestra la misma lista pero BORRA del pod el run elegido
+#   ./pick_and_play.sh             modo normal: elegir run, compilar y jugar
+#   ./pick_and_play.sh --delete    muestra la misma lista pero BORRA del pod el run elegido
+#   ./pick_and_play.sh --download  descarga el scene.dsk ya construido del run a local (sin compilar)
 
 set -uo pipefail
 
-# ── Modo (normal | delete) ─────────────────────────────────────────────────
+# ── Modo (play | delete | download) ─────────────────────────────────────────
 MODE="play"
 for arg in "$@"; do
   case "$arg" in
     --delete|-d) MODE="delete" ;;
+    --download|-D) MODE="download" ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Argumento desconocido: $arg (usa -h)"; exit 2 ;;
@@ -26,15 +28,18 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRUEBA="$SCRIPT_DIR/pruebacpct"
 CAP32="$SCRIPT_DIR/cpctelera/tools/caprice32/cap32"
-NS="dp-default-retro-factory-default-92f5b12e"
+NS="retro-factory"
 CONTEXT="k3d-amp-local"
-LABEL="openchoreo.dev/component=cpc-pm"
+LABEL="app=cpc-pm"
+POD_OUTPUTS="${CPC_OUTPUTS_DIR:-/tmp/cpc_outputs}"
 
 G="\033[32m"; R="\033[31m"; Y="\033[33m"; B="\033[36m"; W="\033[1m"; RS="\033[0m"
 
 echo -e "${B}${W}══════════════════════════════════════════${RS}"
 if [ "$MODE" = "delete" ]; then
   echo -e "${B}${W}  CPC Studio — DELETE run from pod${RS}"
+elif [ "$MODE" = "download" ]; then
+  echo -e "${B}${W}  CPC Studio — DOWNLOAD dsk from pod${RS}"
 else
   echo -e "${B}${W}  CPC Studio — pick, compile & play${RS}"
 fi
@@ -57,7 +62,7 @@ while IFS= read -r line; do
   [ -n "$line" ] && RUNS+=("$line")
 done < <(
   kubectl exec -n "$NS" --context "$CONTEXT" "$POD" -- \
-    ls /app/scene_agent/outputs/ 2>/dev/null | sort -r | head -10 || true
+    ls $POD_OUTPUTS/ 2>/dev/null | sort -r | head -10 || true
 )
 
 if [ ${#RUNS[@]} -eq 0 ]; then
@@ -84,11 +89,11 @@ if ! echo "$CHOICE" | grep -qE '^[0-9]+$' || \
 fi
 
 RUN="${RUNS[$((CHOICE-1))]}"
-POD_SRC="/app/scene_agent/outputs/$RUN/src"
+POD_SRC="$POD_OUTPUTS/$RUN/src"
 
 # ── 3b. Modo borrado: eliminar el run del pod y salir ──────────────────────
 if [ "$MODE" = "delete" ]; then
-  RUN_DIR="/app/scene_agent/outputs/$RUN"
+  RUN_DIR="$POD_OUTPUTS/$RUN"
   echo ""
   echo -e "  Vas a borrar del pod: ${W}$RUN_DIR${RS}"
   read -rp "  ¿Seguro? Escribe 'si' para confirmar: " CONFIRM
@@ -100,6 +105,25 @@ if [ "$MODE" = "delete" ]; then
     echo -e "  ${G}✓ Borrado del pod: $RUN${RS}"
   else
     echo -e "  ${R}✗ Error al borrar $RUN del pod.${RS}"; exit 1
+  fi
+  exit 0
+fi
+
+# ── 3c. Modo descarga: bajar el scene.dsk ya construido a local y salir ────
+if [ "$MODE" = "download" ]; then
+  POD_DSK="$POD_OUTPUTS/$RUN/scene.dsk"
+  EXISTS=$(kubectl exec -n "$NS" --context "$CONTEXT" "$POD" -- ls "$POD_DSK" 2>/dev/null || true)
+  if [ -z "$EXISTS" ]; then
+    echo -e "\n  ${R}✗ El run $RUN no tiene scene.dsk (no compiló en el pod).${RS}"; exit 1
+  fi
+  DEST_DIR="$SCRIPT_DIR/downloads"
+  mkdir -p "$DEST_DIR"
+  DEST="$DEST_DIR/scene-$RUN.dsk"
+  echo -e "\n  Descargando ${W}scene.dsk${RS} de $RUN..."
+  if kubectl cp --context "$CONTEXT" "$NS/$POD:$POD_DSK" "$DEST" 2>/dev/null && [ -f "$DEST" ]; then
+    echo -e "  ${G}✓ Descargado:${RS} ${W}$DEST${RS}"
+  else
+    echo -e "  ${R}✗ Error al descargar el DSK.${RS}"; exit 1
   fi
   exit 0
 fi

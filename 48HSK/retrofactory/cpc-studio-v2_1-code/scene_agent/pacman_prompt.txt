@@ -32,6 +32,8 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
 2. GAME STATE:
    - Globals: g_score (0 at start), g_lives (3 at start), game_over=0, dots_remaining, player_x, player_y, prev_player_x, prev_player_y, player_dir, ghost_x, ghost_y, prev_ghost_x, prev_ghost_y, u8 maze[MAZE_ROWS][MAZE_COLS] (1=wall, 0=corridor), u8 dots[MAZE_ROWS][MAZE_COLS] (1=dot present).
    - Player and ghost positions are TILE indices (column, row), not pixels. Convert to screen with x_byte = col*TILE, y_pix = 16 + row*16.
+   - TILE→SCREEN CONVERSION (MANDATORY — applies to maze walls, dots, player AND ghost, every draw and erase): the X byte is `col*TILE`; the Y pixel is `16 + row*16`. NEVER use `row*TILE` (or any `row*4`) for the Y coordinate — that compresses the board into the top ~44px and DRAWS OVER THE HUD ZONE (y=0..7), corrupting SCORE/LIVES. Tiles are 16 pixels tall; rows are 16px apart and the board starts at y=16. Every cpct_getScreenPtr for a tile uses (col*TILE, 16 + row*16).
+   - WALL TILE SIZE (MANDATORY): each WALL tile is drawn as a solid box that FILLS THE WHOLE CELL: width = TILE bytes, height = 16 pixels → `cpct_drawSolidBox(pv, wall_color, TILE, 16)`. NEVER draw the wall as TILE×TILE (that is only 4px tall → thin sliver walls with gaps, the maze looks empty). The player and ghost are drawn TILE×16 as well (full cell). Erasing a moving entity also erases a TILE×16 box.
    - All state variables shared between functions are GLOBAL. NEVER shadow a global with a local of the same name.
    - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_score=0, g_lives=3, game_over=0; copy g_maze from the MANDATORY map in section 0 (NEVER fill it procedurally with a hollow rectangle); set a dot on every corridor tile except the player/ghost start tiles and count them into dots_remaining; place player at (9,9) and ghost at (1,1); prev_* = current positions, player_dir = stopped.
    - reset_positions() MUST set player and ghost back to their start tiles and update prev_* accordingly, WITHOUT resetting g_score, g_lives, the maze or the dots.
@@ -40,6 +42,12 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
 3. MOVEMENT & RULES (MANDATORY — implement EXACTLY these steps and ADD NOTHING ELSE.
    In particular: NEVER move a character onto a WALL tile, and NEVER move more than one tile per frame):
    - Read cursor keys; they set player_dir (up/down/left/right). The player moves ONE tile per frame in player_dir ONLY IF the destination tile is a corridor (maze cell == 0); otherwise it stays put. NEVER let the player pass through a wall.
+   - KEYBOARD READING (MANDATORY — calling cpct_scanKeyboard_f() is NOT enough; you MUST actually TEST each key): after cpct_scanKeyboard_f(), read the four cursor keys with cpct_isKeyPressed and set player_dir, e.g.:
+        if      (cpct_isKeyPressed(Key_CursorUp))    player_dir = DIR_UP;
+        else if (cpct_isKeyPressed(Key_CursorDown))  player_dir = DIR_DOWN;
+        else if (cpct_isKeyPressed(Key_CursorLeft))  player_dir = DIR_LEFT;
+        else if (cpct_isKeyPressed(Key_CursorRight)) player_dir = DIR_RIGHT;
+     The file MUST contain at least one cpct_isKeyPressed(Key_Cursor...) call for EACH of the four directions. A build that scans the keyboard but never calls cpct_isKeyPressed is WRONG (the player can never move).
    - Dot eating: when the player enters a tile whose dot is present, set its dot to 0, g_score += 10, dots_remaining--, and erase the dot visually. AT MOST ONE dot is eaten per frame (it is the player's single destination tile).
    - Ghost moves ONE tile per frame toward the player (greedy: reduce row or column distance) but NEVER onto a wall tile; if blocked, it may stay. NEVER move the ghost more than one tile per frame. To compare row/column distance, do NOT use abs() (it does not exist without stdlib) — compute each absolute difference inline with an if (e.g. dr = (player_row>=ghost_row) ? player_row-ghost_row : ghost_row-player_row;).
    - Collision: if player and ghost occupy the same tile, g_lives--, then either reset_positions() (lives left) or set game_over=1.
@@ -84,3 +92,6 @@ Create a simple Pac-Man-style maze game in CPCtelera for Amstrad CPC using Mode 
    - Every draw of a moving entity in the main loop is preceded by erasing its previous position.
    - The maze and dots are drawn once in init_game(), never redrawn wholesale in the main loop.
    - g_maze is initialized by copying the exact MANDATORY map in section 0 (with internal walls), NEVER as a hollow border-only rectangle.
+   - Every tile draw/erase (maze, dots, player, ghost) uses Y = 16 + row*16. NO draw of a tile uses row*TILE (row*4) for its Y coordinate, and NOTHING is ever drawn into the HUD zone y=0..7 except the HUD texts.
+   - Every WALL tile is drawn as a FULL cell: cpct_drawSolidBox(pv, wall_color, TILE, 16). NO wall is drawn as TILE×TILE (4px tall). Player/ghost boxes are TILE×16 too.
+   - The file contains at least one cpct_isKeyPressed(Key_CursorUp), one (Key_CursorDown), one (Key_CursorLeft) and one (Key_CursorRight) call, and they set player_dir. Calling cpct_scanKeyboard_f() without any cpct_isKeyPressed is a violation.

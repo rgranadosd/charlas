@@ -43,7 +43,7 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
      Always erase+draw every frame — do NOT skip with an `if (prev != cur)` guard (re-erasing the same cell is harmless and guarantees no trail and a permanently visible entity).
    - HUD digits: redraw ONLY when the value changed.
    - Bricks are erased individually at the moment of destruction (inside the collision step). FORBIDDEN: redrawing the brick grid, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
-   - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. Distinct colour per brick row. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
+   - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. EVERY brick colour MUST be cpct_px2byteM0(p, p) with the SAME pen on BOTH pixels (a SOLID colour). For 5 distinct brick-row colours, set 5 distinct palette pens — cpct_setPALColour(1..5, five different HW_* colours) — and make brick row i use cpct_px2byteM0(i+1, i+1). FORBIDDEN: cpct_px2byteM0(a, b) with a != b for any brick (e.g. px2byteM0(1,2), px2byteM0(2,3)) — two different pens paint alternating pixels = VERTICAL STRIPES, not a solid brick. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
 
 5. LEVEL FLOW:
    - When blocks_remaining reaches 0: refill block_grid with 1s, blocks_remaining=50, redraw the brick grid once, reset_ball(). g_score and g_lives KEEP their values — they are NEVER reset during a session.
@@ -59,7 +59,7 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - C89/SDCC: declare ALL variables at the top of each function, before any statement.
    - No stdio.h, stdlib.h, printf, puts, sprintf. CPCtelera API only (<cpctelera.h>).
    - Keyboard: cpct_scanKeyboard_f() once per loop; keys are Key_Space, Key_CursorLeft, Key_CursorRight (NEVER KEY_Space or CPCT_KEY_*). Read Space exactly ONCE (no duplicated Space block).
-   - Paddle movement uses a fixed step PADDLE_STEP=2 and MUST stay clamped within 0..(80-PADDLE_WIDTH) at both ends (apply the safe u8 movement pattern).
+   - Paddle movement uses a fixed step PADDLE_STEP=1 (ONE byte per frame — at 50fps a larger step makes the paddle uncontrollably fast; 1 gives precise control) and MUST stay clamped within 0..(80-PADDLE_WIDTH) at both ends (apply the safe u8 movement pattern).
    - cpct_waitVSYNC() once per main-loop iteration.
    - Single gameplay file: src/main.c.
 

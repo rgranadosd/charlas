@@ -31,7 +31,7 @@ _REPO_ROOT      = Path(__file__).parents[1]
 _TESTPROJECT    = _REPO_ROOT / "pruebacpct"
 _CPCTELERA_ROOT = _REPO_ROOT / "cpctelera" / "cpctelera"
 _CAPRICE32_BIN  = _REPO_ROOT / "cpctelera" / "tools" / "caprice32" / "cap32"
-_OUTPUTS_ROOT   = Path(__file__).parent / "outputs"
+_OUTPUTS_ROOT   = Path(os.environ.get("CPC_OUTPUTS_DIR", "/tmp/cpc_outputs"))
 
 
 

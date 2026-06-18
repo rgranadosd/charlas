@@ -308,7 +308,18 @@ def _make_nvidia_llm(env: dict[str, str]):
 
 
 def _build_worker_llm(env: dict[str, str]) -> tuple:
-    """Devuelve (llm, label) — Mistral Codestral primero, NVIDIA segundo."""
+    """Devuelve (llm, label) — backend seleccionable.
+
+    Prioridad:
+      1. Si NVIDIA_WORKER_MODEL está EXPLÍCITAMENTE puesto (y hay key NVIDIA), usa
+         NVIDIA. Esto permite escoger el backend por configuración (Workload env)
+         sin tener que retirar la key de Mistral del secret renderizado.
+      2. Mistral Codestral si hay key de Mistral.
+      3. NVIDIA como fallback si solo hay key de NVIDIA.
+    """
+    if env.get("NVIDIA_WORKER_MODEL", "").strip() and env.get("NVIDIA_WORKER_API_KEY", "").strip():
+        return _make_nvidia_llm(env)
+
     mistral_key   = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
     mistral_model = env.get("MISTRAL_WORKER_MODEL", "codestral-latest")
     if mistral_key:
