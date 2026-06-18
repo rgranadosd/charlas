@@ -1,33 +1,28 @@
-/* audio.c — Phase 2: direct AY-3-8912 access via Z80 inline assembly.
-   CPC AY ports: BC=0xF400 to latch register, BC=0xF600 to write value.
-   __sfr __at(0xFx) is WRONG (generates OUT (N),A using A as port high byte).
-   Correct approach: OUT (c),A with BC=16-bit port address. */
 #include "audio.h"
 
-/* Global relay vars — avoids SDCC Z80 calling-convention issues in inline asm */
 static u8 g_ay_reg;
 static u8 g_ay_dat;
-static u8 g_sfx_timer;
+static u8 s_sfx_timer;
 
 static void ay_write_hw(void) {
     __asm
-        ; Phase 1 — latch register address: BDIR=1, BC1=1
+        ; Fase 1 — latch del registro: BDIR=1, BC1=1
         ld  a, (_g_ay_reg)
-        ld  bc, #0xF4FF     ; PPI Port A (AY data bus)
-        out (c), a           ; put register number on bus
+        ld  bc, #0xF4FF
+        out (c), a
         ld  b, #0xF6
-        ld  a, #0xC0         ; BDIR=1 (bit7), BC1=1 (bit6) = LATCH ADDRESS
+        ld  a, #0xC0
         out (c), a
-        ld  a, #0x40         ; BDIR=0 = inactive
+        ld  a, #0x40
         out (c), a
-        ; Phase 2 — write data: BDIR=1, BC1=0
+        ; Fase 2 — escritura del dato: BDIR=1, BC1=0
         ld  a, (_g_ay_dat)
-        ld  bc, #0xF4FF     ; PPI Port A
-        out (c), a           ; put data value on bus
-        ld  b, #0xF6
-        ld  a, #0x80         ; BDIR=1 (bit7), BC1=0 (bit6) = WRITE DATA
+        ld  bc, #0xF4FF
         out (c), a
-        ld  a, #0x40         ; BDIR=0 = inactive
+        ld  b, #0xF6
+        ld  a, #0x80
+        out (c), a
+        ld  a, #0x40
         out (c), a
     __endasm;
 }
@@ -35,36 +30,60 @@ static void ay_write_hw(void) {
 #define AY(r, v) do { g_ay_reg = (r); g_ay_dat = (v); ay_write_hw(); } while(0)
 
 void audio_init(void) {
-    g_sfx_timer = 0;
-    AY(7,  0x3F);  /* mixer: silence all */
-    AY(8,  0);     /* channel A volume = 0 */
-    AY(9,  0);     /* channel B volume = 0 */
-    AY(10, 0);     /* channel C volume = 0 */
+    // Silenciar todo
+    AY(7, 0x3F);  // Mixer: todo apagado
+    AY(8, 0);    // Volumen canal A: 0
+    s_sfx_timer = 0;
 }
 
 void audio_update(void) {
-    if (g_sfx_timer > 0) {
-        g_sfx_timer--;
-        if (g_sfx_timer == 0) {
-            AY(8, 0);       /* silence channel A */
-            AY(7, 0x3F);    /* mixer off */
+    if (s_sfx_timer > 0) {
+        s_sfx_timer--;
+        if (s_sfx_timer == 0) {
+            // Silenciar al terminar el SFX
+            AY(8, 0);    // Volumen canal A: 0
+            AY(7, 0x3F);  // Mixer: todo apagado
         }
     }
 }
 
 void audio_play_sfx(u8 sfx_id) {
-    u8 period_lo, duration;
+    u8 period_low, period_high, duration;
+
     switch (sfx_id) {
-        case SFX_WALL_HIT:   period_lo = 0x23; duration = 4;  break;
-        case SFX_PADDLE_HIT: period_lo = 0x47; duration = 6;  break;
-        case SFX_BRICK_HIT:  period_lo = 0x8E; duration = 5;  break;
-        case SFX_LIFE_LOST:  period_lo = 0xFF; duration = 20; break;
-        case SFX_GAME_OVER:  period_lo = 0xCC; duration = 40; break;
-        default: return;
+        case SFX_WALL_HIT:
+            period_low = 35;    // 1760 Hz (agudo)
+            period_high = 0;
+            duration = 4;
+            break;
+        case SFX_PADDLE_HIT:
+            period_low = 71;    // 880 Hz (medio)
+            period_high = 0;
+            duration = 5;
+            break;
+        case SFX_BRICK_HIT:
+            period_low = 142;   // 440 Hz (grave)
+            period_high = 0;
+            duration = 6;
+            break;
+        case SFX_LIFE_LOST:
+            period_low = 142;   // 440 Hz (grave)
+            period_high = 0;
+            duration = 20;
+            break;
+        case SFX_GAME_OVER:
+            period_low = 142;   // 440 Hz (grave)
+            period_high = 0;
+            duration = 40;
+            break;
+        default:
+            return;
     }
-    AY(0, period_lo);  /* tone period channel A low */
-    AY(1, 0);          /* tone period channel A high */
-    AY(7, 0x3E);       /* enable tone on channel A */
-    AY(8, 12);         /* channel A volume */
-    g_sfx_timer = duration;
+
+    // Configurar y reproducir el SFX
+    AY(0, period_low);
+    AY(1, period_high);
+    AY(7, 0x3E);      // Habilitar tono canal A
+    AY(8, 12);       // Volumen canal A: 12
+    s_sfx_timer = duration;
 }

@@ -28,9 +28,13 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRUEBA="$SCRIPT_DIR/pruebacpct"
 CAP32="$SCRIPT_DIR/cpctelera/tools/caprice32/cap32"
-NS="retro-factory"
 CONTEXT="k3d-amp-local"
-LABEL="app=cpc-pm"
+# Agent Manager ("Try it out") ejecuta el pipeline en el deployment platform-hosted
+# (label openchoreo.dev/component=cpc-pm, ns dp-default-retrofactory-default-<hash>),
+# NO en el deployment manual de retro-factory (label app=cpc-pm). El hash del ns puede
+# cambiar al recrear el proyecto, así que se descubre solo. Overrides: CPC_NS / CPC_LABEL.
+LABEL="${CPC_LABEL:-openchoreo.dev/component=cpc-pm}"
+NS="${CPC_NS:-}"
 POD_OUTPUTS="${CPC_OUTPUTS_DIR:-/tmp/cpc_outputs}"
 
 G="\033[32m"; R="\033[31m"; Y="\033[33m"; B="\033[36m"; W="\033[1m"; RS="\033[0m"
@@ -48,12 +52,22 @@ echo -e "${B}${W}═════════════════════
 # ── 1. Obtener pod ─────────────────────────────────────────────────────────
 # Solo el pod en ejecución (un rollout deja pods Succeeded/Terminating viejos
 # con outputs/ vacío; .items[0] podía caer en uno de esos).
-POD=$(kubectl get pod -n "$NS" --context "$CONTEXT" -l "$LABEL" \
-  --field-selector=status.phase=Running \
-  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-if [ -z "$POD" ]; then
-  echo -e "${R}  Error: pod cpc-pm no encontrado.${RS}"; exit 1
+# Si no se fija CPC_NS, se descubre el namespace del pod cpc-pm en ejecución por
+# su label de componente (el hash de dp-default-* no es estable).
+if [ -z "$NS" ]; then
+  read -r NS POD < <(kubectl get pod -A --context "$CONTEXT" -l "$LABEL" \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{range .items[0]}{.metadata.namespace}{" "}{.metadata.name}{end}' 2>/dev/null || true)
+else
+  POD=$(kubectl get pod -n "$NS" --context "$CONTEXT" -l "$LABEL" \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 fi
+if [ -z "${POD:-}" ]; then
+  echo -e "${R}  Error: pod cpc-pm no encontrado (label=$LABEL).${RS}"
+  echo -e "${Y}  Prueba con CPC_LABEL=app=cpc-pm (deployment manual) o fija CPC_NS.${RS}"; exit 1
+fi
+echo -e "  Namespace: ${W}$NS${RS}"
 echo -e "  Pod: ${W}$POD${RS}\n"
 
 # ── 2. Listar runs del pod ─────────────────────────────────────────────────
