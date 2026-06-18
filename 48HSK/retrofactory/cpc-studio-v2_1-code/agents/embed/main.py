@@ -36,6 +36,16 @@ class EmbedResponse(BaseModel):
     embeddings: list[list[float]]
 
 
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+
+class ChatResponse(BaseModel):
+    response: str
+    status: str | None = None
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -47,6 +57,30 @@ def embed(req: EmbedRequest) -> EmbedResponse:
     # query_embed is the retrieval-side embedding (matches how the index was built)
     vecs = [v.tolist() for v in fe.query_embed(req.texts)]
     return EmbedResponse(embeddings=vecs)
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest) -> ChatResponse:
+    """WSO2 Agent Manager "Try it out" adapter.
+
+    Embeds the message and returns a human-readable summary (dimension + a short
+    preview) instead of the raw float array, which is useless in a chat widget.
+    Use POST /embed for the machine-readable vectors.
+    """
+    text = (req.message or "").strip()
+    if not text:
+        return ChatResponse(response="Send some text and I'll return its embedding summary.", status="needs_clarification")
+    vec = next(iter(_get_model().query_embed([text]))).tolist()
+    preview = ", ".join(f"{v:.4f}" for v in vec[:8])
+    return ChatResponse(
+        response=(
+            f"Embedded with `{_MODEL}`.\n"
+            f"- dimension: **{len(vec)}**\n"
+            f"- first 8 values: [{preview}, …]\n\n"
+            f"Call POST /embed for the full machine-readable vector."
+        ),
+        status="ok",
+    )
 
 
 if __name__ == "__main__":
