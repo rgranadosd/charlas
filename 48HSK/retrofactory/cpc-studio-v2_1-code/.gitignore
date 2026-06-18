@@ -19,3 +19,12 @@ cpctelera/
 
 # Ficheros grandes
 *.pdf
+
+# Build artifacts de pruebacpct
+pruebacpct/obj/
+pruebacpct/*.cdt
+pruebacpct/pruebacpct.dsk
+pruebacpct/cfg/build_config.mk.bak
+pruebacpct/obj/scene.bin
+pruebacpct/obj/scene.bin.dskinc
+pruebacpct/obj/scene.dsk.dskinc
