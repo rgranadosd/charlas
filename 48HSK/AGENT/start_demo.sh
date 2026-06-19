@@ -470,15 +470,16 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 AMP_INSTRUMENT="$VENV_DIR/bin/amp-instrument"
-if [ -x "$AMP_INSTRUMENT" ] && [ -n "${AMP_OTEL_ENDPOINT:-}" ] && [ -n "${AMP_AGENT_API_KEY:-}" ]; then
-    log "${GREEN}✓ Lanzando agente con instrumentación AMP${NC}"
+ENABLE_AMP_INSTRUMENTATION="${ENABLE_AMP_INSTRUMENTATION:-false}"
+if [ "$ENABLE_AMP_INSTRUMENTATION" = "true" ] && [ -x "$AMP_INSTRUMENT" ] && [ -n "${AMP_OTEL_ENDPOINT:-}" ] && [ -n "${AMP_AGENT_API_KEY:-}" ]; then
+    log "${GREEN}✓ Lanzando agente con instrumentación AMP (ENABLE_AMP_INSTRUMENTATION=true)${NC}"
     if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
         "$AMP_INSTRUMENT" "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
     else
         "$AMP_INSTRUMENT" "$VENV_PY" "$AGENT_FILE"
     fi
 else
-    log "${YELLOW}AMP instrumentation no disponible (falta amp-instrument o AMP_OTEL_ENDPOINT/AMP_AGENT_API_KEY); ejecutando sin instrumentar${NC}"
+    log "${YELLOW}AMP instrumentation desactivada para demo (set ENABLE_AMP_INSTRUMENTATION=true para activarla)${NC}"
     if [ ${#FINAL_ARGS[@]} -gt 0 ]; then
         "$VENV_PY" "$AGENT_FILE" "${FINAL_ARGS[@]}"
     else

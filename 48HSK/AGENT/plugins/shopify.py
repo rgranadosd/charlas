@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
@@ -33,6 +34,8 @@ class ShopifyPlugin:
         self._token_initialized = False
         self._user_permissions = set()
         self._force_auth = force_auth
+        self._apim_access_token = None
+        self._apim_access_token_expiry = 0.0
 
         if force_auth:
             self._user_permissions = set()
@@ -101,9 +104,18 @@ class ShopifyPlugin:
         if not shopify_token:
             return {"error": "SHOPIFY_API_TOKEN no configurado en el archivo .env"}
 
-        shopify_store = os.getenv("SHOPIFY_STORE_URL", "https://rafa-ecommerce.myshopify.com")
-        url = f"{shopify_store}/admin/api/2024-01{path}"
+        gw_url = (os.getenv("WSO2_GW_URL") or "").strip().rstrip("/")
+        if not gw_url:
+            return {"error": "WSO2_GW_URL no configurado. Shopify debe pasar por APIM."}
+
+        apim_token = self._get_apim_access_token()
+        if not apim_token:
+            return {"error": "No se pudo obtener token de APIM para llamar a Shopify por gateway"}
+
+        shopify_api_base = (os.getenv("WSO2_SHOPIFY_API_URL") or f"{gw_url}/shopify/1.0.0").strip().rstrip("/")
+        url = f"{shopify_api_base}{path}"
         headers = {
+            "Authorization": f"Bearer {apim_token}",
             "X-Shopify-Access-Token": shopify_token,
             "Content-Type": "application/json",
         }
@@ -114,16 +126,23 @@ class ShopifyPlugin:
 
         try:
             if method == "GET":
-                response = requests.get(url, headers=headers, verify=False)
+                response = requests.get(url, headers=headers, verify=False, allow_redirects=False)
             elif method == "POST":
-                response = requests.post(url, headers=headers, json=data, verify=False)
+                response = requests.post(url, headers=headers, json=data, verify=False, allow_redirects=False)
             elif method == "PUT":
-                response = requests.put(url, headers=headers, json=data, verify=False)
+                response = requests.put(url, headers=headers, json=data, verify=False, allow_redirects=False)
             elif method == "DELETE":
-                response = requests.delete(url, headers=headers, verify=False)
+                response = requests.delete(url, headers=headers, verify=False, allow_redirects=False)
             else:
                 return {"error": f"Método no soportado: {method}"}
 
+            if response.status_code in (301, 302, 303, 307, 308):
+                return {
+                    "error": (
+                        f"APIM devolvió redirección HTTP {response.status_code} en Shopify. "
+                        "Revisa la definición de recursos de la API Shopify en APIM."
+                    )
+                }
             if response.status_code == 401:
                 error_msg = "Token de Shopify inválido o expirado. Verifica SHOPIFY_API_TOKEN en .env"
                 print(Colors.red(f"[SHOPIFY ERROR 401] {error_msg}"))
@@ -141,13 +160,60 @@ class ShopifyPlugin:
 
             return response.json() if response.content else {}
         except requests.exceptions.ConnectionError:
-            error_msg = f"No se pudo conectar a Shopify. Verifica SHOPIFY_STORE_URL: {shopify_store}"
+            error_msg = f"No se pudo conectar a APIM/Shopify. Verifica WSO2_GW_URL/WSO2_SHOPIFY_API_URL: {url}"
             print(Colors.red(f"[CONNECTION ERROR] {error_msg}"))
             return {"error": error_msg}
         except Exception as exc:
             if get_debug_mode():
                 print(Colors.red(f"Exception en API call: {str(exc)}"))
             return {"error": f"Error inesperado: {str(exc)}"}
+
+    def _get_apim_access_token(self):
+        now = time.time()
+        if self._apim_access_token and now < self._apim_access_token_expiry:
+            return self._apim_access_token
+
+        token_endpoint = (os.getenv("WSO2_APIM_TOKEN_ENDPOINT") or "").strip()
+        consumer_key = (os.getenv("WSO2_APIM_CONSUMER_KEY") or "").strip()
+        consumer_secret = (os.getenv("WSO2_APIM_CONSUMER_SECRET") or "").strip()
+
+        if not token_endpoint or not consumer_key or not consumer_secret:
+            if get_debug_mode():
+                print(Colors.red("Faltan credenciales de APIM (WSO2_APIM_TOKEN_ENDPOINT/CONSUMER_KEY/CONSUMER_SECRET)"))
+            return None
+
+        try:
+            response = requests.post(
+                token_endpoint,
+                auth=(consumer_key, consumer_secret),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={"grant_type": "client_credentials"},
+                verify=False,
+                timeout=15,
+            )
+        except Exception as exc:
+            if get_debug_mode():
+                print(Colors.red(f"Error obteniendo token APIM: {exc}"))
+            return None
+
+        if response.status_code != 200:
+            if get_debug_mode():
+                print(Colors.red(f"Token APIM error {response.status_code}: {response.text[:200]}"))
+            return None
+
+        try:
+            payload = response.json()
+        except Exception:
+            return None
+
+        access_token = payload.get("access_token")
+        expires_in = int(payload.get("expires_in", 3600) or 3600)
+        if not access_token:
+            return None
+
+        self._apim_access_token = access_token
+        self._apim_access_token_expiry = now + max(60, expires_in - 60)
+        return self._apim_access_token
 
     def find_id_by_name(self, name):
         permission_error = self._check_permission("View Products", "buscar productos")

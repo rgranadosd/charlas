@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info:
+  title: CPC Audio Agent
+  version: 1.0.0
+paths:
+  /run:
+    post:
+      operationId: runAudioTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevelopmentInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevelopmentOutput'
+components:
+  schemas:
+    DevelopmentInput:
+      type: object
+      required: [task_id, project_name, goal]
+      properties:
+        task_id:   { type: string }
+        project_name: { type: string }
+        goal:      { type: string }
+        context:   { type: array, items: { type: string } }
+        acceptance_criteria: { type: array, items: { type: string } }
+        constraints: { type: array, items: { type: string } }
+        target_files: { type: array, items: { type: string } }
+    DevelopmentOutput:
+      type: object
+      properties:
+        task_id:  { type: string }
+        status:   { type: string }
+        summary:  { type: string }
+        files_to_write: { type: array, items: { type: object } }

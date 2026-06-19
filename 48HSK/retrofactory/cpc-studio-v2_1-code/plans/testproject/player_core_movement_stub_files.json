@@ -1,0 +1,10 @@
+{
+  "tool": "generate_stub_slice",
+  "project_name": "testproject",
+  "project_root": "/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/testproject",
+  "slice_name": "player_core_movement",
+  "created_files": [
+    "/Users/rafagranados/Develop/charlas/48HSK/retrofactory/cpc-studio-v2_1-code/testproject/src/main.c",
+    "plans/testproject/player_core_movement_stub.md"
+  ]
+}

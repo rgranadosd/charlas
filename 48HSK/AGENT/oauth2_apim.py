@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ import urllib3
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+from request_identity import get_caller_identity
+
 urllib3.disable_warnings()
 
 
@@ -31,6 +34,32 @@ class _TokenCache:
 
 
 _TOKEN_CACHE = _TokenCache()
+
+
+def _load_cached_end_user_token() -> Optional[str]:
+    token_file = Path(__file__).with_name("token_cache.json")
+    try:
+        data = json.loads(token_file.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    access_token = data.get("access_token")
+    expires_at = data.get("expires_at") or 0
+    if not access_token or time.time() >= (float(expires_at) - 30):
+        return None
+    return str(access_token)
+
+
+def get_gateway_access_token() -> Optional[str]:
+    caller_identity = get_caller_identity()
+    if caller_identity and caller_identity.access_token:
+        return caller_identity.access_token
+
+    cached_end_user_token = _load_cached_end_user_token()
+    if cached_end_user_token:
+        return cached_end_user_token
+
+    return None
 
 
 def _is_localhost_url(url: str) -> bool:
@@ -103,6 +132,10 @@ def _fetch_oauth2_token_sync() -> tuple[str, int]:
 
 
 async def _get_oauth2_token_cached() -> str:
+    end_user_token = get_gateway_access_token()
+    if end_user_token:
+        return end_user_token
+
     # Reusar token si todavía es válido (con margen)
     now = time.time()
     if _TOKEN_CACHE.token and now < (_TOKEN_CACHE.expires_at - 30):

@@ -1,0 +1,30 @@
+# Entornos
+.env
+.venv/
+
+# Artefactos generados
+__pycache__/
+*.egg-info/
+.cache/
+.pytest_cache/
+
+# Salidas de ejecución
+scene_agent/outputs/
+scene_agent/test_logs/
+
+# SDK CPCtelera (493MB — no subir)
+cpctelera/
+
+# Índices RAG generados (se reconstruyen automáticamente)
+
+# Ficheros grandes
+*.pdf
+
+# Build artifacts de pruebacpct
+pruebacpct/obj/
+pruebacpct/*.cdt
+pruebacpct/pruebacpct.dsk
+pruebacpct/cfg/build_config.mk.bak
+pruebacpct/obj/scene.bin
+pruebacpct/obj/scene.bin.dskinc
+pruebacpct/obj/scene.dsk.dskinc

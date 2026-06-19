@@ -1,0 +1,22 @@
+# Python virtual environment — pip install runs inside the container
+.venv/
+
+# Compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated game outputs — created at runtime, not needed in the image
+scene_agent/outputs/
+
+# CPCtelera extras not needed for compilation
+# (caprice32 emulator and demos — save ~45 MB of build context)
+cpctelera/examples/
+cpctelera/tools/
+
+# Local cache (RAG index, embeddings)
+.cache/
+
+# Local env file — secrets are injected by Agent Manager at runtime
+.env
+*.env
