@@ -247,6 +247,10 @@ def _build_verifier_llm(env: dict[str, str]):
         temperature=0,
         openai_api_base=env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1"),
         openai_api_key=key,
+        # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
+        # only sends Authorization: Bearer by default → 401). Harmless for
+        # direct api.mistral.ai calls.
+        default_headers={"API-Key": key},
         timeout=90,
         max_retries=0,
     )

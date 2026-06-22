@@ -327,6 +327,12 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
             model=mistral_model, temperature=0,
             openai_api_base=env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1"),
             openai_api_key=mistral_key,
+            # The AMP API Platform LLM proxy authenticates via the "API-Key"
+            # header (see the agent's "Environment Variables & Integration Guide"
+            # in the console); ChatOpenAI only sends "Authorization: Bearer" by
+            # default, which the proxy rejects with 401. Sending both keeps
+            # direct api.mistral.ai calls working too (it ignores the extra header).
+            default_headers={"API-Key": mistral_key},
             timeout=_env_int(env, "MISTRAL_WORKER_TIMEOUT_SECONDS", 90),
             max_retries=0,
         )

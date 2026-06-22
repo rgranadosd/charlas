@@ -99,6 +99,10 @@ def build_audio_agent(settings) -> tuple:
             model=mistral_model, temperature=0,
             openai_api_base=mistral_url,
             openai_api_key=mistral_key,
+            # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
+            # only sends Authorization: Bearer by default → 401). Harmless for
+            # direct api.mistral.ai calls.
+            default_headers={"API-Key": mistral_key},
             timeout=int(env.get("MISTRAL_WORKER_TIMEOUT_SECONDS", "90")),
             max_retries=0,
         )
