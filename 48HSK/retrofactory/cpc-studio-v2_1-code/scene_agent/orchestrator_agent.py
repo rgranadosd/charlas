@@ -96,6 +96,10 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
             model=mistral_model, temperature=0,
             openai_api_base=mistral_url,
             openai_api_key=mistral_key,
+            # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
+            # only sends Authorization: Bearer by default → 401). Harmless for
+            # direct api.mistral.ai calls.
+            default_headers={"API-Key": mistral_key},
             timeout=timeout,
             max_retries=0,
         )
