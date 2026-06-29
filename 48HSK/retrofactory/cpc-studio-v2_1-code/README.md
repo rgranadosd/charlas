@@ -78,6 +78,46 @@ ORCHESTRATOR_MODEL=mistral-large-latest
 
 ---
 
+## Audio Agent
+
+El agente de audio (`scene_agent/audio_agent.py`) corre **en proceso** dentro del
+pod del PM cuando `AUDIO_AGENT_URL` no está definida, o como servicio independiente
+cuando sí lo está. Resuelve su LLM con la misma prioridad que el orquestador:
+
+1. **Gateway LLM de AMP** (binding o `AMP_LLM_URL`).
+2. **Mistral directo** (`MISTRAL_WORKER_API_KEY` / `MISTRAL_API_KEY`) — local.
+3. Sin ninguno → error inmediato (ya no cuelga esperando a `192.168.1.175`).
+
+El **modelo** se toma de: `AUDIO_MODEL` → `AMP_GENAI_MODEL` → `codestral-latest`.
+
+### Variables de entorno del audio agent
+
+#### Dentro de AMP
+
+| Variable | Quién la pone | Para qué |
+|---|---|---|
+| `AUDIO_MODEL` | **Tú** | Modelo a pedir (ej. `codestral-latest`) |
+| `<AGENTE>_<N>_URL` | AMP (binding LLM Provider) | URL externa; el código la reescribe al gateway interno |
+| `<AGENTE>_<N>_API_KEY` | AMP (binding LLM Provider) | Key del gateway |
+
+#### Fuera de AMP (local / Mistral directo)
+
+| Variable | Obligatoria | Default | Para qué |
+|---|---|---|---|
+| `MISTRAL_API_KEY` (o `MISTRAL_WORKER_API_KEY`) | sí | — | Key real de Mistral |
+| `AUDIO_MODEL` | no | `codestral-latest` | Modelo a pedir |
+| `MISTRAL_BASE_URL` | no | `https://api.mistral.ai/v1` | Endpoint OpenAI-compatible |
+| `AUDIO_TIMEOUT_SECONDS` | no | `180` | Timeout de la llamada al LLM |
+
+### RAG del audio agent
+
+El audio agent usa un RAG propio (`rag_index_audio.json`, ~129 chunks) construido
+sobre `scene_agent/data/audio/`. Carga en caché automáticamente al arrancar.
+Si `fastembed` no está instalado en el pod, el RAG se salta con un warning y el
+agente continúa sin contexto de recuperación — **no es un error bloqueante**.
+
+---
+
 ## Despliegue en Agent Manager (resumen)
 
 | Campo | Valor |

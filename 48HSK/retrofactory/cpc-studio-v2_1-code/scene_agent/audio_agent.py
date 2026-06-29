@@ -69,6 +69,51 @@ def _read_env() -> dict[str, str]:
     return env
 
 
+def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
+    """Resolve AMP's governed LLM gateway from the binding env vars, or None.
+
+    AMP injects ``<PREFIX>_<N>_URL`` + ``<PREFIX>_<N>_API_KEY`` when an LLM
+    provider is attached. That URL is external; we keep its context path, swap
+    the authority for the in-cluster gateway service, append ``/v1`` and
+    surface the original hostname as the ``Host`` header for routing.
+    Explicit ``AMP_LLM_URL`` + ``AMP_LLM_API_KEY`` win over auto-detection.
+    """
+    import re
+    from urllib.parse import urlsplit
+
+    binding_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    url = env.get("AMP_LLM_URL", "").strip()
+    key = env.get("AMP_LLM_API_KEY", "").strip()
+    if not url:
+        for name, value in env.items():
+            match = binding_re.match(name)
+            if not match or not value.strip().startswith("http"):
+                continue
+            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
+            if env.get(sibling, "").strip():
+                url, key = value.strip(), env[sibling].strip()
+                break
+    if not url or not key:
+        return None
+
+    parts = urlsplit(url)
+    authority = env.get("AMP_LLM_GATEWAY_AUTHORITY", "gateway-default.openchoreo-data-plane:19080").strip()
+    scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
+    base_url = f"{scheme}://{authority}{parts.path.rstrip('/')}".rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+    return {"base_url": base_url, "api_key": key, "host": parts.hostname or ""}
+
+
+def _audio_model(env: dict[str, str]) -> str:
+    """Model for the audio worker. Set ``AUDIO_MODEL`` in the agent's env vars;
+    falls back to ``AMP_GENAI_MODEL`` and finally a sensible default."""
+    model = env.get("AUDIO_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
+    if "/" in model:
+        model = model.split("/", 1)[1]
+    return model
+
+
 def _parse_output(text: str) -> dict:
     try:
         return _json.loads(text)
@@ -88,37 +133,41 @@ def _parse_output(text: str) -> dict:
 
 def build_audio_agent(settings) -> tuple:
     env = _read_env()
+    model = _audio_model(env)
+    timeout = int(env.get("AUDIO_TIMEOUT_SECONDS", "180"))
 
-    # Prefer Mistral Codestral for code generation
-    mistral_key   = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
-    mistral_model = env.get("MISTRAL_WORKER_MODEL", "codestral-latest")
-    mistral_url   = env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
-
-    if mistral_key:
+    # 1. AMP governed LLM gateway — normal path when a provider is attached.
+    gateway = _resolve_amp_llm_gateway(env)
+    if gateway:
         llm = ChatOpenAI(
-            model=mistral_model, temperature=0,
+            model=model, temperature=0,
+            openai_api_base=gateway["base_url"],
+            openai_api_key=gateway["api_key"],
+            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+            timeout=timeout,
+            max_retries=0,
+        )
+        label = f"AUDIO/AMP-GATEWAY/{model}"
+        logger.info("[AUDIO] LLM: AMP gateway — %s (timeout=%ds)", model, timeout)
+    # 2. Mistral direct API — local-dev fallback.
+    elif env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", ""):
+        mistral_key = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
+        mistral_url = env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
+        llm = ChatOpenAI(
+            model=model, temperature=0,
             openai_api_base=mistral_url,
             openai_api_key=mistral_key,
-            # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
-            # only sends Authorization: Bearer by default → 401). Harmless for
-            # direct api.mistral.ai calls.
             default_headers={"API-Key": mistral_key},
-            timeout=int(env.get("MISTRAL_WORKER_TIMEOUT_SECONDS", "90")),
+            timeout=timeout,
             max_retries=0,
         )
-        label = f"AUDIO/MISTRAL/{mistral_model}"
+        label = f"AUDIO/MISTRAL/{model}"
+        logger.info("[AUDIO] LLM: Mistral direct — %s (timeout=%ds)", model, timeout)
     else:
-        # Fallback to local
-        local_url = env.get("LOCAL_AI_BASE_URL", "http://192.168.1.175:1234/v1")
-        local_model = env.get("LOCAL_AI_MODEL", "gemma-4-e4b-uncensored-hauhaucs-aggressive")
-        llm = ChatOpenAI(
-            model=local_model, temperature=0,
-            openai_api_base=local_url,
-            openai_api_key=env.get("LOCAL_AI_API_KEY", "lmstudio"),
-            timeout=int(env.get("LOCAL_WORKER_TIMEOUT_SECONDS", "180")),
-            max_retries=0,
+        raise RuntimeError(
+            "No audio LLM configured. Attach an LLM provider in Agent Manager "
+            "(or set AMP_LLM_URL/AMP_LLM_API_KEY), or set MISTRAL_API_KEY for local dev."
         )
-        label = f"AUDIO/LOCAL/{local_model}"
 
     # Audio agent uses src/audio.c and src/audio.h — never src/main.c
     audio_schema = (
