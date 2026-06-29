@@ -111,6 +111,59 @@ def _env_retry_delays(env: dict[str, str], key: str, default: list[int]) -> list
     return values or default
 
 
+_AMP_BINDING_RE = _re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+
+
+def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
+    """Resolve the connection details for AMP's governed LLM gateway, or None.
+
+    When an LLM provider is attached to the agent, AMP injects a pair of env
+    vars ``<PREFIX>_<N>_URL`` + ``<PREFIX>_<N>_API_KEY`` (e.g.
+    ``CPC_STUDIO_PM_1_URL`` / ``CPC_STUDIO_PM_1_API_KEY``). That URL is the
+    *external* invoke URL (``http://…gateway.localhost:19080/<context>``) which
+    does NOT resolve from inside the cluster, and the gateway routes by ``Host``
+    header. So we keep the provider *context path*, swap the authority for the
+    in-cluster gateway service (``AMP_LLM_GATEWAY_AUTHORITY``), append the
+    OpenAI-compatible ``/v1`` suffix, and surface the original hostname as the
+    ``Host`` header for the caller to send.
+
+    Precedence: explicit ``AMP_LLM_URL`` + ``AMP_LLM_API_KEY`` win over the
+    auto-detected binding, so a deploy can pin stable names if it prefers.
+    """
+    url = env.get("AMP_LLM_URL", "").strip()
+    key = env.get("AMP_LLM_API_KEY", "").strip()
+
+    if not url:
+        for name, value in env.items():
+            match = _AMP_BINDING_RE.match(name)
+            if not match or not value.strip().startswith("http"):
+                continue
+            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
+            if env.get(sibling, "").strip():
+                url = value.strip()
+                key = env[sibling].strip()
+                break
+
+    if not url or not key:
+        return None
+
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    host_header = parts.hostname or ""
+    context = parts.path.rstrip("/")
+    authority = env.get(
+        "AMP_LLM_GATEWAY_AUTHORITY", "gateway-default.openchoreo-data-plane:19080"
+    ).strip()
+    scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
+
+    base_url = f"{scheme}://{authority}{context}".rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+
+    return {"base_url": base_url, "api_key": key, "host": host_header}
+
+
 def _write_failed_model_output(task_id: str, model_label: str, raw_text: str, reason: str) -> Path:
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
     safe_model = _re.sub(r"[^A-Za-z0-9_.-]+", "_", model_label)
@@ -319,6 +372,25 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
     """
     if env.get("NVIDIA_WORKER_MODEL", "").strip() and env.get("NVIDIA_WORKER_API_KEY", "").strip():
         return _make_nvidia_llm(env)
+
+    # Governed path: an LLM provider attached in AMP. Preferred over a direct
+    # Mistral key so calls flow through the gateway (auth, rate-limit, traces).
+    gateway = _resolve_amp_llm_gateway(env)
+    if gateway:
+        model = env.get("MISTRAL_WORKER_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
+        if "/" in model:                       # AMP_GENAI_MODEL may be "MISTRAL/codestral-latest"
+            model = model.split("/", 1)[1]
+        llm = ChatOpenAI(
+            model=model, temperature=0,
+            openai_api_base=gateway["base_url"],
+            openai_api_key=gateway["api_key"],
+            # The AMP gateway authenticates via the "API-Key" header and routes
+            # by "Host"; the in-cluster service URL alone matches no route.
+            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+            timeout=_env_int(env, "MISTRAL_WORKER_TIMEOUT_SECONDS", 90),
+            max_retries=0,
+        )
+        return llm, f"AMP-GATEWAY/{model}"
 
     mistral_key   = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
     mistral_model = env.get("MISTRAL_WORKER_MODEL", "codestral-latest")

@@ -80,49 +80,101 @@ _NVIDIA_RETRY_BASE  = 1.0   # seconds; doubles each retry: 1 → 2 → 4
 _NVIDIA_TIMEOUT     = 240
 
 
+def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
+    """Resolve AMP's governed LLM gateway from the env injected when an LLM
+    provider is attached to the agent, or None.
+
+    AMP injects a pair ``<PREFIX>_<N>_URL`` + ``<PREFIX>_<N>_API_KEY`` (e.g.
+    ``CPC_STUDIO_PM_1_URL``). That URL is the *external* invoke URL — it does
+    NOT resolve in-cluster and the gateway routes by ``Host`` — so we keep its
+    context path, swap the authority for the in-cluster gateway service
+    (``AMP_LLM_GATEWAY_AUTHORITY``), append the OpenAI-compatible ``/v1`` suffix
+    and surface the original hostname as the ``Host`` header. Explicit
+    ``AMP_LLM_URL`` + ``AMP_LLM_API_KEY`` win over the auto-detected binding.
+    """
+    import re
+    from urllib.parse import urlsplit
+
+    binding_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    url = env.get("AMP_LLM_URL", "").strip()
+    key = env.get("AMP_LLM_API_KEY", "").strip()
+    if not url:
+        for name, value in env.items():
+            match = binding_re.match(name)
+            if not match or not value.strip().startswith("http"):
+                continue
+            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
+            if env.get(sibling, "").strip():
+                url, key = value.strip(), env[sibling].strip()
+                break
+    if not url or not key:
+        return None
+
+    parts = urlsplit(url)
+    authority = env.get("AMP_LLM_GATEWAY_AUTHORITY", "gateway-default.openchoreo-data-plane:19080").strip()
+    scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
+    base_url = f"{scheme}://{authority}{parts.path.rstrip('/')}".rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+    return {"base_url": base_url, "api_key": key, "host": parts.hostname or ""}
+
+
+def _orchestrator_model(env: dict[str, str]) -> str:
+    """Model the orchestrator requests. Set ``ORCHESTRATOR_MODEL`` in the agent's
+    env vars; falls back to ``AMP_GENAI_MODEL`` (AMP may inject it, possibly as
+    ``PROVIDER/model``) and finally a minimal default."""
+    model = env.get("ORCHESTRATOR_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
+    if "/" in model:                       # AMP_GENAI_MODEL may be "MISTRAL/codestral-latest"
+        model = model.split("/", 1)[1]
+    return model
+
+
 def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
     """Return (llm, label).
 
     Priority:
-      1. Mistral API direct (MISTRAL_ORCHESTRATOR_API_KEY or MISTRAL_API_KEY)
-      2. NVIDIA NIM       (NVIDIA_ORCHESTRATOR_API_KEY)
+      1. AMP governed LLM gateway — the normal path once a provider is attached
+         in Agent Manager (provider-agnostic, OpenAI-compatible).
+      2. Mistral API direct — local-dev fallback (MISTRAL_API_KEY), no AMP.
+
+    The model comes from ``ORCHESTRATOR_MODEL`` (see ``_orchestrator_model``).
     """
-    # 1. Mistral direct API — better JSON schema compliance, faster for orchestration
-    mistral_key   = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY", "")
-    mistral_model = env.get("MISTRAL_ORCHESTRATOR_MODEL", "mistral-large-latest")
-    mistral_url   = env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
-    if mistral_key:
+    model = _orchestrator_model(env)
+
+    # 1. AMP gateway — provider chosen in Agent Manager, reached via the binding.
+    gateway = _resolve_amp_llm_gateway(env)
+    if gateway:
         llm = ChatOpenAI(
-            model=mistral_model, temperature=0,
+            model=model, temperature=0,
+            openai_api_base=gateway["base_url"],
+            openai_api_key=gateway["api_key"],
+            # The AMP gateway authenticates via the "API-Key" header and routes
+            # by "Host"; the in-cluster service URL alone matches no route.
+            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+            timeout=timeout,
+            max_retries=0,
+        )
+        logger.info("[ORCH] primary LLM: AMP gateway — %s (timeout=%ds)", model, timeout)
+        return llm, f"AMP-GATEWAY/{model}"
+
+    # 2. Mistral direct API — local-dev fallback when there is no AMP gateway.
+    mistral_key = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY", "")
+    if mistral_key:
+        mistral_url = env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
+        llm = ChatOpenAI(
+            model=model, temperature=0,
             openai_api_base=mistral_url,
             openai_api_key=mistral_key,
-            # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
-            # only sends Authorization: Bearer by default → 401). Harmless for
-            # direct api.mistral.ai calls.
             default_headers={"API-Key": mistral_key},
             timeout=timeout,
             max_retries=0,
         )
-        logger.info("[ORCH] primary LLM: Mistral — %s (timeout=%ds)", mistral_model, timeout)
-        return llm, f"MISTRAL/{mistral_model}"
-
-    # 2. NVIDIA NIM
-    nvidia_key   = env.get("NVIDIA_ORCHESTRATOR_API_KEY", "")
-    nvidia_model = env.get("NVIDIA_ORCHESTRATOR_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1.5")
-    nvidia_url   = env.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    if nvidia_key:
-        llm = ChatOpenAI(
-            model=nvidia_model, temperature=0,
-            openai_api_base=nvidia_url,
-            openai_api_key=nvidia_key,
-            timeout=timeout,
-        )
-        logger.info("[ORCH] primary LLM: NVIDIA NIM — %s (timeout=%ds)", nvidia_model, timeout)
-        return llm, f"NVIDIA/{nvidia_model}"
+        logger.info("[ORCH] primary LLM: Mistral direct — %s (timeout=%ds)", model, timeout)
+        return llm, f"MISTRAL/{model}"
 
     raise RuntimeError(
-        "No orchestrator LLM configured. Set MISTRAL_ORCHESTRATOR_API_KEY/MISTRAL_API_KEY "
-        "or NVIDIA_ORCHESTRATOR_API_KEY. Local fallback is disabled."
+        "No orchestrator LLM configured. Attach an LLM provider in Agent Manager "
+        "(or set AMP_LLM_URL/AMP_LLM_API_KEY), or set MISTRAL_API_KEY for local dev."
     )
 
 
