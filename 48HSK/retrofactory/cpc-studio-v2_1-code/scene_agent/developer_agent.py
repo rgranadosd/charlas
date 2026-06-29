@@ -377,7 +377,7 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
     # Mistral key so calls flow through the gateway (auth, rate-limit, traces).
     gateway = _resolve_amp_llm_gateway(env)
     if gateway:
-        model = env.get("MISTRAL_WORKER_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
+        model = env.get("DEVELOPER_MODEL", "").strip() or env.get("MISTRAL_WORKER_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
         if "/" in model:                       # AMP_GENAI_MODEL may be "MISTRAL/codestral-latest"
             model = model.split("/", 1)[1]
         llm = ChatOpenAI(
@@ -393,7 +393,7 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
         return llm, f"AMP-GATEWAY/{model}"
 
     mistral_key   = env.get("MISTRAL_WORKER_API_KEY") or env.get("MISTRAL_API_KEY", "")
-    mistral_model = env.get("MISTRAL_WORKER_MODEL", "codestral-latest")
+    mistral_model = env.get("DEVELOPER_MODEL", "").strip() or env.get("MISTRAL_WORKER_MODEL", "codestral-latest")
     if mistral_key:
         llm = ChatOpenAI(
             model=mistral_model, temperature=0,

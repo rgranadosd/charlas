@@ -16,7 +16,7 @@ import re
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from .developer_agent import _build_worker_llm, _parse_output, _read_env
+from .developer_agent import _build_worker_llm, _parse_output, _read_env, _resolve_amp_llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -236,20 +236,35 @@ def _checklist_audit(env: dict[str, str], user_prompt: str, main_c: str) -> list
 
 
 def _build_verifier_llm(env: dict[str, str]):
-    """A stronger reasoner than the finder: judging citations needs judgment."""
+    """A stronger reasoner than the finder: judging citations needs judgment.
+
+    Priority: AMP gateway → Mistral direct → None (QA verifier is skipped).
+    Model: QA_MODEL → AMP_GENAI_MODEL → mistral-large-latest.
+    """
     from langchain_openai import ChatOpenAI
+    model = env.get("QA_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "mistral-large-latest"
+    if "/" in model:
+        model = model.split("/", 1)[1]
+
+    gateway = _resolve_amp_llm_gateway(env)
+    if gateway:
+        return ChatOpenAI(
+            model=model, temperature=0,
+            openai_api_base=gateway["base_url"],
+            openai_api_key=gateway["api_key"],
+            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+            timeout=90,
+            max_retries=0,
+        )
+
     key = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY") \
         or env.get("MISTRAL_WORKER_API_KEY", "")
     if not key:
         return None
     return ChatOpenAI(
-        model=env.get("MISTRAL_ORCHESTRATOR_MODEL", "mistral-large-latest"),
-        temperature=0,
+        model=model, temperature=0,
         openai_api_base=env.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1"),
         openai_api_key=key,
-        # AMP LLM proxy authenticates via the "API-Key" header (ChatOpenAI
-        # only sends Authorization: Bearer by default → 401). Harmless for
-        # direct api.mistral.ai calls.
         default_headers={"API-Key": key},
         timeout=90,
         max_retries=0,
