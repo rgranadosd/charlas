@@ -29,7 +29,7 @@ def _log(msg: str, color: str = _GREEN) -> None:
     logger.info("%s%s%s", color, msg, _RESET)
 
 _DATA_DIR        = Path(__file__).parent / "data"
-_AUDIO_DIR       = _DATA_DIR / "audio"          # exclusive to audio_agent
+_AUDIO_DIR       = Path(__file__).parents[1] / "agents" / "audio" / "doc"
 _EXAMPLES_DIR    = Path(__file__).parents[1] / "cpctelera" / "examples"
 _TECHNICAL_DIR   = Path(__file__).parents[1] / "doc" / "technical"
 _DOC_DIR         = Path(__file__).parents[1] / "doc"
