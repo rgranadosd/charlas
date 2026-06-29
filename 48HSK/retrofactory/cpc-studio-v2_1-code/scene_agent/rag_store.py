@@ -29,6 +29,7 @@ def _log(msg: str, color: str = _GREEN) -> None:
     logger.info("%s%s%s", color, msg, _RESET)
 
 _DATA_DIR        = Path(__file__).parent / "data"
+_DEVELOPER_DIR   = Path(__file__).parents[1] / "agents" / "developer" / "doc"
 _AUDIO_DIR       = Path(__file__).parents[1] / "agents" / "audio" / "doc"
 _EXAMPLES_DIR    = Path(__file__).parents[1] / "cpctelera" / "examples"
 _TECHNICAL_DIR   = Path(__file__).parents[1] / "doc" / "technical"
@@ -298,26 +299,22 @@ def _ingest_pdf(path: Path) -> list[Chunk]:
 def _ingest_all() -> list[Chunk]:
     chunks: list[Chunk] = []
 
-    # Local documentation
-    for p in sorted(_DATA_DIR.iterdir()):
-        if p.suffix == ".md":
-            _log(f"[RAG] ingesting {p.name}", _CYAN)
-            chunks.extend(_ingest_markdown(p))
-        elif p.suffix == ".jsonl":
-            _log(f"[RAG] ingesting {p.name}", _CYAN)
-            chunks.extend(_ingest_jsonl(p))
-
-    # Technical documentation (PDF + MD from doc/technical/)
-    if _TECHNICAL_DIR.exists():
-        for p in sorted(_TECHNICAL_DIR.iterdir()):
-            if p.suffix == ".pdf" and p.stat().st_size > 0:
-                _log(f"[RAG] ingesting technical PDF {p.name}", _CYAN)
-                chunks.extend(_ingest_pdf(p))
-            elif p.suffix == ".md" and p.stat().st_size > 0:
-                _log(f"[RAG] ingesting technical MD {p.name}", _CYAN)
+    # Developer agent documentation (agents/developer/doc/)
+    if _DEVELOPER_DIR.exists():
+        for p in sorted(_DEVELOPER_DIR.iterdir()):
+            if not p.is_file() or p.stat().st_size == 0:
+                continue
+            if p.suffix == ".md":
+                _log(f"[RAG] ingesting {p.name}", _CYAN)
                 chunks.extend(_ingest_markdown(p))
+            elif p.suffix == ".jsonl":
+                _log(f"[RAG] ingesting {p.name}", _CYAN)
+                chunks.extend(_ingest_jsonl(p))
+            elif p.suffix == ".pdf":
+                _log(f"[RAG] ingesting PDF {p.name}", _CYAN)
+                chunks.extend(_ingest_pdf(p))
     else:
-        _log(f"[RAG] technical dir not found: {_TECHNICAL_DIR}", _YELLOW)
+        _log(f"[RAG] developer doc dir not found: {_DEVELOPER_DIR}", _YELLOW)
 
     # CPCtelera example code (real working C — highest value for the expert)
     if _EXAMPLES_DIR.exists():
@@ -358,12 +355,11 @@ def _ingest_orchestrator() -> list[Chunk]:
 # ---------------------------------------------------------------------------
 
 def _tech_rag_sources() -> list[Path]:
-    """All file paths that feed the TECH-RAG index."""
+    """All file paths that feed the TECH-RAG (developer) index."""
     return (
-        list(_DATA_DIR.glob("*.md")) +
-        list(_DATA_DIR.glob("*.jsonl")) +
-        ([p for p in _TECHNICAL_DIR.iterdir() if p.suffix in (".md", ".pdf")]
-         if _TECHNICAL_DIR.exists() else []) +
+        ([p for p in _DEVELOPER_DIR.iterdir()
+          if p.is_file() and p.suffix in (".md", ".jsonl", ".pdf") and p.stat().st_size > 0]
+         if _DEVELOPER_DIR.exists() else []) +
         (list(_EXAMPLES_DIR.rglob("*.c"))
          if _EXAMPLES_DIR.exists() else [])
     )
