@@ -31,8 +31,8 @@ def _log(msg: str, color: str = _GREEN) -> None:
 _REPO_ROOT       = Path(__file__).parents[1]
 _DEVELOPER_DIR   = _REPO_ROOT / "agents" / "developer" / "doc"
 _AUDIO_DIR       = _REPO_ROOT / "agents" / "audio" / "doc"
+_PM_DIR          = _REPO_ROOT / "agents" / "pm" / "doc"
 _EXAMPLES_DIR    = _REPO_ROOT / "cpctelera" / "examples"
-_DOC_DIR         = _REPO_ROOT / "doc"
 _INDEX_FILE      = _REPO_ROOT / "agents" / "developer" / "data" / "rag_index_emb.json"
 _ORCH_INDEX_FILE = _REPO_ROOT / "agents" / "pm" / "data" / "rag_index_orchestrator.json"
 _AUDIO_INDEX_FILE = _REPO_ROOT / "agents" / "audio" / "data" / "rag_index_audio.json"
@@ -335,12 +335,12 @@ def _ingest_orchestrator() -> list[Chunk]:
     e.g. architecture_single_agent_v1.md, supervisor_transition_plan.md.
     """
     chunks: list[Chunk] = []
-    if not _DOC_DIR.exists():
-        _log(f"[RAG-ORCH] doc dir not found: {_DOC_DIR}", _YELLOW)
+    if not _PM_DIR.exists():
+        _log(f"[RAG-ORCH] doc dir not found: {_PM_DIR}", _YELLOW)
         return chunks
 
     # Only files directly in doc/ — skip subdirectories like doc/technical/
-    for p in sorted(_DOC_DIR.iterdir()):
+    for p in sorted(_PM_DIR.iterdir()):
         if p.is_file() and p.suffix == ".md" and p.stat().st_size > 0:
             _log(f"[RAG-ORCH] ingesting {p.name}", _CYAN)
             chunks.extend(_ingest_markdown(p))
@@ -366,9 +366,9 @@ def _tech_rag_sources() -> list[Path]:
 
 def _orch_rag_sources() -> list[Path]:
     """All file paths that feed the RAG-ORCH index."""
-    if not _DOC_DIR.exists():
+    if not _PM_DIR.exists():
         return []
-    return [p for p in _DOC_DIR.iterdir() if p.is_file() and p.suffix == ".md"]
+    return [p for p in _PM_DIR.iterdir() if p.is_file() and p.suffix == ".md"]
 
 
 def _audio_rag_sources() -> list[Path]:
