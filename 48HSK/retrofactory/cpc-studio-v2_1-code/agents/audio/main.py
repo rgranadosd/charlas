@@ -20,9 +20,9 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from scene_agent.contracts import DevelopmentInput, DevelopmentOutput
-from scene_agent.audio_agent import run_audio_task
-from scene_agent.settings import AppSettings
+from common.contracts import DevelopmentInput, DevelopmentOutput
+from audio_agent import run_audio_task
+from common.settings import AppSettings
 
 app = FastAPI(title="CPC Studio — Audio Agent")
 

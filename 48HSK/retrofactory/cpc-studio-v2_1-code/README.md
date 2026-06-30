@@ -123,7 +123,7 @@ agente continúa sin contexto de recuperación — **no es un error bloqueante**
 | Campo | Valor |
 |---|---|
 | Build | **Docker** (imagen nativa; evita la emulación amd64→arm64) |
-| Dockerfile Path | `/Dockerfile` |
+| Dockerfile Path | `/agents/pm/Dockerfile` |
 | Repo / Branch | `rgranadosd/charlas` / `main` |
 | Project Path | `48HSK/retrofactory/cpc-studio-v2_1-code` |
 | Agent Type | Chat Agent (`POST /chat`) |

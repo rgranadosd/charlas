@@ -17,9 +17,9 @@ import re
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from scene_agent.contracts import DevelopmentInput, DevelopmentOutput
-from scene_agent.developer_agent import run_task
-from scene_agent.settings import AppSettings
+from common.contracts import DevelopmentInput, DevelopmentOutput
+from developer_agent import run_task
+from common.settings import AppSettings
 
 app = FastAPI(title="CPC Studio — Developer Agent")
 

@@ -20,8 +20,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from scene_agent.qa_agent import run_qa
-from scene_agent.settings import AppSettings
+from qa_agent import run_qa
+from common.settings import AppSettings
 
 app = FastAPI(title="CPC Studio — QA Agent")
 
