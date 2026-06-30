@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Rebuild the orchestrator RAG index from doc/ (root-level markdown files)
-# Run this locally after adding or modifying orchestrator documentation.
-# The updated index must be committed and pushed so the pod picks it up.
+# Rebuild the orchestrator RAG index from agents/pm/doc/
+# Run locally after adding or modifying documentation, then commit and push.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-PYTHONPATH="$(pwd)" python3 -c "
-from common.rag_store import RagStore
-store = RagStore.build_orchestrator()
+PYTHONPATH="$(pwd):$(pwd)/agents/pm" python3 -c "
+import rag_store
+store = rag_store.build()
 print(f'Orchestrator RAG rebuilt: {store.chunk_count} chunks')
 print('Commit agents/pm/data/rag_index_orchestrator.json and push.')
 "

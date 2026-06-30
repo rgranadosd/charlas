@@ -24,6 +24,7 @@ langchain.debug = False   # set True for full token-level traces
 
 from common.contracts import OrchestratorContract
 from common.rag_store import RagStore
+import rag_store as _rag_store_mod
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ _orch_rag: RagStore | None = None
 def _get_orch_rag() -> RagStore:
     global _orch_rag
     if _orch_rag is None:
-        _orch_rag = RagStore.load_or_build_orchestrator()
+        _orch_rag = _rag_store_mod.load_or_build()
     return _orch_rag
 
 

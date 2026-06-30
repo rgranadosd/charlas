@@ -23,13 +23,14 @@ import time as _time
 
 from common.contracts import DevelopmentInput, DevelopmentOutput
 from common.rag_store import RagStore
+import rag_store as _rag_store_mod
 
 _audio_rag_instance = None
 
 def _get_audio_rag() -> RagStore:
     global _audio_rag_instance
     if _audio_rag_instance is None:
-        _audio_rag_instance = RagStore.load_or_build_audio()
+        _audio_rag_instance = _rag_store_mod.load_or_build()
         logger.info("Audio RAG store ready: %d chunks", _audio_rag_instance.chunk_count)
     return _audio_rag_instance
 

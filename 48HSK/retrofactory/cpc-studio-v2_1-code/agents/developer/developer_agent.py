@@ -25,6 +25,7 @@ from langchain_openai import ChatOpenAI
 
 from common.contracts import DevelopmentInput, DevelopmentOutput, FilePatch
 from common.rag_store import RagStore
+import rag_store as _rag_store_mod
 
 _rag_instance: RagStore | None = None
 
@@ -32,7 +33,7 @@ _rag_instance: RagStore | None = None
 def _get_rag() -> RagStore:
     global _rag_instance
     if _rag_instance is None:
-        _rag_instance = RagStore.load_or_build()
+        _rag_instance = _rag_store_mod.load_or_build()
         logger.info("RAG store ready: %d chunks", _rag_instance.chunk_count)
     return _rag_instance
 
