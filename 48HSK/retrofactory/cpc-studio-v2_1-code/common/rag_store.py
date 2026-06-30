@@ -28,16 +28,15 @@ logger = logging.getLogger(__name__)
 def _log(msg: str, color: str = _GREEN) -> None:
     logger.info("%s%s%s", color, msg, _RESET)
 
-_DATA_DIR        = Path(__file__).parent / "data"
-_DEVELOPER_DIR   = Path(__file__).parents[1] / "agents" / "developer" / "doc"
-_AUDIO_DIR       = Path(__file__).parents[1] / "agents" / "audio" / "doc"
-_EXAMPLES_DIR    = Path(__file__).parents[1] / "cpctelera" / "examples"
-_TECHNICAL_DIR   = Path(__file__).parents[1] / "doc" / "technical"
-_DOC_DIR         = Path(__file__).parents[1] / "doc"
-_INDEX_FILE      = _DATA_DIR / "rag_index_emb.json"
-_ORCH_INDEX_FILE = _DATA_DIR / "rag_index_orchestrator.json"
-_AUDIO_INDEX_FILE = _DATA_DIR / "rag_index_audio.json"
-_REPO_ROOT_ENV   = Path(__file__).parents[1] / ".env"
+_REPO_ROOT       = Path(__file__).parents[1]
+_DEVELOPER_DIR   = _REPO_ROOT / "agents" / "developer" / "doc"
+_AUDIO_DIR       = _REPO_ROOT / "agents" / "audio" / "doc"
+_EXAMPLES_DIR    = _REPO_ROOT / "cpctelera" / "examples"
+_DOC_DIR         = _REPO_ROOT / "doc"
+_INDEX_FILE      = _REPO_ROOT / "agents" / "developer" / "data" / "rag_index_emb.json"
+_ORCH_INDEX_FILE = _REPO_ROOT / "agents" / "pm" / "data" / "rag_index_orchestrator.json"
+_AUDIO_INDEX_FILE = _REPO_ROOT / "agents" / "audio" / "data" / "rag_index_audio.json"
+_REPO_ROOT_ENV   = _REPO_ROOT / ".env"
 
 BATCH_SIZE = 32
 
