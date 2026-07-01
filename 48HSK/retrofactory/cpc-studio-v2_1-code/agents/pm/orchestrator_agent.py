@@ -85,28 +85,44 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     """Resolve AMP's governed LLM gateway from the env injected when an LLM
     provider is attached to the agent, or None.
 
-    AMP injects a pair ``<PREFIX>_<N>_URL`` + ``<PREFIX>_<N>_API_KEY`` (e.g.
-    ``CPC_STUDIO_PM_1_URL``). That URL is the *external* invoke URL — it does
-    NOT resolve in-cluster and the gateway routes by ``Host`` — so we keep its
-    context path, swap the authority for the in-cluster gateway service
-    (``AMP_LLM_GATEWAY_AUTHORITY``), append the OpenAI-compatible ``/v1`` suffix
-    and surface the original hostname as the ``Host`` header. Explicit
-    ``AMP_LLM_URL`` + ``AMP_LLM_API_KEY`` win over the auto-detected binding.
+    AMP injects a pair of env vars when an LLM provider is attached. The name
+    depends on how the binding is configured — it may carry a numeric index
+    (``<PREFIX>_<N>_URL`` + ``<PREFIX>_<N>_API_KEY``, e.g. ``CPC_STUDIO_PM_1_URL``)
+    or be a plain pair (``<PREFIX>_URL`` + ``<PREFIX>_API_KEY``, e.g.
+    ``GEMINI_URL`` + ``GEMINI_API_KEY``). We accept either. That URL is the
+    *external* invoke URL — it does NOT resolve in-cluster and the gateway routes
+    by ``Host`` — so we keep its context path, swap the authority for the
+    in-cluster gateway service (``AMP_LLM_GATEWAY_AUTHORITY``), append the
+    OpenAI-compatible ``/v1`` suffix and surface the original hostname as the
+    ``Host`` header. Explicit ``AMP_LLM_URL`` + ``AMP_LLM_API_KEY`` win over the
+    auto-detected binding.
     """
     import re
     from urllib.parse import urlsplit
 
-    binding_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    # Match both "<PREFIX>_<N>_URL" (indexed) and "<PREFIX>_URL" (plain).
+    indexed_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    plain_re   = re.compile(r"^(?P<prefix>.+)_URL$")
     url = env.get("AMP_LLM_URL", "").strip()
     key = env.get("AMP_LLM_API_KEY", "").strip()
     if not url:
-        for name, value in env.items():
-            match = binding_re.match(name)
-            if not match or not value.strip().startswith("http"):
-                continue
-            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
-            if env.get(sibling, "").strip():
-                url, key = value.strip(), env[sibling].strip()
+        # Prefer indexed bindings, then fall back to plain "<PREFIX>_URL" pairs.
+        for regexp, sibling_fmt in (
+            (indexed_re, "{prefix}_{idx}_API_KEY"),
+            (plain_re,   "{prefix}_API_KEY"),
+        ):
+            for name, value in env.items():
+                match = regexp.match(name)
+                if not match or not value.strip().startswith("http"):
+                    continue
+                gd = match.groupdict()
+                sibling = sibling_fmt.format(**gd)
+                if sibling == name:            # avoid pairing a var with itself
+                    continue
+                if env.get(sibling, "").strip():
+                    url, key = value.strip(), env[sibling].strip()
+                    break
+            if url:
                 break
     if not url or not key:
         return None
