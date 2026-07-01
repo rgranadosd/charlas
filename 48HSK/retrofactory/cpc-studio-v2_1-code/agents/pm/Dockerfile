@@ -23,4 +23,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["python", "agents/pm/main.py"]
+CMD ["python", "main.py"]
