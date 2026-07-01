@@ -17,6 +17,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN cp agents/pm/main.py main.py
 
 # Compile iDSK and hex2bin only when cpctelera source is present in the repo.
 # The orchestrator image is built from the same Dockerfile but doesn't include
@@ -43,7 +44,7 @@ RUN pip install --no-cache-dir --target /otel-custom \
         opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
         opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asgi
 COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
-ENV PYTHONPATH=/otel-custom
+ENV PYTHONPATH=/otel-custom:/app/agents/pm:/app
 
 # Ensure the outputs directory exists so the pipeline can write to it at runtime
 RUN mkdir -p scene_agent/outputs \
