@@ -170,13 +170,23 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
     # 1. AMP gateway — provider chosen in Agent Manager, reached via the binding.
     gateway = _resolve_amp_llm_gateway(env)
     if gateway:
+        # AMP authenticates the *consumer* (agent -> gateway) via the subscription
+        # key in a dedicated header (default "X-API-Key", overridable). We must NOT
+        # put the subscription key in "Authorization": the gateway applies the
+        # provider's endpoint-security to the Authorization header (e.g. Bearer
+        # <provider key> for Gemini), and a subscription-key Authorization from us
+        # leaks to the upstream and shadows it. So we send a throwaway bearer and
+        # carry the real subscription key in the consumer header.
+        consumer_header = env.get("AMP_LLM_CONSUMER_HEADER", "X-API-Key").strip() or "X-API-Key"
         llm = ChatOpenAI(
             model=model, temperature=0,
             openai_api_base=gateway["base_url"],
-            openai_api_key=gateway["api_key"],
-            # The AMP gateway authenticates via the "API-Key" header and routes
-            # by "Host"; the in-cluster service URL alone matches no route.
-            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+            openai_api_key="amp-managed",   # placeholder; real auth is the header below
+            default_headers={
+                consumer_header: gateway["api_key"],
+                "API-Key": gateway["api_key"],   # legacy fallback for older bindings
+                "Host": gateway["host"],
+            },
             timeout=timeout,
             max_retries=0,
         )
