@@ -16,6 +16,7 @@ COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
 ENV PYTHONPATH=/otel-custom:/app/agents/pm:/app
 
 RUN mkdir -p agents/pm/outputs \
+ && ln -s /app/agents/pm/main.py /app/main.py \
  && useradd -m -u 1000 appuser \
  && chown -R appuser:appuser /app
 USER appuser
