@@ -130,9 +130,18 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     parts = urlsplit(url)
     authority = env.get("AMP_LLM_GATEWAY_AUTHORITY", "gateway-default.openchoreo-data-plane:19080").strip()
     scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
+    # OpenAI-compatible base suffix appended after the API context path. Most
+    # providers live under "/v1"; Google Gemini's OpenAI-compatible surface is
+    # under "/v1beta/openai". The AMP gateway forwards everything after the
+    # context path verbatim to the upstream, so this suffix decides the final
+    # path the LLM provider sees. Override with AMP_LLM_OPENAI_PATH if needed.
+    suffix = env.get("AMP_LLM_OPENAI_PATH", "").strip()
+    if not suffix:
+        model_hint = (env.get("ORCHESTRATOR_MODEL", "") or env.get("AMP_GENAI_MODEL", "")).lower()
+        suffix = "/v1beta/openai" if "gemini" in model_hint else "/v1"
     base_url = f"{scheme}://{authority}{parts.path.rstrip('/')}".rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url = f"{base_url}/v1"
+    if not base_url.endswith(suffix):
+        base_url = f"{base_url}{suffix}"
     return {"base_url": base_url, "api_key": key, "host": parts.hostname or ""}
 
 
