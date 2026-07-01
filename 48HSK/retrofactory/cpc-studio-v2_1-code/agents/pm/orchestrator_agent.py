@@ -178,15 +178,34 @@ def _build_llm(env: dict[str, str], timeout: int = _NVIDIA_TIMEOUT):
         # leaks to the upstream and shadows it. So we send a throwaway bearer and
         # carry the real subscription key in the consumer header.
         consumer_header = env.get("AMP_LLM_CONSUMER_HEADER", "X-API-Key").strip() or "X-API-Key"
+        # The OpenAI SDK always injects "Authorization: Bearer <api_key>". For the
+        # AMP gateway that header must NOT reach the LLM provider: the gateway's
+        # endpoint-security is responsible for the upstream Authorization (e.g.
+        # Bearer <Gemini key>). If ours is present it shadows the provider key and
+        # the upstream rejects it. We authenticate to the gateway via the consumer
+        # header instead, and strip Authorization on the way out with an httpx hook.
+        import httpx
+
+        def _drop_authorization(request: "httpx.Request") -> None:
+            request.headers.pop("authorization", None)
+
+        async def _adrop_authorization(request: "httpx.Request") -> None:
+            request.headers.pop("authorization", None)
+
+        sync_http = httpx.Client(timeout=timeout, event_hooks={"request": [_drop_authorization]})
+        async_http = httpx.AsyncClient(timeout=timeout, event_hooks={"request": [_adrop_authorization]})
+
         llm = ChatOpenAI(
             model=model, temperature=0,
             openai_api_base=gateway["base_url"],
-            openai_api_key="amp-managed",   # placeholder; real auth is the header below
+            openai_api_key="amp-managed",   # placeholder; stripped before send (see hook)
             default_headers={
                 consumer_header: gateway["api_key"],
                 "API-Key": gateway["api_key"],   # legacy fallback for older bindings
                 "Host": gateway["host"],
             },
+            http_client=sync_http,
+            http_async_client=async_http,
             timeout=timeout,
             max_retries=0,
         )
