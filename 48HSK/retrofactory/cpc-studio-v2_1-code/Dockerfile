@@ -16,6 +16,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the fastembed embedding model at build time to a world-readable
+# path. AMP runs the container with an arbitrary UID (HOME=/nonexistent) on a
+# read-only filesystem, so a runtime download to ~/.cache fails. Baking it in +
+# offline mode makes query-time RAG work and removes the download error spam.
+ENV FASTEMBED_CACHE_PATH=/opt/fastembed_cache
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5')" \
+ && chmod -R a+rX /opt/fastembed_cache
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
 COPY . .
 RUN cp agents/pm/main.py main.py
 
