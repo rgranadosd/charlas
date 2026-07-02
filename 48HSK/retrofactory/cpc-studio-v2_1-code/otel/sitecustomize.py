@@ -37,7 +37,20 @@ try:
 
     logger.info("OTEL UIDs: component=%s env=%s project=%s", component_uid, environment_uid, project_uid)
 
-    model_name = (os.getenv("AMP_GENAI_MODEL") or os.getenv("GENAI_MODEL") or os.getenv("LLM_MODEL") or "MISTRAL/codestral-latest").strip()
+    # Trace-label model name. AMP_GENAI_MODEL is not injected by the platform, so
+    # fall back to the per-agent model vars each agent actually uses to pick its
+    # LLM (ORCHESTRATOR_MODEL for the PM, DEVELOPER/AUDIO/QA_MODEL for workers)
+    # before the hardcoded default — otherwise every span is mislabelled.
+    model_name = (
+        os.getenv("AMP_GENAI_MODEL")
+        or os.getenv("GENAI_MODEL")
+        or os.getenv("LLM_MODEL")
+        or os.getenv("ORCHESTRATOR_MODEL")
+        or os.getenv("DEVELOPER_MODEL")
+        or os.getenv("AUDIO_MODEL")
+        or os.getenv("QA_MODEL")
+        or "MISTRAL/codestral-latest"
+    ).strip()
 
     resource = Resource.create({
       "service.name": component_uid,
