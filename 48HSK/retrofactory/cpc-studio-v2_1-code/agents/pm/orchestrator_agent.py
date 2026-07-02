@@ -398,6 +398,41 @@ def orchestrate(
         contract.routing.mode,
         contract.intent.category,
     )
+
+    # Surface the distilled plan on the active OTEL span so it shows up in the
+    # AMP trace (the /chat HTTP response only carries the async ack, so without
+    # this the tasks would live only in the logs).
+    try:
+        from opentelemetry import trace as _otel_trace
+        import json as _json_mod
+
+        span = _otel_trace.get_current_span()
+        if span is not None and span.is_recording():
+            tasks_sorted = sorted(contract.tasks, key=lambda t: t.priority)
+            span.set_attribute("gen_ai.orchestration.intent", contract.intent.category)
+            span.set_attribute("gen_ai.orchestration.routing", contract.routing.mode)
+            span.set_attribute("gen_ai.orchestration.task_count", len(contract.tasks))
+            span.set_attribute("gen_ai.orchestration.subagents",
+                               ", ".join(sorted({t.subagent for t in contract.tasks})))
+            span.set_attribute(
+                "gen_ai.orchestration.tasks",
+                _json_mod.dumps(
+                    [
+                        {
+                            "id": t.task_id,
+                            "priority": t.priority,
+                            "subagent": t.subagent,
+                            "title": t.title,
+                            "deps": list(getattr(t, "depends_on", []) or []),
+                        }
+                        for t in tasks_sorted
+                    ],
+                    ensure_ascii=False,
+                ),
+            )
+    except Exception as _span_exc:   # never let telemetry break orchestration
+        logger.debug("[ORCH] span attribute enrichment skipped: %s", _span_exc)
+
     return contract
 
 
