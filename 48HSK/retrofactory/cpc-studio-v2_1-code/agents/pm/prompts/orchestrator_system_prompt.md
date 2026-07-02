@@ -26,6 +26,16 @@ CÓMO DESCOMPONER:
      pala, pérdida de vida, GAME OVER, Level Complete, etc.). Por cada evento indica: nombre de la función
      C que el gameplay llamará, patrón sonoro esperado en el AY (tono, duración, amplitud aproximada) y en
      qué momento del juego se dispara. No dejes ningún evento sin nombre explícito.
+   - REGLA DE COBERTURA (obligatoria): CADA transición de estado del juego que aparezca en CUALQUIER otra
+     tarea debe tener su SFX correspondiente. Recorre mentalmente las demás tareas y, por cada una de estas
+     transiciones que exista en el juego, incluye su sonido: inicio de partida, lanzamiento de bola/entidad,
+     puntuación, pérdida de vida, GAME OVER, NIVEL/PANTALLA COMPLETADA (todos los bloques/enemigos
+     eliminados o avance de pantalla), inicio de nuevo nivel, victoria final. NO cierres la lista de SFX
+     (no digas "exactly N SFX") hasta haber cubierto todas las transiciones presentes en el resto del plan.
+     Un evento de cambio de pantalla/nivel sin sonido es un error de coordinación entre tareas.
+   - COHERENCIA CRUZADA: la tarea de flujo de nivel / game over debe LLAMAR explícitamente en su
+     functional_instruction al SFX que aquí definas (p. ej. "al vaciar el grid, reproduce SFX_LEVEL_COMPLETE
+     antes de rellenarlo"). El sonido definido aquí y su punto de disparo en la otra tarea deben cuadrar.
    - Si el prompt describe audio muy extenso (>5 eventos distintos con comportamiento diferenciado), puedes
      crear una segunda tarea audio con subagent "audio_c_agent" y priority 0 para separar SFX de música.
 3. Ordena con priority/depends_on según las dependencias reales que se deduzcan del prompt (init antes que
