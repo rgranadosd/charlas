@@ -113,6 +113,7 @@ def _env_retry_delays(env: dict[str, str], key: str, default: list[int]) -> list
 
 
 _AMP_BINDING_RE = _re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+_AMP_BINDING_PLAIN_RE = _re.compile(r"^(?P<prefix>.+)_URL$")
 
 
 def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
@@ -135,14 +136,22 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     key = env.get("AMP_LLM_API_KEY", "").strip()
 
     if not url:
-        for name, value in env.items():
-            match = _AMP_BINDING_RE.match(name)
-            if not match or not value.strip().startswith("http"):
-                continue
-            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
-            if env.get(sibling, "").strip():
-                url = value.strip()
-                key = env[sibling].strip()
+        for regexp, sibling_fmt in (
+            (_AMP_BINDING_RE, "{prefix}_{idx}_API_KEY"),
+            (_AMP_BINDING_PLAIN_RE, "{prefix}_API_KEY"),
+        ):
+            for name, value in env.items():
+                match = regexp.match(name)
+                if not match or not value.strip().startswith("http"):
+                    continue
+                sibling = sibling_fmt.format(**match.groupdict())
+                if sibling == name:
+                    continue
+                if env.get(sibling, "").strip():
+                    url = value.strip()
+                    key = env[sibling].strip()
+                    break
+            if url:
                 break
 
     if not url or not key:
@@ -158,9 +167,16 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     ).strip()
     scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
 
+    suffix = env.get("AMP_LLM_OPENAI_PATH", "").strip()
+    if not suffix:
+        model_hint = " ".join(
+            env.get(k, "") for k in ("DEVELOPER_MODEL", "AMP_GENAI_MODEL", "ORCHESTRATOR_MODEL")
+        ).lower()
+        suffix = "/v1beta/openai" if "gemini" in model_hint else "/v1"
+
     base_url = f"{scheme}://{authority}{context}".rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url = f"{base_url}/v1"
+    if not base_url.endswith(suffix):
+        base_url = f"{base_url}{suffix}"
 
     return {"base_url": base_url, "api_key": key, "host": host_header}
 
@@ -381,15 +397,10 @@ def _build_worker_llm(env: dict[str, str]) -> tuple:
         model = env.get("DEVELOPER_MODEL", "").strip() or env.get("MISTRAL_WORKER_MODEL", "").strip() or env.get("AMP_GENAI_MODEL", "").strip() or "codestral-latest"
         if "/" in model:                       # AMP_GENAI_MODEL may be "MISTRAL/codestral-latest"
             model = model.split("/", 1)[1]
-        llm = ChatOpenAI(
-            model=model, temperature=0,
-            openai_api_base=gateway["base_url"],
-            openai_api_key=gateway["api_key"],
-            # The AMP gateway authenticates via the "API-Key" header and routes
-            # by "Host"; the in-cluster service URL alone matches no route.
-            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
+        from common.llm_utils import build_amp_gateway_chat
+        llm = build_amp_gateway_chat(
+            gateway, model=model, env=env,
             timeout=_env_int(env, "MISTRAL_WORKER_TIMEOUT_SECONDS", 90),
-            max_retries=0,
         )
         return llm, f"AMP-GATEWAY/{model}"
 

@@ -16,7 +16,7 @@ import re
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from common.llm_utils import _parse_output, _read_env, _resolve_amp_llm_gateway
+from common.llm_utils import _parse_output, _read_env, _resolve_amp_llm_gateway, build_amp_gateway_chat
 
 logger = logging.getLogger(__name__)
 
@@ -248,14 +248,7 @@ def _build_verifier_llm(env: dict[str, str]):
 
     gateway = _resolve_amp_llm_gateway(env)
     if gateway:
-        return ChatOpenAI(
-            model=model, temperature=0,
-            openai_api_base=gateway["base_url"],
-            openai_api_key=gateway["api_key"],
-            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
-            timeout=90,
-            max_retries=0,
-        )
+        return build_amp_gateway_chat(gateway, model=model, env=env, timeout=90)
 
     key = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY") \
         or env.get("MISTRAL_WORKER_API_KEY", "")
@@ -284,14 +277,7 @@ def _build_qa_llm(env: dict[str, str]) -> tuple:
 
     gateway = _resolve_amp_llm_gateway(env)
     if gateway:
-        llm = ChatOpenAI(
-            model=model, temperature=0,
-            openai_api_base=gateway["base_url"],
-            openai_api_key=gateway["api_key"],
-            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
-            timeout=90,
-            max_retries=0,
-        )
+        llm = build_amp_gateway_chat(gateway, model=model, env=env, timeout=90)
         return llm, f"AMP-GATEWAY/{model}"
 
     key = env.get("MISTRAL_ORCHESTRATOR_API_KEY") or env.get("MISTRAL_API_KEY") \

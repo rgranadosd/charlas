@@ -14,6 +14,7 @@ from json_repair import repair_json
 _REPO_ROOT_ENV = Path(__file__).parents[1] / ".env"
 
 _AMP_BINDING_RE = _re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+_AMP_BINDING_PLAIN_RE = _re.compile(r"^(?P<prefix>.+)_URL$")
 
 
 def _read_env() -> dict[str, str]:
@@ -48,14 +49,25 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     key = env.get("AMP_LLM_API_KEY", "").strip()
 
     if not url:
-        for name, value in env.items():
-            match = _AMP_BINDING_RE.match(name)
-            if not match or not value.strip().startswith("http"):
-                continue
-            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
-            if env.get(sibling, "").strip():
-                url = value.strip()
-                key = env[sibling].strip()
+        # Accept both indexed ("<PREFIX>_<N>_URL") and plain ("<PREFIX>_URL")
+        # bindings — AMP names them differently depending on the provider setup
+        # (e.g. CPC_STUDIO_PM_1_URL vs GEMINI_URL / MISTRALAI_URL).
+        for regexp, sibling_fmt in (
+            (_AMP_BINDING_RE, "{prefix}_{idx}_API_KEY"),
+            (_AMP_BINDING_PLAIN_RE, "{prefix}_API_KEY"),
+        ):
+            for name, value in env.items():
+                match = regexp.match(name)
+                if not match or not value.strip().startswith("http"):
+                    continue
+                sibling = sibling_fmt.format(**match.groupdict())
+                if sibling == name:            # don't pair a var with itself
+                    continue
+                if env.get(sibling, "").strip():
+                    url = value.strip()
+                    key = env[sibling].strip()
+                    break
+            if url:
                 break
 
     if not url or not key:
@@ -71,11 +83,64 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     ).strip()
     scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
 
+    # OpenAI-compatible path suffix. Most providers live under "/v1"; Google
+    # Gemini's OpenAI surface is under "/v1beta/openai". The gateway forwards
+    # everything after the context path verbatim, so this decides the upstream
+    # path. Override with AMP_LLM_OPENAI_PATH.
+    suffix = env.get("AMP_LLM_OPENAI_PATH", "").strip()
+    if not suffix:
+        model_hint = " ".join(
+            env.get(k, "") for k in (
+                "ORCHESTRATOR_MODEL", "DEVELOPER_MODEL", "AUDIO_MODEL",
+                "QA_MODEL", "AMP_GENAI_MODEL",
+            )
+        ).lower()
+        suffix = "/v1beta/openai" if "gemini" in model_hint else "/v1"
+
     base_url = f"{scheme}://{authority}{context}".rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url = f"{base_url}/v1"
+    if not base_url.endswith(suffix):
+        base_url = f"{base_url}{suffix}"
 
     return {"base_url": base_url, "api_key": key, "host": host_header}
+
+
+def build_amp_gateway_chat(gateway: dict, *, model: str, env: dict[str, str],
+                           temperature: float = 0, timeout: int = 240,
+                           max_retries: int = 0):
+    """Build a ChatOpenAI client for AMP's governed LLM gateway.
+
+    AMP authenticates the *consumer* (agent -> gateway) via the subscription key
+    in a dedicated header (default "X-API-Key"). The OpenAI SDK always injects
+    "Authorization: Bearer <api_key>", which must NOT reach the provider: the
+    gateway's endpoint-security owns the upstream Authorization (e.g. Bearer
+    <provider key>). So we carry the subscription key in the consumer header and
+    strip Authorization on the way out with an httpx request hook.
+    """
+    import httpx
+    from langchain_openai import ChatOpenAI
+
+    consumer_header = env.get("AMP_LLM_CONSUMER_HEADER", "X-API-Key").strip() or "X-API-Key"
+
+    def _drop_authorization(request: "httpx.Request") -> None:
+        request.headers.pop("authorization", None)
+
+    async def _adrop_authorization(request: "httpx.Request") -> None:
+        request.headers.pop("authorization", None)
+
+    return ChatOpenAI(
+        model=model, temperature=temperature,
+        openai_api_base=gateway["base_url"],
+        openai_api_key="amp-managed",   # placeholder; stripped before send
+        default_headers={
+            consumer_header: gateway["api_key"],
+            "API-Key": gateway["api_key"],   # legacy fallback for older bindings
+            "Host": gateway["host"],
+        },
+        http_client=httpx.Client(timeout=timeout, event_hooks={"request": [_drop_authorization]}),
+        http_async_client=httpx.AsyncClient(timeout=timeout, event_hooks={"request": [_adrop_authorization]}),
+        timeout=timeout,
+        max_retries=max_retries,
+    )
 
 
 def _parse_output(text: str) -> dict:

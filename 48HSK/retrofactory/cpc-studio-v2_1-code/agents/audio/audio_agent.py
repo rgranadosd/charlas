@@ -82,17 +82,26 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     import re
     from urllib.parse import urlsplit
 
-    binding_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    indexed_re = re.compile(r"^(?P<prefix>.+)_(?P<idx>\d+)_URL$")
+    plain_re   = re.compile(r"^(?P<prefix>.+)_URL$")
     url = env.get("AMP_LLM_URL", "").strip()
     key = env.get("AMP_LLM_API_KEY", "").strip()
     if not url:
-        for name, value in env.items():
-            match = binding_re.match(name)
-            if not match or not value.strip().startswith("http"):
-                continue
-            sibling = f"{match.group('prefix')}_{match.group('idx')}_API_KEY"
-            if env.get(sibling, "").strip():
-                url, key = value.strip(), env[sibling].strip()
+        for regexp, sibling_fmt in (
+            (indexed_re, "{prefix}_{idx}_API_KEY"),
+            (plain_re,   "{prefix}_API_KEY"),
+        ):
+            for name, value in env.items():
+                match = regexp.match(name)
+                if not match or not value.strip().startswith("http"):
+                    continue
+                sibling = sibling_fmt.format(**match.groupdict())
+                if sibling == name:
+                    continue
+                if env.get(sibling, "").strip():
+                    url, key = value.strip(), env[sibling].strip()
+                    break
+            if url:
                 break
     if not url or not key:
         return None
@@ -100,9 +109,15 @@ def _resolve_amp_llm_gateway(env: dict[str, str]) -> dict | None:
     parts = urlsplit(url)
     authority = env.get("AMP_LLM_GATEWAY_AUTHORITY", "gateway-default.openchoreo-data-plane:19080").strip()
     scheme = env.get("AMP_LLM_GATEWAY_SCHEME", "http").strip() or "http"
+    suffix = env.get("AMP_LLM_OPENAI_PATH", "").strip()
+    if not suffix:
+        model_hint = " ".join(
+            env.get(k, "") for k in ("AUDIO_MODEL", "AMP_GENAI_MODEL", "ORCHESTRATOR_MODEL")
+        ).lower()
+        suffix = "/v1beta/openai" if "gemini" in model_hint else "/v1"
     base_url = f"{scheme}://{authority}{parts.path.rstrip('/')}".rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url = f"{base_url}/v1"
+    if not base_url.endswith(suffix):
+        base_url = f"{base_url}{suffix}"
     return {"base_url": base_url, "api_key": key, "host": parts.hostname or ""}
 
 
@@ -140,14 +155,8 @@ def build_audio_agent(settings) -> tuple:
     # 1. AMP governed LLM gateway — normal path when a provider is attached.
     gateway = _resolve_amp_llm_gateway(env)
     if gateway:
-        llm = ChatOpenAI(
-            model=model, temperature=0,
-            openai_api_base=gateway["base_url"],
-            openai_api_key=gateway["api_key"],
-            default_headers={"API-Key": gateway["api_key"], "Host": gateway["host"]},
-            timeout=timeout,
-            max_retries=0,
-        )
+        from common.llm_utils import build_amp_gateway_chat
+        llm = build_amp_gateway_chat(gateway, model=model, env=env, timeout=timeout)
         label = f"AUDIO/AMP-GATEWAY/{model}"
         logger.info("[AUDIO] LLM: AMP gateway — %s (timeout=%ds)", model, timeout)
     # 2. Mistral direct API — local-dev fallback.
