@@ -5,21 +5,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Shared module (qa_agent reuses developer_agent's LLM builder and parser)
-COPY scene_agent scene_agent
+# Shared module + agent code (includes qa_agent.py)
+COPY common common
+COPY agents/qa agents/qa
+RUN cp agents/qa/main.py main.py
 
-# Entry point is the QA agent server
-COPY agents/qa/main.py main.py
-
-# OTEL auto-instrumentation baked into the image (replaces the fragile
-# custom-otel-init container that was lost on every component re-render).
-# AMP_OTEL_ENDPOINT / AMP_AGENT_API_KEY are still injected by the
-# instrumentation trait at deploy time; sitecustomize.py auto-loads via PYTHONPATH.
+# OTEL auto-instrumentation baked into the image.
+# AMP_OTEL_ENDPOINT / AMP_AGENT_API_KEY are injected by the instrumentation trait.
 RUN pip install --no-cache-dir --target /otel-custom \
         opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
         opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asgi
 COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
-ENV PYTHONPATH=/otel-custom
+ENV PYTHONPATH=/otel-custom:/app/agents/qa:/app
+ENV PYTHONUNBUFFERED=1
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

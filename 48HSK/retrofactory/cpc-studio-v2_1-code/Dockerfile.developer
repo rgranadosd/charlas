@@ -5,24 +5,21 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the shared module and the RAG documentation it needs at runtime
-COPY scene_agent scene_agent
+# Shared module + agent code (includes developer_agent.py, rag_store.py, prompts/, data/)
+COPY common common
+COPY agents/developer agents/developer
+RUN cp agents/developer/main.py main.py
 
-# Entry point is the developer agent server
-COPY agents/developer/main.py main.py
-
-# OTEL auto-instrumentation baked into the image (replaces the fragile
-# custom-otel-init container that was lost on every component re-render).
-# AMP_OTEL_ENDPOINT / AMP_AGENT_API_KEY are still injected by the
-# instrumentation trait at deploy time; sitecustomize.py auto-loads via PYTHONPATH.
+# OTEL auto-instrumentation baked into the image.
+# AMP_OTEL_ENDPOINT / AMP_AGENT_API_KEY are injected by the instrumentation trait.
 RUN pip install --no-cache-dir --target /otel-custom \
         opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
         opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-asgi
 COPY otel/sitecustomize.py /otel-custom/sitecustomize.py
-ENV PYTHONPATH=/otel-custom
+ENV PYTHONPATH=/otel-custom:/app/agents/developer:/app
+ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p scene_agent/outputs \
- && useradd -m -u 1000 appuser \
+RUN useradd -m -u 1000 appuser \
  && chown -R appuser:appuser /app
 USER appuser
 
