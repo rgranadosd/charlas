@@ -18,11 +18,12 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - The complete list of HUD draws is: x=0 (label), x=24 (digit), x=40 (label), x=64 (3 digits). FORBIDDEN: any other text or element in the HUD zone (no LEVEL, no HIGH SCORE, no title, no branding). FORBIDDEN: local char arrays for labels — string literals only; digits may use a small null-terminated buffer.
 
 2. GAME STATE:
-   - Globals: g_lives (3 at start), g_score (0 at start), game_over=0, ball_launched=0, blocks_remaining=50, u8 block_grid[5][10], paddle_x, ball_x, ball_y, i8 ball_vx, i8 ball_vy, prev_ball_x, prev_ball_y, prev_paddle_x.
+   - Globals: g_lives (3 at start), g_score (0 at start), g_level (1 at start), game_over=0, game_won=0, ball_launched=0, blocks_remaining=50, u8 block_grid[5][10], paddle_x, ball_x, ball_y, i8 ball_vx, i8 ball_vy, prev_ball_x, prev_ball_y, prev_paddle_x.
    - All state variables shared between functions are GLOBAL. NEVER shadow a global with a local of the same name.
-   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_lives=3, g_score=0, game_over=0, ball_launched=0, blocks_remaining=50, all block_grid cells=1, paddle_x=35, prev_paddle_x=35, ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, prev_ball_x=ball_x, prev_ball_y=ball_y.
+   - The game has EXACTLY 3 levels. g_level goes 1 -> 2 -> 3; clearing all bricks on level 3 WINS the game. g_level is NEVER reset during a session.
+   - init_game() MUST explicitly assign every state variable exactly once (no duplicated init blocks): g_lives=3, g_score=0, g_level=1, game_over=0, game_won=0, ball_launched=0, blocks_remaining=50, all block_grid cells=1, paddle_x=35, prev_paddle_x=35, ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, prev_ball_x=ball_x, prev_ball_y=ball_y.
    - reset_ball() MUST set: ball_x=paddle_x+(PADDLE_WIDTH/2), ball_y=PADDLE_Y-BALL_H, ball_vx=1, ball_vy=-1, ball_launched=0, prev_ball_x=ball_x, prev_ball_y=ball_y.
-   - No state machine enums. Flags only: game_over, ball_launched.
+   - No state machine enums. Flags only: game_over, game_won, ball_launched.
 
 3. PHYSICS (MANDATORY — implement EXACTLY these steps and ADD NOTHING ELSE.
    In particular: NEVER reposition ball_x/ball_y after a collision except where this section explicitly says so):
@@ -45,15 +46,20 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - Bricks are erased individually at the moment of destruction (inside the collision step). FORBIDDEN: redrawing the brick grid, the HUD labels, or any full scene inside the main loop — it destroys the frame budget on a 4MHz Z80.
    - Colours via cpct_px2byteM0(pen,pen) assigned in init_game() — NEVER hardcode raw colour bytes. EVERY brick colour MUST be cpct_px2byteM0(p, p) with the SAME pen on BOTH pixels (a SOLID colour). For 5 distinct brick-row colours, set 5 distinct palette pens — cpct_setPALColour(1..5, five different HW_* colours) — and make brick row i use cpct_px2byteM0(i+1, i+1). FORBIDDEN: cpct_px2byteM0(a, b) with a != b for any brick (e.g. px2byteM0(1,2), px2byteM0(2,3)) — two different pens paint alternating pixels = VERTICAL STRIPES, not a solid brick. Palette via cpct_setPALColour; cpct_setBorder(HW_BLACK).
 
-5. LEVEL FLOW:
-   - When blocks_remaining reaches 0: refill block_grid with 1s, blocks_remaining=50, redraw the brick grid once, reset_ball(). g_score and g_lives KEEP their values — they are NEVER reset during a session.
-   - When game_over becomes 1: stop updating the game and draw "GAME OVER" once, centered inside the play area (e.g. x=30, y=100). No start screen, no separate game-over screen, no level-complete screen or message.
+5. LEVEL FLOW (3 LEVELS — MANDATORY):
+   - The game is completed by clearing 3 levels. When blocks_remaining reaches 0:
+       * If g_level < 3 (levels 1 and 2 cleared): g_level++, play SFX_LEVEL_COMPLETE, then refill block_grid with 1s, blocks_remaining=50, redraw the brick grid once, and reset_ball(). g_score and g_lives KEEP their values — they are NEVER reset between levels.
+       * If g_level == 3 (final level cleared): set game_won=1 and play SFX_GAME_WIN. Do NOT refill the grid.
+   - When game_won becomes 1: stop updating the game and draw "YOU WIN" once, centered inside the play area (e.g. x=30, y=100).
+   - When game_over becomes 1: stop updating the game and draw "GAME OVER" once, centered inside the play area (e.g. x=30, y=100).
+   - Exactly ONE of these end texts is ever shown, and only once. No start screen. The "level complete" transition between levels 1->2 and 2->3 has NO screen or message — it only plays SFX_LEVEL_COMPLETE and rebuilds the grid in place.
 
 6. AUDIO:
-   - The audio subsystem is implemented by the AUDIO SPECIALIST AGENT in src/audio.h + src/audio.c (AY-3-8912 beep backend, no external assets). It must expose: audio_init(), audio_update(), audio_play_sfx(u8 sfx_id) and exactly these SFX ids: SFX_WALL_HIT, SFX_PADDLE_HIT, SFX_BRICK_HIT, SFX_LIFE_LOST, SFX_GAME_OVER.
+   - The audio subsystem is implemented by the AUDIO SPECIALIST AGENT in src/audio.h + src/audio.c (AY-3-8912 beep backend, no external assets). It must expose: audio_init(), audio_update(), audio_play_sfx(u8 sfx_id) and exactly these SFX ids: SFX_WALL_HIT, SFX_PADDLE_HIT, SFX_BRICK_HIT, SFX_LIFE_LOST, SFX_GAME_OVER, SFX_LEVEL_COMPLETE, SFX_GAME_WIN.
    - The gameplay code (src/main.c) NEVER implements audio — it only includes "audio.h" and calls:
      audio_init() once in init_game(); audio_update() at the end of every main-loop iteration;
-     audio_play_sfx(SFX_WALL_HIT) on wall/ceiling bounce, SFX_PADDLE_HIT on paddle bounce, SFX_BRICK_HIT on brick destruction, SFX_LIFE_LOST when losing a life, SFX_GAME_OVER when lives reach zero.
+     audio_play_sfx(SFX_WALL_HIT) on wall/ceiling bounce, SFX_PADDLE_HIT on paddle bounce, SFX_BRICK_HIT on brick destruction, SFX_LIFE_LOST when losing a life, SFX_GAME_OVER when lives reach zero, SFX_LEVEL_COMPLETE when a level is cleared and the next one starts (levels 1->2 and 2->3), SFX_GAME_WIN when the 3rd level is cleared and the game is won.
+   - SFX_LEVEL_COMPLETE (short ascending victory beep) and SFX_GAME_WIN (longer triumphant jingle) must sound clearly DISTINCT from each other and from SFX_GAME_OVER.
 
 7. TECHNICAL REQUIREMENTS:
    - C89/SDCC: declare ALL variables at the top of each function, before any statement.
@@ -67,6 +73,8 @@ Create a complete Arkanoid-style breakout game in CPCtelera for Amstrad CPC usin
    - At most ONE brick is destroyed per frame (the goto guarantees it).
    - ball_y is never smaller than 8 once the game runs (HUD zone is untouchable).
    - g_score and g_lives are assigned their starting values in init_game() ONLY — no other assignment except g_score += 10 and g_lives--.
+   - g_level starts at 1 in init_game() and is only ever changed by g_level++ on clearing a level; it never exceeds 3 and is never reset mid-session. Clearing level 3 sets game_won=1 (no grid refill); clearing levels 1 and 2 advances g_level and rebuilds the grid.
+   - At most one end text is ever drawn: "YOU WIN" when game_won==1 OR "GAME OVER" when game_over==1, each exactly once. Level 1->2 and 2->3 transitions draw NO message (only SFX_LEVEL_COMPLETE).
    - The only drawStringM0 destinations in the HUD zone are x=0, x=24, x=40, x=64 at y=0 (plus the single GAME OVER text inside the play area).
    - Every draw of a moving entity in the main loop is preceded by erasing its previous position.
    - prev_ball_x, prev_ball_y and prev_paddle_x are ASSIGNED in exactly one place — inside draw_game(), AFTER the erase+draw — and are NEVER assigned inside update_game()/the physics step. (Guarantees no trail.)
