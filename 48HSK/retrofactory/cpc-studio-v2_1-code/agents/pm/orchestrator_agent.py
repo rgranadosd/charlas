@@ -414,6 +414,7 @@ def orchestrate(
             span.set_attribute("gen_ai.orchestration.task_count", len(contract.tasks))
             span.set_attribute("gen_ai.orchestration.subagents",
                                ", ".join(sorted({t.subagent for t in contract.tasks})))
+            # Machine-readable JSON (used for downstream tooling)
             span.set_attribute(
                 "gen_ai.orchestration.tasks",
                 _json_mod.dumps(
@@ -431,6 +432,15 @@ def orchestrate(
                     ensure_ascii=False,
                 ),
             )
+            # Human-readable plan — one span attribute per task so AMP trace
+            # shows each instruction as a standalone, readable key-value pair.
+            for t in tasks_sorted:
+                deps_str = ", ".join(t.depends_on) if t.depends_on else "—"
+                instruction = (t.functional_instruction or "").strip()
+                span.set_attribute(
+                    f"gen_ai.orchestration.task.{t.task_id}",
+                    f"[{t.subagent}] p{t.priority} deps={deps_str}\n{t.title}\n{instruction}",
+                )
     except Exception as _span_exc:   # never let telemetry break orchestration
         logger.debug("[ORCH] span attribute enrichment skipped: %s", _span_exc)
 
