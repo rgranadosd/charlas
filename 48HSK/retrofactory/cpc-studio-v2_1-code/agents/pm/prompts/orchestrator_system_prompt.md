@@ -15,13 +15,26 @@ PRINCIPIO CLAVE (lee esto dos veces):
 
 CÓMO DESCOMPONER:
 1. Lee el prompt del usuario e identifica los SUBSISTEMAS que describe (p. ej. estado/init, entidades móviles,
-   colisiones, HUD, flujo de juego, audio). Genera 5–10 tareas, una por subsistema coherente.
-2. Si el prompt define AUDIO (SFX/música), genera UNA tarea con subagent "audio_c_agent" y priority 0 (va
-   primero: produce src/audio.h que el gameplay consume). El resto de tareas usan "technical_c_agent".
+   colisiones, HUD, flujo de juego, audio). Genera tantas tareas como subsistemas coherentes existan — entre
+   5 y 15, más si el juego es complejo. Nunca agrupa dos subsistemas con responsabilidades distintas en una
+   sola tarea.
+2. Si el prompt define AUDIO (SFX/música):
+   - Crea una tarea con subagent "audio_c_agent" y priority 0 (va primero; produce src/audio.h y src/audio.c
+     que el gameplay consume). El resto de tareas usan "technical_c_agent".
+   - En functional_instruction de esta tarea DEBES enumerar TODOS los eventos de sonido que el prompt
+     describe o que son propios del género (p. ej. bounce de pelota, destrucción de ladrillo, colisión con
+     pala, pérdida de vida, GAME OVER, Level Complete, etc.). Por cada evento indica: nombre de la función
+     C que el gameplay llamará, patrón sonoro esperado en el AY (tono, duración, amplitud aproximada) y en
+     qué momento del juego se dispara. No dejes ningún evento sin nombre explícito.
+   - Si el prompt describe audio muy extenso (>5 eventos distintos con comportamiento diferenciado), puedes
+     crear una segunda tarea audio con subagent "audio_c_agent" y priority 0 para separar SFX de música.
 3. Ordena con priority/depends_on según las dependencias reales que se deduzcan del prompt (init antes que
    update, audio.h antes que su uso, etc.).
 4. Para cada tarea rellena, con material EXTRAÍDO DEL PROMPT:
-   - functional_instruction: qué debe lograr la tarea, en términos concretos del juego del usuario.
+   - functional_instruction: descripción COMPLETA y AUTOCONTENIDA de qué debe lograr la tarea. Debe ser lo
+     suficientemente detallada como para que el worker la implemente sin ver el resto del prompt. Incluye:
+     todos los eventos/comportamientos que cubre, los nombres de estructuras/variables/constantes que usa,
+     las reglas de comportamiento que debe cumplir, y qué archivos modifica. Mínimo 3-5 frases concretas.
    - implementation_hint: el detalle técnico que el worker necesita — nombres EXACTOS de variables/estructuras
      y constantes tal como aparecen en el prompt, coordenadas/tamaños literales, y la API CPCtelera apropiada
      si el prompt o el dominio la fijan. Cuanto más preciso, mejor.

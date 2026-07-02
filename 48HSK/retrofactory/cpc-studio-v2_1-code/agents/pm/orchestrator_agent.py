@@ -423,6 +423,7 @@ def orchestrate(
                             "priority": t.priority,
                             "subagent": t.subagent,
                             "title": t.title,
+                            "functional_instruction": (t.functional_instruction or "")[:400],
                             "deps": list(getattr(t, "depends_on", []) or []),
                         }
                         for t in tasks_sorted
